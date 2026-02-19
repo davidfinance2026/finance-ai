@@ -1,42 +1,77 @@
 import os
 import json
-from datetime import datetime  # <-- garante datetime
+from datetime import datetime, date
 from flask import Flask, request, jsonify, render_template
+
 import gspread
 from google.oauth2.service_account import Credentials
 
-app = Flask(__name__)  # por padrão usa template_folder="templates"
+app = Flask(__name__, template_folder="templates")
 
-# =========================
-# Google Sheets
-# =========================
+# ----------------------------
+# Google Sheets (Render/ENV)
+# ----------------------------
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+SHEET_ID = os.getenv("SHEET_ID", "").strip()  # ID da planilha
+SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()  # nome da aba (opcional)
+
 def get_sheet():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
-    if not creds_json:
-        raise Exception("Variável GOOGLE_CREDENTIALS não encontrada no Render")
+    """
+    Usa a credencial do Service Account vinda do ENV: GOOGLE_CREDS_JSON
+    e abre a planilha por SHEET_ID.
+    """
+    creds_raw = os.getenv("GOOGLE_CREDS_JSON", "").strip()
+    if not creds_raw:
+        raise RuntimeError("Faltou a variável GOOGLE_CREDS_JSON no Render.")
 
-    creds_dict = json.loads(creds_json)
+    if not SHEET_ID:
+        raise RuntimeError("Faltou a variável SHEET_ID no Render (ID da planilha).")
 
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
+    info = json.loads(creds_raw)
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    gc = gspread.authorize(creds)
 
-    # Nome da planilha (pode deixar fixo ou colocar em variável no Render)
-    sheet_name = os.environ.get("SHEET_NAME", "FinanceAI")
-    sh = client.open(sheet_name).sheet1
-    return sh
+    sh = gc.open_by_key(SHEET_ID)
 
+    # tenta abrir a aba pelo nome; se não existir, usa a primeira
+    try:
+        ws = sh.worksheet(SHEET_TAB)
+    except Exception:
+        ws = sh.sheet1
 
-# =========================
-# Helpers
-# =========================
-def parse_data_br(data_str):
-    return datetime.strptime(data_str, "%d/%m/%Y").date()
+    # garante cabeçalhos (primeira linha)
+    headers = ["Data", "Tipo", "Categoria", "Descrição", "Valor"]
+    first_row = ws.row_values(1)
+    if [h.strip() for h in first_row] != headers:
+        # se a planilha estiver vazia, cria cabeçalho
+        if len(first_row) == 0:
+            ws.append_row(headers)
+        else:
+            # se já tem dados mas cabeçalho diferente, não sobrescreve (para não quebrar)
+            pass
+
+    return ws
+
+# ----------------------------
+# Utilitários
+# ----------------------------
+def parse_data_br(s: str) -> date:
+    # aceita "19/02/2026" e também "2026-02-19"
+    s = (s or "").strip()
+    if not s:
+        raise ValueError("data vazia")
+    if "-" in s and len(s) >= 10:
+        # yyyy-mm-dd
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    # dd/mm/yyyy
+    return datetime.strptime(s, "%d/%m/%Y").date()
 
 def parse_float(v):
+    # aceita 120, "120", "120,50"
     if v is None:
         return 0.0
     if isinstance(v, (int, float)):
@@ -47,138 +82,144 @@ def parse_float(v):
     except:
         return 0.0
 
-def ensure_header(sheet):
-    """
-    Garante que a primeira linha (cabeçalho) existe.
-    """
-    try:
-        values = sheet.row_values(1)
-        if not values or values[:5] != ["Tipo", "Categoria", "Descrição", "Valor", "Data"]:
-            sheet.insert_row(["Tipo", "Categoria", "Descrição", "Valor", "Data"], 1)
-    except:
-        pass
+def pick(row, *keys):
+    for k in keys:
+        if k in row:
+            return row.get(k)
+    return None
 
-
-# =========================
+# ----------------------------
 # Rotas
-# =========================
+# ----------------------------
 @app.get("/")
 def home():
-    # Se não existir templates/index.html, não quebra o Render.
-    try:
-        return render_template("index.html")
-    except Exception:
-        return """
-        <h2>Finance AI</h2>
-        <p>Faltou criar o arquivo <b>templates/index.html</b>.</p>
-        <p>Crie a pasta <b>templates</b> e coloque seu HTML dentro de <b>index.html</b>.</p>
-        """, 200
-
-
-@app.get("/health")
-def health():
-    return "ok", 200
-
+    # IMPORTANTÍSSIMO: o arquivo tem que estar em /templates/index.html
+    return render_template("index.html")
 
 @app.post("/lancar")
 def lancar():
-    payload = request.get_json(silent=True) or {}
+    """
+    Espera JSON:
+    { "tipo": "Gasto"|"Receita", "categoria":"...", "descricao":"...", "valor": 120, "data":"dd/mm/yyyy" (opcional) }
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
 
-    tipo = (payload.get("tipo") or "").strip()
-    categoria = (payload.get("categoria") or "").strip()
-    descricao = (payload.get("descricao") or "").strip()
-    valor = payload.get("valor")
-    data_txt = (payload.get("data") or "").strip()
+        tipo = str(body.get("tipo", "")).strip() or "Gasto"
+        categoria = str(body.get("categoria", "")).strip()
+        descricao = str(body.get("descricao", "")).strip()
+        valor = parse_float(body.get("valor"))
 
-    if not tipo or not categoria or not descricao or valor is None:
-        return jsonify({"msg": "Preencha tipo, categoria, descrição e valor."}), 400
+        data_txt = body.get("data")
+        if data_txt:
+            d = parse_data_br(str(data_txt))
+        else:
+            d = datetime.now().date()
 
-    # Data opcional (se vier vazia, usa hoje)
-    if not data_txt:
-        data_txt = datetime.now().strftime("%d/%m/%Y")
+        if not categoria or not descricao or valor <= 0:
+            return jsonify({"ok": False, "msg": "Preencha categoria, descrição e valor (>0)."}), 400
 
-    sheet = get_sheet()
-    ensure_header(sheet)
+        ws = get_sheet()
+        ws.append_row([
+            d.strftime("%d/%m/%Y"),
+            "Receita" if "rece" in tipo.lower() else "Gasto",
+            categoria,
+            descricao,
+            valor
+        ])
 
-    sheet.append_row([tipo, categoria, descricao, valor, data_txt])
-    return jsonify({"msg": "✅ Lançamento salvo!"}), 200
-
+        return jsonify({"ok": True, "msg": "Lançamento salvo!"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 @app.get("/ultimos")
 def ultimos():
-    sheet = get_sheet()
-    ensure_header(sheet)
-    dados = sheet.get_all_records()
-    return jsonify(dados[-10:]), 200
+    """
+    Retorna até 10 últimos lançamentos (JSON list).
+    """
+    try:
+        ws = get_sheet()
+        dados = ws.get_all_records()  # lista de dicts
 
+        # pega os 10 últimos (mantendo ordem original e devolvendo list simples)
+        ult = dados[-10:] if len(dados) > 10 else dados
+
+        return jsonify(ult)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
 @app.get("/resumo")
 def resumo():
-    mes = request.args.get("mes")
-    hoje = datetime.now().date()
+    """
+    /resumo?mes=YYYY-MM  (ex: 2026-02)
+    Se não passar mes, usa o mês atual.
+    """
+    try:
+        mes = request.args.get("mes")
+        hoje = datetime.now().date()
+        if not mes:
+            mes = hoje.strftime("%Y-%m")
 
-    if not mes:
-        mes = hoje.strftime("%Y-%m")
+        ano_s, mm_s = mes.split("-")
+        ano = int(ano_s)
+        mm = int(mm_s)
 
-    ano, mm = mes.split("-")
-    ano = int(ano)
-    mm = int(mm)
+        ws = get_sheet()
+        dados = ws.get_all_records()
 
-    sheet = get_sheet()
-    ensure_header(sheet)
-    dados = sheet.get_all_records()
+        do_mes = []
+        for r in dados:
+            data_txt = pick(r, "Data", "data")
+            if not data_txt:
+                continue
+            try:
+                d = parse_data_br(str(data_txt))
+            except:
+                continue
 
-    do_mes = []
-    for r in dados:
-        data_txt = r.get("Data")
-        if not data_txt:
-            continue
+            if d.year == ano and d.month == mm:
+                tipo = str(pick(r, "Tipo", "tipo") or "").strip().lower()
+                valor = parse_float(pick(r, "Valor", "valor"))
+                categoria = pick(r, "Categoria", "categoria") or ""
+                descricao = pick(r, "Descrição", "Descricao", "descricao") or ""
 
-        try:
-            d = parse_data_br(str(data_txt))
-        except:
-            continue
+                do_mes.append({
+                    "data": d.strftime("%d/%m/%Y"),
+                    "tipo": "Receita" if "rece" in tipo else "Gasto",
+                    "categoria": str(categoria),
+                    "descricao": str(descricao),
+                    "valor": valor,
+                })
 
-        if d.year == ano and d.month == mm:
-            tipo_raw = str(r.get("Tipo") or "").strip().lower()
-            valor = parse_float(r.get("Valor"))
-            do_mes.append({
-                "data": d.strftime("%d/%m/%Y"),
-                "tipo": "Receita" if "rece" in tipo_raw else "Gasto",
-                "categoria": str(r.get("Categoria") or ""),
-                "descricao": str(r.get("Descrição") or ""),
-                "valor": valor,
-            })
+        entradas = sum(x["valor"] for x in do_mes if x["tipo"] == "Receita")
+        saidas   = sum(x["valor"] for x in do_mes if x["tipo"] == "Gasto")
+        saldo    = entradas - saidas
 
-    entradas = sum(x["valor"] for x in do_mes if x["tipo"] == "Receita")
-    saidas   = sum(x["valor"] for x in do_mes if x["tipo"] == "Gasto")
-    saldo    = entradas - saidas
+        por_dia = {}
+        for x in do_mes:
+            dia = x["data"][:2]  # "dd"
+            por_dia.setdefault(dia, {"receita": 0.0, "gasto": 0.0})
+            if x["tipo"] == "Receita":
+                por_dia[dia]["receita"] += x["valor"]
+            else:
+                por_dia[dia]["gasto"] += x["valor"]
 
-    por_dia = {}
-    for x in do_mes:
-        dia = x["data"][:2]
-        por_dia.setdefault(dia, {"receita": 0.0, "gasto": 0.0})
-        if x["tipo"] == "Receita":
-            por_dia[dia]["receita"] += x["valor"]
-        else:
-            por_dia[dia]["gasto"] += x["valor"]
+        dias = sorted(por_dia.keys(), key=lambda z: int(z))
+        serie_receita = [por_dia[d]["receita"] for d in dias]
+        serie_gasto   = [por_dia[d]["gasto"] for d in dias]
 
-    dias = sorted(por_dia.keys(), key=lambda z: int(z))
-    serie_receita = [por_dia[d]["receita"] for d in dias]
-    serie_gasto   = [por_dia[d]["gasto"]   for d in dias]
+        return jsonify({
+            "mes": mes,
+            "entradas": entradas,
+            "saidas": saidas,
+            "saldo": saldo,
+            "dias": dias,
+            "serie_receita": serie_receita,
+            "serie_gasto": serie_gasto,
+            "ultimos": do_mes[-10:],
+            "qtd": len(do_mes)
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
 
-    return jsonify({
-        "mes": mes,
-        "entradas": entradas,
-        "saidas": saidas,
-        "saldo": saldo,
-        "dias": dias,
-        "serie_receita": serie_receita,
-        "serie_gasto": serie_gasto,
-        "ultimos": do_mes[-10:],
-        "qtd": len(do_mes)
-    }), 200
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=True)
+# Render/Gunicorn usa "app:app", então não precisa de app.run()
