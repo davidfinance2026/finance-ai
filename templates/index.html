@@ -32,47 +32,29 @@
       display:flex;
       justify-content:center;
     }
-    .app{
-      width:min(520px, 100%);
-      padding-bottom:18px;
-    }
+    .app{width:min(520px, 100%); padding-bottom:18px;}
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin-bottom:14px;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; margin-bottom:14px;
     }
     .brand{display:flex; flex-direction:column; line-height:1.1;}
     .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
     .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
     .pill{
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      border-radius:999px;
-      color:var(--muted);
-      font-size:12px;
-      display:flex;
-      align-items:center;
-      gap:8px;
+      padding:10px 12px; border:1px solid var(--border);
+      background:rgba(255,255,255,.04); border-radius:999px;
+      color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
     }
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
-      flex:1;
-      padding:12px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      color:var(--muted);
-      font-weight:700;
-      cursor:pointer;
+      flex:1; padding:12px 12px; border-radius:999px;
+      border:1px solid var(--border); background:rgba(255,255,255,.04);
+      color:var(--muted); font-weight:700; cursor:pointer;
     }
     .tab.active{
       background:linear-gradient(180deg, rgba(79,140,255,.25), rgba(79,140,255,.08));
-      color:var(--text);
-      border-color: rgba(79,140,255,.35);
+      color:var(--text); border-color: rgba(79,140,255,.35);
     }
 
     .card{
@@ -85,184 +67,82 @@
     .row{display:flex; gap:10px;}
     .row > *{flex:1}
     label{
-      display:block;
-      margin-top:12px;
-      font-weight:700;
-      color:var(--muted);
-      font-size:12px;
-      letter-spacing:.3px;
-      text-transform:uppercase;
+      display:block; margin-top:12px; font-weight:700;
+      color:var(--muted); font-size:12px; letter-spacing:.3px; text-transform:uppercase;
     }
     input{
-      width:100%;
-      margin-top:8px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,48,.75);
-      color:var(--text);
-      outline:none;
+      width:100%; margin-top:8px; padding:12px 12px;
+      border-radius:14px; border:1px solid var(--border);
+      background: rgba(15,23,48,.75); color:var(--text); outline:none;
     }
     input::placeholder{color:rgba(159,176,218,.65)}
     .seg{
-      display:flex;
-      gap:10px;
-      margin-top:10px;
-      background:rgba(255,255,255,.04);
-      border:1px solid var(--border);
-      padding:6px;
-      border-radius:999px;
+      display:flex; gap:10px; margin-top:10px;
+      background:rgba(255,255,255,.04); border:1px solid var(--border);
+      padding:6px; border-radius:999px;
     }
     .seg button{
-      flex:1;
-      border:0;
-      background:transparent;
-      color:var(--muted);
-      padding:10px 10px;
-      border-radius:999px;
-      font-weight:800;
-      cursor:pointer;
+      flex:1; border:0; background:transparent; color:var(--muted);
+      padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
     }
-    .seg button.active{
-      background:rgba(79,140,255,.25);
-      color:var(--text);
-    }
+    .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
+
     .actions{display:flex; gap:10px; margin-top:14px;}
     .btn{
-      border:0;
-      border-radius:16px;
-      padding:12px 12px;
-      font-weight:900;
-      cursor:pointer;
-      color:#061022;
+      border:0; border-radius:16px; padding:12px 12px;
+      font-weight:900; cursor:pointer; color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
       flex:1;
     }
     .btn.secondary{
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      border:1px solid var(--border);
-      box-shadow:none;
+      background:rgba(255,255,255,.06); color:var(--text);
+      border:1px solid var(--border); box-shadow:none;
     }
+
     .msg{
-      margin-top:12px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,48,.6);
+      margin-top:12px; padding:12px 12px; border-radius:14px;
+      border:1px solid var(--border); background: rgba(15,23,48,.6);
       display:none;
     }
     .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
     .msg.err{display:block; border-color: rgba(255,90,106,.35); }
 
-    .cards{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:10px;
-      margin-top:14px;
-    }
+    .cards{display:grid; grid-template-columns: 1fr; gap:10px; margin-top:14px;}
     .mini-card{
-      background: rgba(15,23,48,.55);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
+      background: rgba(15,23,48,.55); border:1px solid var(--border);
+      border-radius:16px; padding:12px;
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
     }
-    .mini-card .label{
-      color: var(--muted);
-      font-size:12px;
-      font-weight:800;
-      text-transform:uppercase;
-      letter-spacing:.3px;
-    }
-    .mini-card .value{
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-    }
+    .mini-card .label{color: var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.3px;}
+    .mini-card .value{font-weight:900; font-size:14px; white-space:nowrap;}
 
     .chart-card{ margin-top: 14px; }
-    #grafico{
-      width: 100% !important;
-      height: 240px !important;
-      display:block;
+    canvas{width:100% !important; height:240px !important; display:block;}
+
+    .title{
+      margin:0 0 10px 0; font-weight:900; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.3px; font-size:12px;
     }
 
-    .donut-wrap{
-      margin-top:12px;
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:12px;
-    }
-    .donut{
-      background: rgba(15,23,48,.55);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-    }
-    .donut h3{
-      margin:0 0 10px 0;
-      font-weight:900;
-      color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.3px;
-      font-size:12px;
-    }
-    .donut canvas{
-      width: 100% !important;
-      height: 260px !important;
-      display:block;
-    }
-
-    .list{
-      margin-top:14px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
+    .list{margin-top:14px; display:flex; flex-direction:column; gap:10px;}
     .item{
-      background: rgba(15,23,48,.65);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:10px;
+      background: rgba(15,23,48,.65); border:1px solid var(--border);
+      border-radius:16px; padding:12px; display:flex;
+      align-items:flex-start; justify-content:space-between; gap:10px;
     }
     .left{display:flex; gap:10px; align-items:flex-start;}
     .icon{
-      width:38px; height:38px;
-      border-radius:14px;
-      display:grid;
-      place-items:center;
-      font-weight:900;
-      background:rgba(255,255,255,.06);
-      border:1px solid var(--border);
-      color:var(--text);
-      flex:0 0 auto;
+      width:38px; height:38px; border-radius:14px; display:grid; place-items:center;
+      font-weight:900; background:rgba(255,255,255,.06); border:1px solid var(--border);
+      color:var(--text); flex:0 0 auto;
     }
     .meta b{display:block; font-size:14px}
     .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
-    .value{
-      text-align:right;
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-    }
+    .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
     .value.green{color: #7dffbf}
     .value.red{color: #ff9aa5}
-
-    .hint{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:12px;
-      opacity:.9;
-    }
+    .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
   </style>
 </head>
 
@@ -332,25 +212,22 @@
         </div>
       </div>
 
-      <!-- gráfico principal -->
+      <!-- gráfico movimento -->
       <div class="card chart-card" style="margin-top:12px;">
-        <div style="margin:0 0 10px 0; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-size:12px;">
-          Movimento do mês (barras) + Saldo acumulado (linha)
-        </div>
-        <canvas id="grafico"></canvas>
+        <div class="title">Movimento do mês (barras) + Saldo acumulado (linha)</div>
+        <canvas id="graficoMov"></canvas>
       </div>
 
-      <!-- PIZZAS -->
-      <div class="donut-wrap">
-        <div class="donut">
-          <h3>Gastos por categoria (mês)</h3>
-          <canvas id="pizzaGastos"></canvas>
-        </div>
+      <!-- pizza gastos -->
+      <div class="card chart-card" style="margin-top:12px;">
+        <div class="title">Gastos por categoria (mês)</div>
+        <canvas id="pizzaGastos"></canvas>
+      </div>
 
-        <div class="donut">
-          <h3>Receitas por categoria (mês)</h3>
-          <canvas id="pizzaReceitas"></canvas>
-        </div>
+      <!-- pizza receitas -->
+      <div class="card chart-card" style="margin-top:12px;">
+        <div class="title">Receitas por categoria (mês)</div>
+        <canvas id="pizzaReceitas"></canvas>
       </div>
 
       <div class="actions" style="margin-top:12px;">
@@ -363,23 +240,12 @@
     </div>
   </div>
 
-  <!-- Chart.js + plugin de labels -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
   <script>
-    // ====== GLOBAIS ======
     let tipoAtual = "Gasto";
-    let chartMain;
-    let chartPizzaGastos;
-    let chartPizzaReceitas;
+    let chartMov, chartPizzaGastos, chartPizzaReceitas;
 
-    // registra plugin das labels (%)
-    if (window.ChartDataLabels) {
-      Chart.register(ChartDataLabels);
-    }
-
-    // ====== UI ======
     function showTab(tab){
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
@@ -411,45 +277,18 @@
       el.style.display = "block";
     }
 
-    // ====== HELPERS ======
     function pad2(n){ return String(n).padStart(2,"0"); }
     function formatBRfromISO(iso){
       if(!iso) return null;
       const [y,m,d] = iso.split("-");
       return `${d}/${m}/${y}`;
     }
+
     function brl(n){
       const v = Number(n || 0);
       return v.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
     }
-    function getField(obj, keys){
-      for(const k of keys){
-        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-      }
-      return "";
-    }
-    function iconFor(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      if(t.includes("rece")) return "⬆";
-      return "⬇";
-    }
-    function valueClass(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      if(t.includes("rece")) return "green";
-      return "red";
-    }
 
-    // cores diferentes (HSL)
-    function gerarCores(n){
-      const cores = [];
-      for(let i=0;i<n;i++){
-        const h = Math.round((360 / Math.max(n,1)) * i);
-        cores.push(`hsl(${h}, 75%, 60%)`);
-      }
-      return cores;
-    }
-
-    // ====== POST /lancar ======
     async function enviar(){
       setMsg("", "");
       const categoria = document.getElementById("categoria").value.trim();
@@ -467,7 +306,7 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO) // dd/mm/aaaa
+        data: formatBRfromISO(dataISO)
       };
 
       try{
@@ -489,7 +328,46 @@
       }
     }
 
-    // ====== RESUMO /resumo ======
+    function iconFor(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "⬆";
+      return "⬇";
+    }
+    function valueClass(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "green";
+      return "red";
+    }
+    function getField(obj, keys){
+      for(const k of keys){
+        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return "";
+    }
+
+    // ===== cores prontas pra pizza (fixas, bonitas e estáveis)
+    const PIE_COLORS = [
+      "rgba(79,140,255,0.85)",
+      "rgba(33,192,122,0.85)",
+      "rgba(255,90,106,0.85)",
+      "rgba(255,193,7,0.85)",
+      "rgba(156,39,176,0.85)",
+      "rgba(0,188,212,0.85)",
+      "rgba(255,152,0,0.85)",
+      "rgba(103,58,183,0.85)",
+      "rgba(76,175,80,0.85)",
+      "rgba(244,67,54,0.85)"
+    ];
+
+    function colorsFor(n){
+      const out = [];
+      for(let i=0;i<n;i++) out.push(PIE_COLORS[i % PIE_COLORS.length]);
+      return out;
+    }
+
+    // =========================
+    // RESUMO + GRÁFICOS
+    // =========================
     async function carregarResumo(){
       const r = await fetch("/resumo");
       if(!r.ok) throw new Error("Falha em /resumo");
@@ -499,13 +377,12 @@
       document.getElementById("saidas").innerText   = brl(j.saidas);
       document.getElementById("saldo").innerText    = brl(j.saldo);
 
-      atualizarGraficoPrincipal(j);
+      atualizarMovimento(j);
       atualizarPizzas(j);
     }
 
-    // ====== GRÁFICO PRINCIPAL (barras + linha) ======
-    function atualizarGraficoPrincipal(j){
-      const canvas = document.getElementById("grafico");
+    function atualizarMovimento(j){
+      const canvas = document.getElementById("graficoMov");
       if(!canvas) return;
       const ctx = canvas.getContext("2d");
 
@@ -528,25 +405,16 @@
       gradGas.addColorStop(0, "rgba(255,90,106,0.65)");
       gradGas.addColorStop(1, "rgba(255,90,106,0.10)");
 
-      if(chartMain) chartMain.destroy();
+      if(chartMov) chartMov.destroy();
 
-      chartMain = new Chart(ctx, {
+      chartMov = new Chart(ctx, {
         data: {
           labels: dias,
           datasets: [
             { type:"bar", label:"Receitas", data: rec, backgroundColor: gradRec, borderRadius: 10 },
-            { type:"bar", label:"Gastos", data: gas, backgroundColor: gradGas, borderRadius: 10 },
-            {
-              type:"line",
-              label:"Saldo acumulado",
-              data: saldoAcum,
-              borderWidth: 2,
-              tension: 0.35,
-              pointRadius: 2,
-              pointHoverRadius: 5,
-              fill: false,
-              borderColor: "rgba(33,192,122,1)"
-            }
+            { type:"bar", label:"Gastos",   data: gas, backgroundColor: gradGas, borderRadius: 10 },
+            { type:"line", label:"Saldo acumulado", data: saldoAcum, borderWidth:2, tension:0.35, pointRadius:2, fill:false,
+              borderColor: "rgba(33,192,122,1)" }
           ]
         },
         options: {
@@ -557,7 +425,7 @@
             legend:{ labels:{ color:"rgba(234,240,255,.9)" } },
             tooltip:{
               callbacks:{
-                label:(tt)=>{
+                label: (tt)=>{
                   const label = tt.dataset.label || "";
                   const y = Number(tt.parsed.y || 0);
                   if(label.toLowerCase().includes("gasto")) return `${label}: ${brl(Math.abs(y))}`;
@@ -568,8 +436,7 @@
           },
           scales:{
             x:{ ticks:{ color:"rgba(159,176,218,.85)" }, grid:{ color:"rgba(255,255,255,0.05)" } },
-            y:{
-              beginAtZero:false,
+            y:{ beginAtZero:false,
               ticks:{ color:"rgba(159,176,218,.85)", callback:(v)=> brl(Math.abs(v)) },
               grid:{ color:"rgba(255,255,255,0.05)" }
             }
@@ -578,87 +445,84 @@
       });
     }
 
-    // ====== PIZZAS (ROSQUINHA) com % ======
-    function criarDonut(canvasId, tituloTooltip, labels, values, refChartVarSetter){
-      const canvas = document.getElementById(canvasId);
-      if(!canvas) return;
-
-      const ctx = canvas.getContext("2d");
-      const temDados = labels.length && values.some(v => v > 0);
-
-      const finalLabels = temDados ? labels : ["Sem dados"];
-      const finalData   = temDados ? values : [1];
-      const cores       = gerarCores(temDados ? labels.length : 1);
-
-      // destroy anterior
-      refChartVarSetter("destroy");
-
-      const chart = new Chart(ctx, {
-        type: "doughnut",
-        data: {
-          labels: finalLabels,
-          datasets: [{
-            data: finalData,
-            backgroundColor: cores,
-            borderColor: "rgba(255,255,255,0.10)",
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: "62%",
-          plugins: {
-            legend: { labels: { color: "rgba(234,240,255,.9)" } },
-            tooltip: {
-              callbacks: {
-                label: (tt) => {
-                  const label = tt.label || "";
-                  const val = Number(tt.parsed || 0);
-                  if(label === "Sem dados") return "Sem dados no mês";
-                  return `${label}: ${brl(val)}`;
-                }
-              }
-            },
-            datalabels: {
-              color: "rgba(234,240,255,.95)",
-              font: { weight: 900, size: 11 },
-              formatter: (value, context) => {
-                const lbl = context.chart.data.labels?.[context.dataIndex];
-                if(lbl === "Sem dados") return "";
-                const dataArr = context.chart.data.datasets[0].data || [];
-                const total = dataArr.reduce((a,b)=> a + Number(b||0), 0);
-                if(!total) return "";
-                const pct = (Number(value||0) / total) * 100;
-                return pct >= 4 ? `${pct.toFixed(0)}%` : ""; // esconde fatias muito pequenas
+    function donutOptions(){
+      return {
+        responsive:true,
+        maintainAspectRatio:false,
+        cutout:"72%",
+        plugins:{
+          legend:{
+            position:"top",
+            labels:{ color:"rgba(234,240,255,.9)" }
+          },
+          tooltip:{
+            callbacks:{
+              label: (tt)=>{
+                const label = tt.label || "";
+                const val = Number(tt.parsed || 0);
+                return `${label}: ${brl(val)}`;
               }
             }
           }
         }
-      });
-
-      refChartVarSetter("set", chart);
+      };
     }
 
     function atualizarPizzas(j){
-      const gLabels = j.pizza_gastos_labels || [];
-      const gValues = (j.pizza_gastos_values || []).map(v => Number(v || 0));
+      // GASTOS
+      const lg = j.pizza_gastos_labels || [];
+      const vg = (j.pizza_gastos_values || []).map(v=> Number(v||0));
+      const cg = colorsFor(lg.length);
 
-      const rLabels = j.pizza_receitas_labels || [];
-      const rValues = (j.pizza_receitas_values || []).map(v => Number(v || 0));
+      const cGastos = document.getElementById("pizzaGastos");
+      if(cGastos){
+        const ctxG = cGastos.getContext("2d");
+        if(chartPizzaGastos) chartPizzaGastos.destroy();
 
-      criarDonut("pizzaGastos", "Gastos", gLabels, gValues, (mode, chart)=>{
-        if(mode==="destroy" && chartPizzaGastos) chartPizzaGastos.destroy();
-        if(mode==="set") chartPizzaGastos = chart;
-      });
+        chartPizzaGastos = new Chart(ctxG, {
+          type:"doughnut",
+          data:{
+            labels: lg.length ? lg : ["Sem dados"],
+            datasets:[{
+              data: vg.length ? vg : [1],
+              backgroundColor: lg.length ? cg : ["rgba(255,255,255,0.15)"],
+              borderColor:"rgba(255,255,255,0.08)",
+              borderWidth:1
+            }]
+          },
+          options: donutOptions()
+        });
+      }
 
-      criarDonut("pizzaReceitas", "Receitas", rLabels, rValues, (mode, chart)=>{
-        if(mode==="destroy" && chartPizzaReceitas) chartPizzaReceitas.destroy();
-        if(mode==="set") chartPizzaReceitas = chart;
-      });
+      // RECEITAS
+      const lr = j.pizza_receitas_labels || [];
+      const vr = (j.pizza_receitas_values || []).map(v=> Number(v||0));
+      const cr = colorsFor(lr.length);
+
+      const cReceitas = document.getElementById("pizzaReceitas");
+      if(cReceitas){
+        const ctxR = cReceitas.getContext("2d");
+        if(chartPizzaReceitas) chartPizzaReceitas.destroy();
+
+        chartPizzaReceitas = new Chart(ctxR, {
+          type:"doughnut",
+          data:{
+            labels: lr.length ? lr : ["Sem dados"],
+            datasets:[{
+              data: vr.length ? vr : [1],
+              backgroundColor: lr.length ? cr : ["rgba(255,255,255,0.15)"],
+              borderColor:"rgba(255,255,255,0.08)",
+              borderWidth:1
+            }]
+          },
+          options: donutOptions()
+        });
+      }
     }
 
-    // ====== LISTA /ultimos ======
+    // =========================
+    // LISTA ÚLTIMOS
+    // =========================
     async function carregarUltimos(){
       const lista = document.getElementById("lista");
       lista.innerHTML = `
@@ -703,7 +567,7 @@
                 <span>${descricao} • ${data}</span>
               </div>
             </div>
-            <div class="value ${valueClass(item)}">R$ ${valor}</div>
+            <div class="value ${valueClass(item)}">${brl(valor)}</div>
           </div>
         `;
       });
@@ -711,8 +575,7 @@
 
     async function carregarTudo(){
       try{ await carregarResumo(); } catch(e){ console.log(e); }
-      try{ await carregarUltimos(); }
-      catch(e){
+      try{ await carregarUltimos(); } catch(e){
         const lista = document.getElementById("lista");
         lista.innerHTML = `
           <div class="item">
@@ -724,7 +587,7 @@
       }
     }
 
-    // data de hoje
+    // data hoje
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
