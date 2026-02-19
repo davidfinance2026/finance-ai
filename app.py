@@ -7,21 +7,22 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 
 def get_sheet():
-    creds_json = os.environ.get("GOOGLE_CREDS_JSON")
-    if not creds_json:
-        raise RuntimeError("Faltou configurar GOOGLE_CREDS_JSON no Render.")
+    import gspread
+    from google.oauth2.service_account import Credentials
 
-    creds_dict = json.loads(creds_json)
-
-    scopes = [
+    scope = [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive"
     ]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    gc = gspread.authorize(creds)
 
-    # Nome exato da sua planilha no Google Drive:
-    return gc.open("Controle Financeiro").sheet1
+    creds = Credentials.from_service_account_file(
+        "google_creds.json",
+        scopes=scope
+    )
+
+    client = gspread.authorize(creds)
+    return client.open("Controle Financeiro").sheet1
+    
 
 @app.get("/")
 def home():
@@ -52,3 +53,4 @@ def ultimos():
 
 # NÃO use app.run() em produção no Render.
 # Gunicorn é quem roda o servidor.
+
