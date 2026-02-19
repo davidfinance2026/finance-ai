@@ -4,7 +4,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
-
 def get_sheet():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -46,3 +45,4 @@ def ultimos():
     sh = get_sheet()
     dados = sh.get_all_records()
     return jsonify(dados[-10:])
+
