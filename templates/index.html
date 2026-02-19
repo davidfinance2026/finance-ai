@@ -1,34 +1,18 @@
-<div class="cards">
-  <div class="card">
-    <div class="label">Entradas (mês)</div>
-    <div class="value" id="entradas">R$ 0,00</div>
-  </div>
-  <div class="card">
-    <div class="label">Saídas (mês)</div>
-    <div class="value" id="saidas">R$ 0,00</div>
-  </div>
-  <div class="card">
-    <div class="label">Saldo (mês)</div>
-    <div class="value" id="saldo">R$ 0,00</div>
-  </div>
-</div>
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance AI</title>
+
   <style>
     :root{
       --bg:#0b1020;
       --card:#121a33;
-      --card2:#0f1730;
       --text:#eaf0ff;
       --muted:#9fb0da;
       --border:rgba(255,255,255,.08);
       --blue:#4f8cff;
-      --green:#21c07a;
-      --red:#ff5a6a;
       --shadow: 0 12px 30px rgba(0,0,0,.35);
       --radius:18px;
     }
@@ -45,10 +29,8 @@
       display:flex;
       justify-content:center;
     }
-    .app{
-      width:min(520px, 100%);
-      padding-bottom:18px;
-    }
+    .app{ width:min(520px, 100%); padding-bottom:18px; }
+
     .topbar{
       display:flex;
       align-items:center;
@@ -56,15 +38,9 @@
       gap:12px;
       margin-bottom:14px;
     }
-    .brand{
-      display:flex; flex-direction:column; line-height:1.1;
-    }
-    .brand h1{
-      margin:0; font-size:22px; letter-spacing:.2px;
-    }
-    .brand span{
-      color:var(--muted); font-size:13px; margin-top:4px;
-    }
+    .brand{ display:flex; flex-direction:column; line-height:1.1; }
+    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
+    .brand span{ color:var(--muted); font-size:13px; margin-top:4px; }
     .pill{
       padding:10px 12px;
       border:1px solid var(--border);
@@ -77,11 +53,8 @@
       gap:8px;
       user-select:none;
     }
-    .tabs{
-      display:flex;
-      gap:10px;
-      margin:14px 0;
-    }
+
+    .tabs{ display:flex; gap:10px; margin:14px 0; }
     .tab{
       flex:1;
       padding:12px 12px;
@@ -104,12 +77,31 @@
       border-radius:var(--radius);
       box-shadow:var(--shadow);
       padding:16px;
+      margin-top:14px;
     }
-    .row{
-      display:flex;
+
+    /* RESUMO */
+    .cards{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
       gap:10px;
+      margin-top:14px;
     }
-    .row > *{flex:1}
+    @media(max-width:520px){
+      .cards{ grid-template-columns: 1fr; }
+    }
+    .mini-card{
+      background: rgba(15,23,48,.65);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+    }
+    .mini-card .label{ color:var(--muted); font-weight:800; font-size:12px; text-transform:uppercase; }
+    .mini-card .value{ margin-top:6px; font-weight:900; font-size:16px; }
+
+    .row{ display:flex; gap:10px; }
+    .row > *{ flex:1 }
+
     label{
       display:block;
       margin-top:12px;
@@ -119,7 +111,7 @@
       letter-spacing:.3px;
       text-transform:uppercase;
     }
-    input, select{
+    input{
       width:100%;
       margin-top:8px;
       padding:12px 12px;
@@ -130,6 +122,7 @@
       outline:none;
     }
     input::placeholder{color:rgba(159,176,218,.65)}
+
     .seg{
       display:flex;
       gap:10px;
@@ -140,30 +133,14 @@
       border-radius:999px;
     }
     .seg button{
-      flex:1;
-      border:0;
-      background:transparent;
-      color:var(--muted);
-      padding:10px 10px;
-      border-radius:999px;
-      font-weight:800;
-      cursor:pointer;
+      flex:1; border:0; background:transparent; color:var(--muted);
+      padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
     }
-    .seg button.active{
-      background:rgba(79,140,255,.25);
-      color:var(--text);
-    }
-    .actions{
-      display:flex;
-      gap:10px;
-      margin-top:14px;
-    }
+    .seg button.active{ background:rgba(79,140,255,.25); color:var(--text); }
+
+    .actions{ display:flex; gap:10px; margin-top:14px; }
     .btn{
-      border:0;
-      border-radius:16px;
-      padding:12px 12px;
-      font-weight:900;
-      cursor:pointer;
+      border:0; border-radius:16px; padding:12px 12px; font-weight:900; cursor:pointer;
       color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
@@ -175,6 +152,7 @@
       border:1px solid var(--border);
       box-shadow:none;
     }
+
     .msg{
       margin-top:12px;
       padding:12px 12px;
@@ -186,12 +164,7 @@
     .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
     .msg.err{display:block; border-color: rgba(255,90,106,.35); }
 
-    .list{
-      margin-top:14px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
+    .list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
     .item{
       background: rgba(15,23,48,.65);
       border:1px solid var(--border);
@@ -202,11 +175,7 @@
       justify-content:space-between;
       gap:10px;
     }
-    .left{
-      display:flex;
-      gap:10px;
-      align-items:flex-start;
-    }
+    .left{ display:flex; gap:10px; align-items:flex-start; }
     .icon{
       width:38px; height:38px;
       border-radius:14px;
@@ -215,27 +184,18 @@
       font-weight:900;
       background:rgba(255,255,255,.06);
       border:1px solid var(--border);
-      color:var(--text);
       flex:0 0 auto;
     }
     .meta b{display:block; font-size:14px}
     .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
-    .value{
-      text-align:right;
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-    }
-    .value.green{color: #7dffbf}
-    .value.red{color: #ff9aa5}
+    .valueR{ text-align:right; font-weight:900; font-size:14px; white-space:nowrap; }
+    .valueR.green{color: #7dffbf}
+    .valueR.red{color: #ff9aa5}
 
-    .hint{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:12px;
-      opacity:.9;
-    }
+    .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
   </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
@@ -248,13 +208,38 @@
       <div class="pill">● Online</div>
     </div>
 
+    <!-- RESUMO (Topo) -->
+    <div class="cards">
+      <div class="mini-card">
+        <div class="label">Entradas (mês)</div>
+        <div class="value" id="entradas">R$ 0,00</div>
+      </div>
+      <div class="mini-card">
+        <div class="label">Saídas (mês)</div>
+        <div class="value" id="saidas">R$ 0,00</div>
+      </div>
+      <div class="mini-card">
+        <div class="label">Saldo (mês)</div>
+        <div class="value" id="saldo">R$ 0,00</div>
+      </div>
+    </div>
+
+    <!-- GRÁFICO -->
+    <div class="card">
+      <div class="label" style="margin-top:0;">Movimento do mês</div>
+      <div style="margin-top:10px;">
+        <canvas id="grafico"></canvas>
+      </div>
+    </div>
+
+    <!-- ABAS -->
     <div class="tabs">
       <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
       <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
     </div>
 
     <!-- TELA LANÇAR -->
-    <div class="card" id="screen-lancar">
+    <div class="card" id="screen-lancar" style="margin-top:0;">
       <div class="seg">
         <button id="btnGasto" class="active" onclick="setTipo('Gasto')">Gasto</button>
         <button id="btnReceita" onclick="setTipo('Receita')">Receita</button>
@@ -287,7 +272,7 @@
     </div>
 
     <!-- TELA ÚLTIMOS -->
-    <div class="card" id="screen-ultimos" style="display:none;">
+    <div class="card" id="screen-ultimos" style="display:none; margin-top:0;">
       <div class="actions" style="margin-top:0;">
         <button class="btn secondary" onclick="carregar()">Atualizar</button>
         <button class="btn" onclick="showTab('lancar')">Novo lançamento</button>
@@ -300,14 +285,17 @@
 
   <script>
     let tipoAtual = "Gasto";
+    let chart;
+
+    function brl(n){
+      return (Number(n) || 0).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+    }
 
     function showTab(tab){
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
-
       document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
-
       if(tab==="ultimos") carregar();
     }
 
@@ -336,7 +324,6 @@
 
     function pad2(n){ return String(n).padStart(2,"0"); }
     function formatBRfromISO(iso){
-      // iso: yyyy-mm-dd
       if(!iso) return null;
       const [y,m,d] = iso.split("-");
       return `${d}/${m}/${y}`;
@@ -359,7 +346,7 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO) // opcional (se seu backend ignorar, tudo bem)
+        data: formatBRfromISO(dataISO)
       };
 
       try{
@@ -375,6 +362,8 @@
         setMsg("ok", "✅ Lançamento salvo!");
         document.getElementById("descricao").value = "";
         document.getElementById("valor").value = "";
+
+        await carregarResumo();
         showTab("ultimos");
       }catch(e){
         setMsg("err", "❌ " + e.message);
@@ -386,13 +375,11 @@
       if(t.includes("rece")) return "⬆";
       return "⬇";
     }
-
     function valueClass(item){
       const t = (item.Tipo || item.tipo || "").toLowerCase();
       if(t.includes("rece")) return "green";
       return "red";
     }
-
     function getField(obj, keys){
       for(const k of keys){
         if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
@@ -416,7 +403,6 @@
           return;
         }
 
-        // Mostra do mais recente para o mais antigo
         arr.slice().reverse().forEach(item => {
           const tipo = getField(item, ["Tipo","tipo"]);
           const categoria = getField(item, ["Categoria","categoria"]);
@@ -433,7 +419,7 @@
                   <span>${descricao} • ${data}</span>
                 </div>
               </div>
-              <div class="value ${valueClass(item)}">R$ ${valor}</div>
+              <div class="valueR ${valueClass(item)}">${brl(valor)}</div>
             </div>
           `;
         });
@@ -442,59 +428,52 @@
       }
     }
 
-    // set data hoje
+    async function carregarResumo(){
+      try{
+        const r = await fetch("/resumo");
+        const j = await r.json();
+
+        document.getElementById("entradas").innerText = brl(j.entradas);
+        document.getElementById("saidas").innerText   = brl(j.saidas);
+        document.getElementById("saldo").innerText    = brl(j.saldo);
+
+        atualizarGrafico(j);
+      }catch(e){
+        // se falhar, não quebra a tela
+      }
+    }
+
+    function atualizarGrafico(j){
+      const ctx = document.getElementById("grafico");
+      if (!ctx) return;
+
+      const data = {
+        labels: j.dias || [],
+        datasets: [
+          { label: "Receitas", data: j.serie_receita || [], tension: 0.35 },
+          { label: "Gastos",   data: j.serie_gasto || [],   tension: 0.35 }
+        ]
+      };
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: "line",
+        data,
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
+
+      carregarResumo();
     })();
   </script>
 </body>
 </html>
-<script>
-function brl(n){
-  return (n || 0).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-}
-
-async function carregarResumo(){
-  const r = await fetch("/resumo");
-  const j = await r.json();
-  document.getElementById("entradas").innerText = brl(j.entradas);
-  document.getElementById("saidas").innerText   = brl(j.saidas);
-  document.getElementById("saldo").innerText    = brl(j.saldo);
-  atualizarGrafico(j);
-}
-window.addEventListener("load", carregarResumo);
-</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<div class="card chart-card">
-  <div class="label">Movimento do mês</div>
-  <canvas id="grafico"></canvas>
-</div>
-<script>
-let chart;
-
-function atualizarGrafico(j){
-  const ctx = document.getElementById("grafico");
-  if (!ctx) return;
-
-  const data = {
-    labels: j.dias,
-    datasets: [
-      { label: "Receitas", data: j.serie_receita, tension: 0.35 },
-      { label: "Gastos",   data: j.serie_gasto,   tension: 0.35 }
-    ]
-  };
-
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: "line",
-    data,
-    options: {
-      responsive: true,
-      plugins: { legend: { display: true } },
-      scales: { y: { beginAtZero: true } }
-    }
-  });
-}
-</script>
