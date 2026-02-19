@@ -1,9 +1,11 @@
-from datetime import datetime
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 
+@app.get("/")
+def home():
+    return render_template("index.html")
+    
 def parse_data_br(s: str):
     # exemplo esperado: "19/02/2026"
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
@@ -98,3 +100,4 @@ def resumo():
         "ultimos": do_mes[-10:],
         "qtd": len(do_mes)
     })
+
