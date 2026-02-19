@@ -1,245 +1,283 @@
 import os
-import json
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template
+from collections import defaultdict
+
+from flask import Flask, jsonify, request, render_template
 import gspread
 from google.oauth2.service_account import Credentials
 
+
 app = Flask(__name__)
 
+# ====== CONFIG ======
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-SHEET_ID = (os.getenv("SHEET_ID") or "").strip()
-WORKSHEET_NAME = (os.getenv("WORKSHEET_NAME") or "Página1").strip()
+# Render Secret File: /etc/secrets/google_creds.json
+CREDS_PATH = os.getenv("GOOGLE_CREDS_PATH", "/etc/secrets/google_creds.json")
+
+SHEET_ID = os.getenv("SHEET_ID", "").strip()
+SHEET_TAB = os.getenv("SHEET_TAB", "Lançamentos").strip()
+
+# Cabeçalhos esperados na planilha
+HEADERS = ["Data", "Tipo", "Categoria", "Descrição", "Valor"]
+
+
+# ====== GOOGLE SHEETS HELPERS ======
+_client = None
 
 def get_client():
-    """
-    Render-friendly: usa SERVICE_ACCOUNT_JSON (env) em vez de arquivo.
-    """
-    sa_env = (os.getenv("SERVICE_ACCOUNT_JSON") or "").strip()
-    if not sa_env:
-        raise RuntimeError(
-            "SERVICE_ACCOUNT_JSON não configurado. "
-            "No Render -> Environment, cole o JSON inteiro da conta de serviço."
+    global _client
+    if _client is not None:
+        return _client
+
+    if not os.path.exists(CREDS_PATH):
+        raise FileNotFoundError(
+            f"Arquivo de credenciais não encontrado: {CREDS_PATH}. "
+            f"No Render, crie Secret File 'google_creds.json' e ele ficará em /etc/secrets/google_creds.json"
         )
 
-    info = json.loads(sa_env)
-    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    return gspread.authorize(creds)
+    creds = Credentials.from_service_account_file(CREDS_PATH, scopes=SCOPES)
+    _client = gspread.authorize(creds)
+    return _client
 
-def get_sheet():
+
+def get_ws():
     if not SHEET_ID:
-        raise RuntimeError("SHEET_ID não configurado no Render -> Environment.")
-    client = get_client()
-    sh = client.open_by_key(SHEET_ID)
-    ws = sh.worksheet(WORKSHEET_NAME)
+        raise ValueError("SHEET_ID não definido nas Environment Variables do Render.")
+
+    sh = get_client().open_by_key(SHEET_ID)
+
+    try:
+        ws = sh.worksheet(SHEET_TAB)
+    except Exception:
+        # tenta achar por nome parecido
+        tabs = [w.title for w in sh.worksheets()]
+        raise ValueError(
+            f"Aba '{SHEET_TAB}' não encontrada. Abas disponíveis: {tabs}. "
+            f"Ajuste SHEET_TAB no Render exatamente igual ao nome da aba."
+        )
+
+    # Garante cabeçalho
+    header_row = ws.row_values(1)
+    if [h.strip() for h in header_row[:len(HEADERS)]] != HEADERS:
+        # se a planilha estiver vazia ou errada, corrige linha 1
+        ws.update("A1:E1", [HEADERS])
+
     return ws
 
-# ------------------------
-# Helpers
-# ------------------------
-def parse_data_br(s: str):
-    return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
-def parse_float(v):
-    if v is None:
-        return 0.0
-    if isinstance(v, (int, float)):
-        return float(v)
-    # aceita "1.234,56" ou "1234.56"
-    txt = str(v).strip()
-    txt = txt.replace(" ", "")
-    if "," in txt and "." in txt:
-        txt = txt.replace(".", "").replace(",", ".")
-    else:
-        txt = txt.replace(",", ".")
+def parse_ddmmyyyy(s: str):
+    # aceita dd/mm/aaaa
+    return datetime.strptime(s, "%d/%m/%Y").date()
+
+
+def normalize_tipo(t: str):
+    t = (t or "").strip().lower()
+    if "rece" in t:
+        return "Receita"
+    return "Gasto"
+
+
+def safe_float(x):
     try:
-        return float(txt)
-    except:
+        return float(str(x).replace(",", "."))
+    except Exception:
         return 0.0
 
-def pick(row, *keys):
-    for k in keys:
-        if k in row:
-            return row.get(k)
-    return None
 
-def ensure_header(ws):
-    header = ws.row_values(1)
-    expected = ["Data", "Tipo", "Categoria", "Descrição", "Valor"]
-    if header[:5] != expected:
-        ws.update("A1:E1", [expected])
+def row_to_dict(values, row_number):
+    # values = [Data, Tipo, Categoria, Descrição, Valor]
+    out = {}
+    for i, h in enumerate(HEADERS):
+        out[h] = values[i] if i < len(values) else ""
+    out["_row"] = row_number
+    return out
 
-# ------------------------
-# Rotas
-# ------------------------
+
+def read_all_rows():
+    ws = get_ws()
+    all_vals = ws.get_all_values()  # inclui cabeçalho
+    if len(all_vals) <= 1:
+        return []
+    data_rows = all_vals[1:]  # sem header
+    # row number real na planilha começa em 2
+    result = []
+    for idx, row in enumerate(data_rows, start=2):
+        if not any(cell.strip() for cell in row):
+            continue
+        result.append(row_to_dict(row, idx))
+    return result
+
+
+# ====== ROUTES ======
 @app.get("/")
 def home():
     return render_template("index.html")
 
+
 @app.post("/lancar")
 def lancar():
-    body = request.get_json(silent=True) or {}
+    try:
+        body = request.get_json(force=True) or {}
 
-    tipo = str(body.get("tipo", "")).strip()
-    categoria = str(body.get("categoria", "")).strip()
-    descricao = str(body.get("descricao", "")).strip()
-    valor = parse_float(body.get("valor"))
-    data = str(body.get("data", "")).strip()
+        tipo = normalize_tipo(body.get("tipo"))
+        categoria = (body.get("categoria") or "").strip()
+        descricao = (body.get("descricao") or "").strip()
+        valor = safe_float(body.get("valor"))
+        data = (body.get("data") or "").strip()  # dd/mm/aaaa
 
-    if not tipo or not categoria or not descricao:
-        return jsonify({"msg": "Campos obrigatórios: tipo, categoria, descricao"}), 400
-    if valor == 0:
-        return jsonify({"msg": "Valor inválido"}), 400
+        if not categoria or not descricao or not data or valor <= 0:
+            return jsonify({"msg": "Preencha: categoria, descrição, data (dd/mm/aaaa) e valor > 0."}), 400
 
-    if not data:
-        data = datetime.now().strftime("%d/%m/%Y")
+        # valida data
+        _ = parse_ddmmyyyy(data)
 
-    ws = get_sheet()
-    ensure_header(ws)
-    ws.append_row([data, tipo, categoria, descricao, valor])
+        ws = get_ws()
+        ws.append_row([data, tipo, categoria, descricao, valor], value_input_option="USER_ENTERED")
 
-    return jsonify({"ok": True})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"msg": str(e)}), 500
+
 
 @app.get("/ultimos")
 def ultimos():
-    ws = get_sheet()
-    ensure_header(ws)
+    try:
+        rows = read_all_rows()
 
-    dados = ws.get_all_records()  # começa da linha 2
+        # ordena por data e por row (mais novo no final)
+        def key_fn(r):
+            try:
+                d = parse_ddmmyyyy(r["Data"])
+            except Exception:
+                d = datetime(1970, 1, 1).date()
+            return (d, r["_row"])
 
-    out = []
-    for idx, r in enumerate(dados, start=2):
-        out.append({
-            "_row": idx,
-            "Data": pick(r, "Data", "data") or "",
-            "Tipo": pick(r, "Tipo", "tipo") or "",
-            "Categoria": pick(r, "Categoria", "categoria") or "",
-            "Descrição": pick(r, "Descrição", "Descricao", "descricao") or "",
-            "Valor": pick(r, "Valor", "valor") or 0,
-        })
+        rows.sort(key=key_fn)
+        # últimos 10
+        return jsonify(rows[-10:])
+    except Exception as e:
+        return jsonify({"msg": str(e)}), 500
 
-    return jsonify(out)
 
 @app.get("/resumo")
 def resumo():
-    """
-    /resumo?mes=YYYY-MM  (opcional)
-    """
-    mes = request.args.get("mes")
-    hoje = datetime.now().date()
-    if not mes:
-        mes = hoje.strftime("%Y-%m")
-
     try:
-        ano, mm = mes.split("-")
-        ano = int(ano)
-        mm = int(mm)
-    except:
-        return jsonify({"msg": "mes inválido. Use YYYY-MM"}), 400
+        rows = read_all_rows()
+        hoje = datetime.now().date()
+        mes = hoje.month
+        ano = hoje.year
 
-    ws = get_sheet()
-    ensure_header(ws)
-    dados = ws.get_all_records()
+        entradas = 0.0
+        saidas = 0.0
 
-    do_mes = []
-    for r in dados:
-        data_txt = pick(r, "Data", "data")
-        if not data_txt:
-            continue
+        # séries por dia do mês
+        dias_no_mes = 31  # simplificado, depois recorta pelo máximo encontrado
+        receita_por_dia = defaultdict(float)
+        gasto_por_dia = defaultdict(float)
 
-        try:
-            d = parse_data_br(str(data_txt))
-        except:
-            continue
+        # pizzas por categoria
+        pizza_gastos = defaultdict(float)
+        pizza_receitas = defaultdict(float)
 
-        if d.year == ano and d.month == mm:
-            tipo_txt = str(pick(r, "Tipo", "tipo") or "").strip().lower()
-            valor = parse_float(pick(r, "Valor", "valor"))
-            categoria = str(pick(r, "Categoria", "categoria") or "Sem categoria")
+        for r in rows:
+            try:
+                d = parse_ddmmyyyy(r["Data"])
+            except Exception:
+                continue
 
-            is_receita = "rece" in tipo_txt
-            do_mes.append({
-                "data": d.strftime("%d/%m/%Y"),
-                "tipo": "Receita" if is_receita else "Gasto",
-                "categoria": categoria,
-                "valor": valor,
-            })
+            if d.month != mes or d.year != ano:
+                continue
 
-    entradas = sum(x["valor"] for x in do_mes if x["tipo"] == "Receita")
-    saidas   = sum(x["valor"] for x in do_mes if x["tipo"] == "Gasto")
-    saldo    = entradas - saidas
+            tipo = normalize_tipo(r.get("Tipo"))
+            cat = (r.get("Categoria") or "").strip() or "Sem categoria"
+            val = safe_float(r.get("Valor"))
 
-    # série por dia (somente dias que existem)
-    por_dia = {}
-    for x in do_mes:
-        dia = x["data"][:2]
-        por_dia.setdefault(dia, {"receita": 0.0, "gasto": 0.0})
-        if x["tipo"] == "Receita":
-            por_dia[dia]["receita"] += x["valor"]
-        else:
-            por_dia[dia]["gasto"] += x["valor"]
+            if tipo == "Receita":
+                entradas += val
+                receita_por_dia[d.day] += val
+                pizza_receitas[cat] += val
+            else:
+                saidas += val
+                gasto_por_dia[d.day] += val
+                pizza_gastos[cat] += val
 
-    dias = sorted(por_dia.keys(), key=lambda z: int(z))
-    serie_receita = [por_dia[d]["receita"] for d in dias]
-    serie_gasto   = [por_dia[d]["gasto"] for d in dias]
+        saldo = entradas - saidas
 
-    # pizza por categoria
-    gastos_cat = {}
-    receitas_cat = {}
-    for x in do_mes:
-        cat = x["categoria"] or "Sem categoria"
-        if x["tipo"] == "Gasto":
-            gastos_cat[cat] = gastos_cat.get(cat, 0.0) + x["valor"]
-        else:
-            receitas_cat[cat] = receitas_cat.get(cat, 0.0) + x["valor"]
+        # define dias (1..max dia visto) para o gráfico ficar enxuto
+        max_day = 1
+        for k in list(receita_por_dia.keys()) + list(gasto_por_dia.keys()):
+            max_day = max(max_day, int(k))
 
-    gastos_sorted = sorted(gastos_cat.items(), key=lambda kv: kv[1], reverse=True)
-    receitas_sorted = sorted(receitas_cat.items(), key=lambda kv: kv[1], reverse=True)
+        dias = list(range(1, max_day + 1))
+        serie_receita = [round(receita_por_dia[d], 2) for d in dias]
+        serie_gasto = [round(gasto_por_dia[d], 2) for d in dias]
 
-    return jsonify({
-        "mes": mes,
-        "entradas": entradas,
-        "saidas": saidas,
-        "saldo": saldo,
+        # pizzas (labels e values)
+        def dict_to_pie(dct):
+            items = sorted(dct.items(), key=lambda x: x[1], reverse=True)
+            labels = [k for k, _ in items]
+            values = [round(v, 2) for _, v in items]
+            return labels, values
 
-        "dias": dias,
-        "serie_receita": serie_receita,
-        "serie_gasto": serie_gasto,
+        pg_labels, pg_values = dict_to_pie(pizza_gastos)
+        pr_labels, pr_values = dict_to_pie(pizza_receitas)
 
-        "pizza_gastos_labels": [k for k, v in gastos_sorted],
-        "pizza_gastos_values": [v for k, v in gastos_sorted],
+        return jsonify({
+            "entradas": round(entradas, 2),
+            "saidas": round(saidas, 2),
+            "saldo": round(saldo, 2),
+            "dias": [str(d) for d in dias],
+            "serie_receita": serie_receita,
+            "serie_gasto": serie_gasto,
 
-        "pizza_receitas_labels": [k for k, v in receitas_sorted],
-        "pizza_receitas_values": [v for k, v in receitas_sorted],
-    })
+            "pizza_gastos_labels": pg_labels,
+            "pizza_gastos_values": pg_values,
+            "pizza_receitas_labels": pr_labels,
+            "pizza_receitas_values": pr_values,
+        })
+    except Exception as e:
+        return jsonify({"msg": str(e)}), 500
 
+
+# ====== EDITAR / EXCLUIR ======
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
-    body = request.get_json(silent=True) or {}
+    try:
+        body = request.get_json(force=True) or {}
 
-    tipo = str(body.get("tipo", "")).strip()
-    categoria = str(body.get("categoria", "")).strip()
-    descricao = str(body.get("descricao", "")).strip()
-    valor = parse_float(body.get("valor"))
-    data = str(body.get("data", "")).strip()
+        tipo = normalize_tipo(body.get("tipo"))
+        categoria = (body.get("categoria") or "").strip()
+        descricao = (body.get("descricao") or "").strip()
+        valor = safe_float(body.get("valor"))
+        data = (body.get("data") or "").strip()
 
-    if not tipo or not categoria or not descricao or not data:
-        return jsonify({"msg": "Campos obrigatórios: tipo, categoria, descricao, data"}), 400
-    if valor == 0:
-        return jsonify({"msg": "Valor inválido"}), 400
+        if not categoria or not descricao or not data or valor <= 0:
+            return jsonify({"msg": "Preencha: categoria, descrição, data (dd/mm/aaaa) e valor > 0."}), 400
 
-    ws = get_sheet()
-    ensure_header(ws)
-    ws.update(f"A{row}:E{row}", [[data, tipo, categoria, descricao, valor]])
+        _ = parse_ddmmyyyy(data)
 
-    return jsonify({"ok": True})
+        ws = get_ws()
+        # Atualiza A..E da linha informada
+        ws.update(f"A{row}:E{row}", [[data, tipo, categoria, descricao, valor]])
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"msg": str(e)}), 500
+
 
 @app.delete("/lancamento/<int:row>")
-def deletar(row: int):
-    ws = get_sheet()
-    ws.delete_rows(row)
-    return jsonify({"ok": True})
+def excluir(row: int):
+    try:
+        ws = get_ws()
+        ws.delete_rows(row)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"msg": str(e)}), 500
+
+
+# ====== LOCAL DEV ======
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
