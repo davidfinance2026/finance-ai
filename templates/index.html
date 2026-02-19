@@ -8,9 +8,14 @@
   <style>
     :root{
       --bg:#0b1020;
+      --card:#121a33;
+      --card2:#0f1730;
       --text:#eaf0ff;
       --muted:#9fb0da;
       --border:rgba(255,255,255,.08);
+      --blue:#4f8cff;
+      --green:#21c07a;
+      --red:#ff5a6a;
       --shadow: 0 12px 30px rgba(0,0,0,.35);
       --radius:18px;
     }
@@ -27,10 +32,19 @@
       display:flex;
       justify-content:center;
     }
-    .app{width:min(520px, 100%); padding-bottom:18px;}
-    .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;}
+    .app{
+      width:min(520px, 100%);
+      padding-bottom:18px;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
     .brand{display:flex; flex-direction:column; line-height:1.1;}
-    .brand h1{margin:0; font-size:22px;}
+    .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
     .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
     .pill{
       padding:10px 12px;
@@ -39,21 +53,28 @@
       border-radius:999px;
       color:var(--muted);
       font-size:12px;
+      display:flex;
+      align-items:center;
+      gap:8px;
       user-select:none;
     }
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
-      flex:1; padding:12px 12px; border-radius:999px;
+      flex:1;
+      padding:12px 12px;
+      border-radius:999px;
       border:1px solid var(--border);
       background:rgba(255,255,255,.04);
       color:var(--muted);
-      font-weight:800; cursor:pointer;
+      font-weight:700;
+      cursor:pointer;
     }
     .tab.active{
       background:linear-gradient(180deg, rgba(79,140,255,.25), rgba(79,140,255,.08));
       color:var(--text);
       border-color: rgba(79,140,255,.35);
     }
+
     .card{
       background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
       border:1px solid var(--border);
@@ -61,33 +82,58 @@
       box-shadow:var(--shadow);
       padding:16px;
     }
-    label{
-      display:block; margin-top:12px; font-weight:800;
-      color:var(--muted); font-size:12px; letter-spacing:.3px; text-transform:uppercase;
-    }
-    input{
-      width:100%; margin-top:8px; padding:12px 12px;
-      border-radius:14px; border:1px solid var(--border);
-      background: rgba(15,23,48,.75);
-      color:var(--text); outline:none;
-    }
     .row{display:flex; gap:10px;}
     .row > *{flex:1}
+    label{
+      display:block;
+      margin-top:12px;
+      font-weight:700;
+      color:var(--muted);
+      font-size:12px;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+    input{
+      width:100%;
+      margin-top:8px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,48,.75);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{color:rgba(159,176,218,.65)}
     .seg{
-      display:flex; gap:10px; margin-top:10px;
+      display:flex;
+      gap:10px;
+      margin-top:10px;
       background:rgba(255,255,255,.04);
       border:1px solid var(--border);
-      padding:6px; border-radius:999px;
+      padding:6px;
+      border-radius:999px;
     }
     .seg button{
-      flex:1; border:0; background:transparent; color:var(--muted);
-      padding:10px 10px; border-radius:999px; font-weight:900; cursor:pointer;
+      flex:1;
+      border:0;
+      background:transparent;
+      color:var(--muted);
+      padding:10px 10px;
+      border-radius:999px;
+      font-weight:800;
+      cursor:pointer;
     }
-    .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
+    .seg button.active{
+      background:rgba(79,140,255,.25);
+      color:var(--text);
+    }
     .actions{display:flex; gap:10px; margin-top:14px;}
     .btn{
-      border:0; border-radius:16px; padding:12px 12px;
-      font-weight:900; cursor:pointer;
+      border:0;
+      border-radius:16px;
+      padding:12px 12px;
+      font-weight:900;
+      cursor:pointer;
       color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
@@ -100,7 +146,9 @@
       box-shadow:none;
     }
     .msg{
-      margin-top:12px; padding:12px 12px; border-radius:14px;
+      margin-top:12px;
+      padding:12px 12px;
+      border-radius:14px;
       border:1px solid var(--border);
       background: rgba(15,23,48,.6);
       display:none;
@@ -108,7 +156,12 @@
     .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
     .msg.err{display:block; border-color: rgba(255,90,106,.35); }
 
-    .cards{display:grid; grid-template-columns: 1fr; gap:10px; margin-top:14px;}
+    .cards{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      margin-top:14px;
+    }
     .mini-card{
       background: rgba(15,23,48,.55);
       border:1px solid var(--border);
@@ -122,17 +175,55 @@
     .mini-card .label{
       color: var(--muted);
       font-size:12px;
-      font-weight:900;
+      font-weight:800;
       text-transform:uppercase;
       letter-spacing:.3px;
     }
-    .mini-card .value{font-weight:900; font-size:14px; white-space:nowrap;}
+    .mini-card .value{
+      font-weight:900;
+      font-size:14px;
+      white-space:nowrap;
+    }
 
     .chart-card{ margin-top: 14px; }
-    .chart-wrap{height: 260px;}
-    canvas{width:100% !important; height:100% !important; display:block;}
+    #grafico{
+      width: 100% !important;
+      height: 240px !important;
+      display:block;
+    }
 
-    .list{margin-top:14px; display:flex; flex-direction:column; gap:10px;}
+    .donut-wrap{
+      margin-top:12px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+    }
+    .donut{
+      background: rgba(15,23,48,.55);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+    }
+    .donut h3{
+      margin:0 0 10px 0;
+      font-weight:900;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.3px;
+      font-size:12px;
+    }
+    .donut canvas{
+      width: 100% !important;
+      height: 260px !important;
+      display:block;
+    }
+
+    .list{
+      margin-top:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
     .item{
       background: rgba(15,23,48,.65);
       border:1px solid var(--border);
@@ -157,18 +248,20 @@
     }
     .meta b{display:block; font-size:14px}
     .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
-    .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
+    .value{
+      text-align:right;
+      font-weight:900;
+      font-size:14px;
+      white-space:nowrap;
+    }
     .value.green{color: #7dffbf}
     .value.red{color: #ff9aa5}
 
-    .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
-    .section-title{
-      margin:0 0 10px 0;
-      font-weight:900;
+    .hint{
+      margin-top:10px;
       color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.3px;
       font-size:12px;
+      opacity:.9;
     }
   </style>
 </head>
@@ -223,6 +316,7 @@
 
     <!-- TELA ÚLTIMOS -->
     <div class="card" id="screen-ultimos" style="display:none;">
+      <!-- cards resumo -->
       <div class="cards">
         <div class="mini-card">
           <div class="label">Entradas (mês)</div>
@@ -240,19 +334,23 @@
 
       <!-- gráfico principal -->
       <div class="card chart-card" style="margin-top:12px;">
-        <div class="section-title">Movimento do mês (barras) + Saldo acumulado (linha)</div>
-        <div class="chart-wrap"><canvas id="grafico"></canvas></div>
+        <div style="margin:0 0 10px 0; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-size:12px;">
+          Movimento do mês (barras) + Saldo acumulado (linha)
+        </div>
+        <canvas id="grafico"></canvas>
       </div>
 
-      <!-- pizzas -->
-      <div class="card chart-card" style="margin-top:12px;">
-        <div class="section-title">Gastos por categoria (pizza)</div>
-        <div class="chart-wrap"><canvas id="pizzaGastos"></canvas></div>
-      </div>
+      <!-- PIZZAS -->
+      <div class="donut-wrap">
+        <div class="donut">
+          <h3>Gastos por categoria (mês)</h3>
+          <canvas id="pizzaGastos"></canvas>
+        </div>
 
-      <div class="card chart-card" style="margin-top:12px;">
-        <div class="section-title">Receitas por categoria (pizza)</div>
-        <div class="chart-wrap"><canvas id="pizzaReceitas"></canvas></div>
+        <div class="donut">
+          <h3>Receitas por categoria (mês)</h3>
+          <canvas id="pizzaReceitas"></canvas>
+        </div>
       </div>
 
       <div class="actions" style="margin-top:12px;">
@@ -265,14 +363,23 @@
     </div>
   </div>
 
+  <!-- Chart.js + plugin de labels -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
   <script>
+    // ====== GLOBAIS ======
     let tipoAtual = "Gasto";
     let chartMain;
     let chartPizzaGastos;
     let chartPizzaReceitas;
 
+    // registra plugin das labels (%)
+    if (window.ChartDataLabels) {
+      Chart.register(ChartDataLabels);
+    }
+
+    // ====== UI ======
     function showTab(tab){
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
@@ -287,16 +394,11 @@
       document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
     }
 
-    function pad2(n){ return String(n).padStart(2,"0"); }
-    function formatBRfromISO(iso){
-      if(!iso) return null;
-      const [y,m,d] = iso.split("-");
-      return `${d}/${m}/${y}`;
-    }
-
-    function brl(n){
-      const v = Number(n || 0);
-      return v.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+    function limpar(){
+      document.getElementById("categoria").value = "";
+      document.getElementById("descricao").value = "";
+      document.getElementById("valor").value = "";
+      setMsg("", "");
     }
 
     function setMsg(kind, text){
@@ -309,13 +411,45 @@
       el.style.display = "block";
     }
 
-    function limpar(){
-      document.getElementById("categoria").value = "";
-      document.getElementById("descricao").value = "";
-      document.getElementById("valor").value = "";
-      setMsg("", "");
+    // ====== HELPERS ======
+    function pad2(n){ return String(n).padStart(2,"0"); }
+    function formatBRfromISO(iso){
+      if(!iso) return null;
+      const [y,m,d] = iso.split("-");
+      return `${d}/${m}/${y}`;
+    }
+    function brl(n){
+      const v = Number(n || 0);
+      return v.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+    }
+    function getField(obj, keys){
+      for(const k of keys){
+        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return "";
+    }
+    function iconFor(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "⬆";
+      return "⬇";
+    }
+    function valueClass(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "green";
+      return "red";
     }
 
+    // cores diferentes (HSL)
+    function gerarCores(n){
+      const cores = [];
+      for(let i=0;i<n;i++){
+        const h = Math.round((360 / Math.max(n,1)) * i);
+        cores.push(`hsl(${h}, 75%, 60%)`);
+      }
+      return cores;
+    }
+
+    // ====== POST /lancar ======
     async function enviar(){
       setMsg("", "");
       const categoria = document.getElementById("categoria").value.trim();
@@ -333,7 +467,7 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO)
+        data: formatBRfromISO(dataISO) // dd/mm/aaaa
       };
 
       try{
@@ -342,6 +476,7 @@
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(payload)
         });
+
         const data = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
 
@@ -354,23 +489,7 @@
       }
     }
 
-    function iconFor(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      if(t.includes("rece")) return "⬆";
-      return "⬇";
-    }
-    function valueClass(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      if(t.includes("rece")) return "green";
-      return "red";
-    }
-    function getField(obj, keys){
-      for(const k of keys){
-        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-      }
-      return "";
-    }
-
+    // ====== RESUMO /resumo ======
     async function carregarResumo(){
       const r = await fetch("/resumo");
       if(!r.ok) throw new Error("Falha em /resumo");
@@ -384,6 +503,7 @@
       atualizarPizzas(j);
     }
 
+    // ====== GRÁFICO PRINCIPAL (barras + linha) ======
     function atualizarGraficoPrincipal(j){
       const canvas = document.getElementById("grafico");
       if(!canvas) return;
@@ -400,28 +520,41 @@
         return acc;
       });
 
+      const gradRec = ctx.createLinearGradient(0, 0, 0, 260);
+      gradRec.addColorStop(0, "rgba(79,140,255,0.70)");
+      gradRec.addColorStop(1, "rgba(79,140,255,0.12)");
+
+      const gradGas = ctx.createLinearGradient(0, 0, 0, 260);
+      gradGas.addColorStop(0, "rgba(255,90,106,0.65)");
+      gradGas.addColorStop(1, "rgba(255,90,106,0.10)");
+
       if(chartMain) chartMain.destroy();
 
       chartMain = new Chart(ctx, {
         data: {
           labels: dias,
           datasets: [
-            { type:"bar",  label:"Receitas", data: rec,  borderRadius: 10 },
-            { type:"bar",  label:"Gastos",   data: gas,  borderRadius: 10 },
-            { type:"line", label:"Saldo acumulado", data: saldoAcum, borderWidth:2, tension:.35, pointRadius:2 }
+            { type:"bar", label:"Receitas", data: rec, backgroundColor: gradRec, borderRadius: 10 },
+            { type:"bar", label:"Gastos", data: gas, backgroundColor: gradGas, borderRadius: 10 },
+            {
+              type:"line",
+              label:"Saldo acumulado",
+              data: saldoAcum,
+              borderWidth: 2,
+              tension: 0.35,
+              pointRadius: 2,
+              pointHoverRadius: 5,
+              fill: false,
+              borderColor: "rgba(33,192,122,1)"
+            }
           ]
         },
         options: {
           responsive:true,
           maintainAspectRatio:false,
           interaction:{ mode:"index", intersect:false },
-          scales:{
-            y:{
-              beginAtZero:false,
-              ticks:{ callback:(v)=> brl(Math.abs(v)) }
-            }
-          },
           plugins:{
+            legend:{ labels:{ color:"rgba(234,240,255,.9)" } },
             tooltip:{
               callbacks:{
                 label:(tt)=>{
@@ -432,73 +565,100 @@
                 }
               }
             }
+          },
+          scales:{
+            x:{ ticks:{ color:"rgba(159,176,218,.85)" }, grid:{ color:"rgba(255,255,255,0.05)" } },
+            y:{
+              beginAtZero:false,
+              ticks:{ color:"rgba(159,176,218,.85)", callback:(v)=> brl(Math.abs(v)) },
+              grid:{ color:"rgba(255,255,255,0.05)" }
+            }
           }
         }
       });
+    }
+
+    // ====== PIZZAS (ROSQUINHA) com % ======
+    function criarDonut(canvasId, tituloTooltip, labels, values, refChartVarSetter){
+      const canvas = document.getElementById(canvasId);
+      if(!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      const temDados = labels.length && values.some(v => v > 0);
+
+      const finalLabels = temDados ? labels : ["Sem dados"];
+      const finalData   = temDados ? values : [1];
+      const cores       = gerarCores(temDados ? labels.length : 1);
+
+      // destroy anterior
+      refChartVarSetter("destroy");
+
+      const chart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: finalLabels,
+          datasets: [{
+            data: finalData,
+            backgroundColor: cores,
+            borderColor: "rgba(255,255,255,0.10)",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "62%",
+          plugins: {
+            legend: { labels: { color: "rgba(234,240,255,.9)" } },
+            tooltip: {
+              callbacks: {
+                label: (tt) => {
+                  const label = tt.label || "";
+                  const val = Number(tt.parsed || 0);
+                  if(label === "Sem dados") return "Sem dados no mês";
+                  return `${label}: ${brl(val)}`;
+                }
+              }
+            },
+            datalabels: {
+              color: "rgba(234,240,255,.95)",
+              font: { weight: 900, size: 11 },
+              formatter: (value, context) => {
+                const lbl = context.chart.data.labels?.[context.dataIndex];
+                if(lbl === "Sem dados") return "";
+                const dataArr = context.chart.data.datasets[0].data || [];
+                const total = dataArr.reduce((a,b)=> a + Number(b||0), 0);
+                if(!total) return "";
+                const pct = (Number(value||0) / total) * 100;
+                return pct >= 4 ? `${pct.toFixed(0)}%` : ""; // esconde fatias muito pequenas
+              }
+            }
+          }
+        }
+      });
+
+      refChartVarSetter("set", chart);
     }
 
     function atualizarPizzas(j){
-      // GASTOS
       const gLabels = j.pizza_gastos_labels || [];
       const gValues = (j.pizza_gastos_values || []).map(v => Number(v || 0));
 
-      const ctxG = document.getElementById("pizzaGastos").getContext("2d");
-      if(chartPizzaGastos) chartPizzaGastos.destroy();
-      chartPizzaGastos = new Chart(ctxG, {
-        type: "pie",
-        data: {
-          labels: gLabels.length ? gLabels : ["Sem dados"],
-          datasets: [{ data: gLabels.length ? gValues : [1] }]
-        },
-        options: {
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{
-            tooltip:{
-              callbacks:{
-                label:(tt)=>{
-                  const label = tt.label || "";
-                  const val = Number(tt.parsed || 0);
-                  if(label === "Sem dados") return "Sem dados no mês";
-                  return `${label}: ${brl(val)}`;
-                }
-              }
-            }
-          }
-        }
-      });
-
-      // RECEITAS
       const rLabels = j.pizza_receitas_labels || [];
       const rValues = (j.pizza_receitas_values || []).map(v => Number(v || 0));
 
-      const ctxR = document.getElementById("pizzaReceitas").getContext("2d");
-      if(chartPizzaReceitas) chartPizzaReceitas.destroy();
-      chartPizzaReceitas = new Chart(ctxR, {
-        type: "pie",
-        data: {
-          labels: rLabels.length ? rLabels : ["Sem dados"],
-          datasets: [{ data: rLabels.length ? rValues : [1] }]
-        },
-        options: {
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{
-            tooltip:{
-              callbacks:{
-                label:(tt)=>{
-                  const label = tt.label || "";
-                  const val = Number(tt.parsed || 0);
-                  if(label === "Sem dados") return "Sem dados no mês";
-                  return `${label}: ${brl(val)}`;
-                }
-              }
-            }
-          }
-        }
+      criarDonut("pizzaGastos", "Gastos", gLabels, gValues, (mode, chart)=>{
+        if(mode==="destroy" && chartPizzaGastos) chartPizzaGastos.destroy();
+        if(mode==="set") chartPizzaGastos = chart;
+      });
+
+      criarDonut("pizzaReceitas", "Receitas", rLabels, rValues, (mode, chart)=>{
+        if(mode==="destroy" && chartPizzaReceitas) chartPizzaReceitas.destroy();
+        if(mode==="set") chartPizzaReceitas = chart;
       });
     }
 
+    // ====== LISTA /ultimos ======
     async function carregarUltimos(){
       const lista = document.getElementById("lista");
       lista.innerHTML = `
@@ -551,7 +711,8 @@
 
     async function carregarTudo(){
       try{ await carregarResumo(); } catch(e){ console.log(e); }
-      try{ await carregarUltimos(); } catch(e){
+      try{ await carregarUltimos(); }
+      catch(e){
         const lista = document.getElementById("lista");
         lista.innerHTML = `
           <div class="item">
@@ -563,6 +724,7 @@
       }
     }
 
+    // data de hoje
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
