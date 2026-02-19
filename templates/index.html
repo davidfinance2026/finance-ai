@@ -13,9 +13,6 @@
       --text:#eaf0ff;
       --muted:#9fb0da;
       --border:rgba(255,255,255,.08);
-      --blue:#4f8cff;
-      --green:#21c07a;
-      --red:#ff5a6a;
       --shadow: 0 12px 30px rgba(0,0,0,.35);
       --radius:18px;
     }
@@ -33,39 +30,29 @@
       justify-content:center;
     }
     .app{ width:min(520px, 100%); padding-bottom:18px; }
-    .topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
-    .brand{ display:flex; flex-direction:column; line-height:1.1; }
-    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
-    .brand span{ color:var(--muted); font-size:13px; margin-top:4px; }
-    .pill{
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      border-radius:999px;
-      color:var(--muted);
-      font-size:12px;
-      display:flex;
-      align-items:center;
-      gap:8px;
-      user-select:none;
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; margin-bottom:14px;
     }
-    .tabs{ display:flex; gap:10px; margin:14px 0; }
+    .brand{display:flex; flex-direction:column; line-height:1.1;}
+    .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
+    .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
+    .pill{
+      padding:10px 12px; border:1px solid var(--border);
+      background:rgba(255,255,255,.04); border-radius:999px;
+      color:var(--muted); font-size:12px; user-select:none;
+    }
+    .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
-      flex:1;
-      padding:12px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      color:var(--muted);
-      font-weight:700;
-      cursor:pointer;
+      flex:1; padding:12px 12px; border-radius:999px;
+      border:1px solid var(--border); background:rgba(255,255,255,.04);
+      color:var(--muted); font-weight:700; cursor:pointer;
     }
     .tab.active{
       background:linear-gradient(180deg, rgba(79,140,255,.25), rgba(79,140,255,.08));
       color:var(--text);
       border-color: rgba(79,140,255,.35);
     }
-
     .card{
       background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
       border:1px solid var(--border);
@@ -73,56 +60,33 @@
       box-shadow:var(--shadow);
       padding:16px;
     }
-    .row{ display:flex; gap:10px; }
-    .row > *{ flex:1; }
+    .row{display:flex; gap:10px;}
+    .row > *{flex:1}
     label{
-      display:block;
-      margin-top:12px;
-      font-weight:700;
-      color:var(--muted);
-      font-size:12px;
-      letter-spacing:.3px;
-      text-transform:uppercase;
+      display:block; margin-top:12px;
+      font-weight:700; color:var(--muted);
+      font-size:12px; letter-spacing:.3px; text-transform:uppercase;
     }
     input{
-      width:100%;
-      margin-top:8px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,48,.75);
-      color:var(--text);
-      outline:none;
+      width:100%; margin-top:8px; padding:12px 12px;
+      border-radius:14px; border:1px solid var(--border);
+      background: rgba(15,23,48,.75); color:var(--text); outline:none;
     }
-    input::placeholder{ color:rgba(159,176,218,.65); }
+    input::placeholder{color:rgba(159,176,218,.65)}
     .seg{
-      display:flex;
-      gap:10px;
-      margin-top:10px;
-      background:rgba(255,255,255,.04);
-      border:1px solid var(--border);
-      padding:6px;
-      border-radius:999px;
+      display:flex; gap:10px; margin-top:10px;
+      background:rgba(255,255,255,.04); border:1px solid var(--border);
+      padding:6px; border-radius:999px;
     }
     .seg button{
-      flex:1;
-      border:0;
-      background:transparent;
-      color:var(--muted);
-      padding:10px 10px;
-      border-radius:999px;
-      font-weight:800;
-      cursor:pointer;
+      flex:1; border:0; background:transparent; color:var(--muted);
+      padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
     }
     .seg button.active{ background:rgba(79,140,255,.25); color:var(--text); }
-    .actions{ display:flex; gap:10px; margin-top:14px; }
+    .actions{display:flex; gap:10px; margin-top:14px;}
     .btn{
-      border:0;
-      border-radius:16px;
-      padding:12px 12px;
-      font-weight:900;
-      cursor:pointer;
-      color:#061022;
+      border:0; border-radius:16px; padding:12px 12px;
+      font-weight:900; cursor:pointer; color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
       flex:1;
@@ -134,22 +98,14 @@
       box-shadow:none;
     }
     .msg{
-      margin-top:12px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,48,.6);
+      margin-top:12px; padding:12px 12px; border-radius:14px;
+      border:1px solid var(--border); background: rgba(15,23,48,.6);
       display:none;
     }
-    .msg.ok{ display:block; border-color: rgba(33,192,122,.35); }
-    .msg.err{ display:block; border-color: rgba(255,90,106,.35); }
+    .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
+    .msg.err{display:block; border-color: rgba(255,90,106,.35); }
 
-    .cards{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:10px;
-      margin-top:14px;
-    }
+    .cards{ display:grid; grid-template-columns: 1fr; gap:10px; margin-top:14px; }
     .mini-card{
       background: rgba(15,23,48,.55);
       border:1px solid var(--border);
@@ -167,27 +123,12 @@
       text-transform:uppercase;
       letter-spacing:.3px;
     }
-    .mini-card .value{
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-    }
-    .mini-card .value.pos{ color:#7dffbf; }
-    .mini-card .value.neg{ color:#ff9aa5; }
+    .mini-card .value{ font-weight:900; font-size:14px; white-space:nowrap; }
 
-    .chart-card{ margin-top: 14px; }
-    #grafico{
-      width: 100% !important;
-      height: 240px !important;
-      display:block;
-    }
+    .chart-card{ margin-top: 12px; }
+    canvas{ width: 100% !important; height: 240px !important; display:block; }
 
-    .list{
-      margin-top:14px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
+    .list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
     .item{
       background: rgba(15,23,48,.65);
       border:1px solid var(--border);
@@ -198,7 +139,7 @@
       justify-content:space-between;
       gap:10px;
     }
-    .left{ display:flex; gap:10px; align-items:flex-start; }
+    .left{display:flex; gap:10px; align-items:flex-start;}
     .icon{
       width:38px; height:38px;
       border-radius:14px;
@@ -210,16 +151,13 @@
       color:var(--text);
       flex:0 0 auto;
     }
-    .meta b{ display:block; font-size:14px; }
-    .meta span{ display:block; color:var(--muted); font-size:12px; margin-top:4px; }
+    .meta b{display:block; font-size:14px}
+    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
     .value{
-      text-align:right;
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
+      text-align:right; font-weight:900; font-size:14px; white-space:nowrap;
     }
-    .value.green{ color: #7dffbf; }
-    .value.red{ color: #ff9aa5; }
+    .value.green{color: #7dffbf}
+    .value.red{color: #ff9aa5}
 
     .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
   </style>
@@ -275,6 +213,7 @@
 
     <!-- TELA ÚLTIMOS -->
     <div class="card" id="screen-ultimos" style="display:none;">
+      <!-- cards resumo -->
       <div class="cards">
         <div class="mini-card">
           <div class="label">Entradas (mês)</div>
@@ -290,11 +229,20 @@
         </div>
       </div>
 
-      <div class="card chart-card" style="margin-top:12px;">
+      <!-- gráfico principal -->
+      <div class="card chart-card">
         <div class="label" style="margin:0 0 10px 0; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-size:12px;">
-          Movimento do mês (barras) + Saldo acumulado (linha)
+          Movimento do mês (Receitas x Gastos) + Saldo acumulado
         </div>
         <canvas id="grafico"></canvas>
+      </div>
+
+      <!-- pizza top 6 + outros -->
+      <div class="card chart-card">
+        <div class="label" style="margin:0 0 10px 0; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-size:12px;">
+          Gastos por categoria (Top 6 + Outros)
+        </div>
+        <canvas id="pizza"></canvas>
       </div>
 
       <div class="actions" style="margin-top:12px;">
@@ -307,12 +255,13 @@
     </div>
   </div>
 
-  <!-- trava versão moderna do Chart.js (importante!) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <!-- Chart.js precisa vir ANTES -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
     let tipoAtual = "Gasto";
     let chart;
+    let pieChart;
 
     function showTab(tab){
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
@@ -417,26 +366,8 @@
       return "";
     }
 
-    // plugin para desenhar a linha do zero (2)
-    const zeroLine = {
-      id: "zeroLine",
-      afterDraw(chart){
-        const {ctx, scales:{y}} = chart;
-        if(!y) return;
-        const yZero = y.getPixelForValue(0);
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(chart.chartArea.left, yZero);
-        ctx.lineTo(chart.chartArea.right, yZero);
-        ctx.strokeStyle = "rgba(255,255,255,0.18)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.restore();
-      }
-    };
-
     // =========================
-    // RESUMO + GRÁFICO (1,2,3)
+    // RESUMO + GRÁFICO + PIZZA
     // =========================
     async function carregarResumo(){
       const r = await fetch("/resumo");
@@ -445,16 +376,10 @@
 
       document.getElementById("entradas").innerText = brl(j.entradas);
       document.getElementById("saidas").innerText   = brl(j.saidas);
-
-      const saldoEl = document.getElementById("saldo");
-      saldoEl.innerText = brl(j.saldo);
-
-      // (3) saldo do card muda cor
-      saldoEl.classList.remove("pos","neg");
-      if(Number(j.saldo || 0) >= 0) saldoEl.classList.add("pos");
-      else saldoEl.classList.add("neg");
+      document.getElementById("saldo").innerText    = brl(j.saldo);
 
       atualizarGrafico(j);
+      atualizarPizza(j);
     }
 
     function atualizarGrafico(j){
@@ -465,7 +390,7 @@
       const dias = (j.dias || []);
       const rec  = (j.serie_receita || []).map(v => Number(v || 0));
       const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
-      const gas  = gasP.map(v => -v);
+      const gas  = gasP.map(v => -v); // gastos abaixo (espelho)
 
       // saldo acumulado
       let acc = 0;
@@ -474,56 +399,15 @@
         return acc;
       });
 
-      // (1) cores ponto a ponto
-      const lineColors = saldoAcum.map(v => v >= 0 ? "rgba(33,192,122,1)" : "rgba(255,90,106,1)");
-      const pointBg    = saldoAcum.map(v => v >= 0 ? "rgba(33,192,122,1)" : "rgba(255,90,106,1)");
-
-      const gradRec = ctx.createLinearGradient(0, 0, 0, 260);
-      gradRec.addColorStop(0, "rgba(79,140,255,0.70)");
-      gradRec.addColorStop(1, "rgba(79,140,255,0.12)");
-
-      const gradGas = ctx.createLinearGradient(0, 0, 0, 260);
-      gradGas.addColorStop(0, "rgba(255,90,106,0.65)");
-      gradGas.addColorStop(1, "rgba(255,90,106,0.10)");
-
       if(chart) chart.destroy();
 
       chart = new Chart(ctx, {
-        plugins: [zeroLine],
         data: {
           labels: dias,
           datasets: [
-            {
-              type: "bar",
-              label: "Receitas",
-              data: rec,
-              backgroundColor: gradRec,
-              borderRadius: 10,
-              barPercentage: 0.9,
-              categoryPercentage: 0.8
-            },
-            {
-              type: "bar",
-              label: "Gastos",
-              data: gas,
-              backgroundColor: gradGas,
-              borderRadius: 10,
-              barPercentage: 0.9,
-              categoryPercentage: 0.8
-            },
-            {
-              type: "line",
-              label: "Saldo acumulado",
-              data: saldoAcum,
-              borderWidth: 2,
-              tension: 0.35,
-              pointRadius: 2,
-              pointHoverRadius: 5,
-              fill: false,
-              borderColor: lineColors,
-              pointBackgroundColor: pointBg,
-              pointBorderColor: pointBg
-            }
+            { type:"bar",  label:"Receitas", data: rec, borderRadius: 10 },
+            { type:"bar",  label:"Gastos",   data: gas, borderRadius: 10 },
+            { type:"line", label:"Saldo acumulado", data: saldoAcum, borderWidth:2, tension:0.35, pointRadius:2 }
           ]
         },
         options: {
@@ -531,9 +415,7 @@
           maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           plugins: {
-            legend: {
-              labels: { color: "rgba(234,240,255,.9)", boxWidth: 12, boxHeight: 12 }
-            },
+            legend: { labels: { color: "rgba(234,240,255,.9)" } },
             tooltip: {
               backgroundColor: "rgba(15, 23, 48, 0.95)",
               borderColor: "rgba(255,255,255,0.10)",
@@ -551,10 +433,7 @@
             }
           },
           scales: {
-            x: {
-              ticks: { color: "rgba(159,176,218,.85)" },
-              grid: { color: "rgba(255,255,255,0.05)" }
-            },
+            x: { ticks: { color: "rgba(159,176,218,.85)" }, grid: { color: "rgba(255,255,255,0.05)" } },
             y: {
               beginAtZero: false,
               ticks: {
@@ -562,6 +441,49 @@
                 callback: (v) => brl(Math.abs(v))
               },
               grid: { color: "rgba(255,255,255,0.05)" }
+            }
+          }
+        }
+      });
+    }
+
+    function atualizarPizza(j){
+      const canvas = document.getElementById("pizza");
+      if(!canvas) return;
+
+      const cats = (j.cats_gasto || []);
+      const vals = (j.vals_gasto || []).map(v => Number(v || 0));
+
+      // sem dados -> limpa
+      if(cats.length === 0){
+        if(pieChart) pieChart.destroy();
+        pieChart = null;
+        return;
+      }
+
+      if(pieChart) pieChart.destroy();
+
+      pieChart = new Chart(canvas.getContext("2d"), {
+        type: "pie",
+        data: {
+          labels: cats,
+          datasets: [{ data: vals }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { color: "rgba(234,240,255,.9)" }
+            },
+            tooltip: {
+              backgroundColor: "rgba(15, 23, 48, 0.95)",
+              borderColor: "rgba(255,255,255,0.10)",
+              borderWidth: 1,
+              titleColor: "rgba(234,240,255,.95)",
+              bodyColor: "rgba(234,240,255,.95)",
+              callbacks: { label: (tt) => `${tt.label}: ${brl(tt.parsed)}` }
             }
           }
         }
@@ -582,8 +504,12 @@
         </div>`;
 
       const r = await fetch("/ultimos");
-      if(!r.ok) throw new Error("Falha em /ultimos");
-      const dados = await r.json();
+      const dados = await r.json().catch(()=> null);
+
+      if(!r.ok){
+        const msg = (dados && dados.msg) ? dados.msg : "Falha em /ultimos";
+        throw new Error(msg);
+      }
 
       lista.innerHTML = "";
       const arr = Array.isArray(dados) ? dados : [];
@@ -615,15 +541,21 @@
                 <span>${descricao} • ${data}</span>
               </div>
             </div>
-            <div class="value ${valueClass(item)}">R$ ${valor}</div>
+            <div class="value ${valueClass(item)}">${brl(valor)}</div>
           </div>
         `;
       });
     }
 
     async function carregarTudo(){
-      try{ await carregarResumo(); }catch(e){ console.log(e); }
-      try{ await carregarUltimos(); }catch(e){
+      try{
+        await carregarResumo();
+      }catch(e){
+        console.log(e);
+      }
+      try{
+        await carregarUltimos();
+      }catch(e){
         const lista = document.getElementById("lista");
         lista.innerHTML = `
           <div class="item">
@@ -635,6 +567,7 @@
       }
     }
 
+    // set data hoje
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
