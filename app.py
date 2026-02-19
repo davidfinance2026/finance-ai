@@ -1,9 +1,12 @@
 import os
+import json
 import re
+import calendar
 from datetime import datetime, date
+from typing import Any, Dict, List, Tuple
 
-import gspread
 from flask import Flask, jsonify, render_template, request
+import gspread
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
@@ -11,336 +14,331 @@ app = Flask(__name__)
 # =========================
 # CONFIG
 # =========================
-SHEET_ID = os.getenv("SHEET_ID", "").strip()
-SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
+SHEET_ID = os.environ.get("SHEET_ID", "").strip()
+SHEET_TAB = os.environ.get("SHEET_TAB", "Lancamentos").strip()
 
-# Render Secret Files geralmente ficam em /etc/secrets/<nome>
-CREDS_PATH = os.getenv("GOOGLE_CREDS_PATH", "/etc/secrets/google_creds.json")
+# Render Secret File: /etc/secrets/google_creds.json
+CREDS_PATH = os.environ.get("GOOGLE_CREDS_PATH", "/etc/secrets/google_creds.json")
 
-# Colunas esperadas (header)
-HEADERS = ["Data", "Tipo", "Categoria", "Descrição", "Valor"]
+# Escopos necessários p/ ler e escrever em Google Sheets
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+_client = None
+_ws = None
 
 
 # =========================
 # HELPERS
 # =========================
-def parse_data_br(s: str) -> date:
+def _fail(msg: str, code: int = 400):
+    return jsonify({"ok": False, "msg": msg}), code
+
+
+def _parse_ddmmyyyy(s: str) -> date:
     """
-    Aceita:
-      - dd/mm/aaaa
-      - aaaa-mm-dd
-      - datetime string com esses padrões dentro
+    Aceita 'dd/mm/aaaa'. Se vazio, usa hoje.
     """
     if not s:
-        raise ValueError("data vazia")
+        return datetime.now().date()
 
-    s = str(s).strip()
-
-    # dd/mm/aaaa
+    s = s.strip()
     m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
-    if m:
-        dd, mm, yyyy = map(int, m.groups())
-        return date(yyyy, mm, dd)
+    if not m:
+        # tenta ISO 'yyyy-mm-dd'
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            raise ValueError("Data inválida. Use dd/mm/aaaa.")
 
-    # aaaa-mm-dd
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", s)
-    if m:
-        yyyy, mm, dd = map(int, m.groups())
-        return date(yyyy, mm, dd)
-
-    # tenta pegar dd/mm/aaaa dentro do texto
-    m = re.search(r"(\d{2})/(\d{2})/(\d{4})", s)
-    if m:
-        dd, mm, yyyy = map(int, m.groups())
-        return date(yyyy, mm, dd)
-
-    # tenta pegar aaaa-mm-dd dentro do texto
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", s)
-    if m:
-        yyyy, mm, dd = map(int, m.groups())
-        return date(yyyy, mm, dd)
-
-    raise ValueError(f"formato de data inválido: {s}")
+    dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return date(yyyy, mm, dd)
 
 
-def parse_float(v) -> float:
-    # aceita 120, "120", "120,50", "1.200,50"
+def _to_float(v: Any) -> float:
+    """
+    Converte valor vindo da planilha (string) para float.
+    Aceita: '120', '120.5', '120,50', 'R$ 120,50'
+    """
     if v is None:
         return 0.0
     if isinstance(v, (int, float)):
         return float(v)
-    v = str(v).strip()
-    if not v:
+    s = str(v).strip()
+    if not s:
         return 0.0
-    v = v.replace(".", "").replace(",", ".")
+
+    s = s.replace("R$", "").strip()
+    s = s.replace(".", "").replace(",", ".")  # pt-BR para float
+    # remove qualquer coisa que não seja número, ponto ou sinal
+    s = re.sub(r"[^0-9\.\-]", "", s)
     try:
-        return float(v)
+        return float(s)
     except Exception:
         return 0.0
 
 
-def norm_tipo(t: str) -> str:
-    t = (t or "").strip().lower()
-    if "rece" in t:
-        return "Receita"
-    return "Gasto"
-
-
-def pick(row: dict, *keys):
-    for k in keys:
-        if k in row:
-            return row.get(k)
-    return None
-
-
-# =========================
-# GOOGLE SHEETS
-# =========================
-_client = None
-
-
-def get_sheet():
-    global _client
+def _get_ws():
+    """
+    Abre a worksheet (aba) uma vez e reutiliza.
+    """
+    global _client, _ws
 
     if not SHEET_ID:
-        raise RuntimeError("SHEET_ID não configurado nas Environment Variables.")
-    if not os.path.exists(CREDS_PATH):
-        raise RuntimeError(
-            f"Arquivo de credenciais não encontrado em {CREDS_PATH}. "
-            f"Crie o Secret File google_creds.json no Render."
-        )
+        raise RuntimeError("SHEET_ID não definido nas variáveis do Render.")
+    if not SHEET_TAB:
+        raise RuntimeError("SHEET_TAB não definido nas variáveis do Render.")
 
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_file(CREDS_PATH, scopes=scopes)
+    if _ws is not None:
+        return _ws
 
     if _client is None:
+        if not os.path.exists(CREDS_PATH):
+            raise RuntimeError(f"Arquivo de credenciais não encontrado em {CREDS_PATH}")
+
+        creds = Credentials.from_service_account_file(CREDS_PATH, scopes=SCOPES)
         _client = gspread.authorize(creds)
 
     sh = _client.open_by_key(SHEET_ID)
-    ws = sh.worksheet(SHEET_TAB)
+    _ws = sh.worksheet(SHEET_TAB)
+    return _ws
 
-    # garante cabeçalho na linha 1
-    first_row = ws.row_values(1)
-    if [c.strip() for c in first_row] != HEADERS:
-        if len(first_row) == 0:
-            ws.insert_row(HEADERS, 1)
+
+def _ensure_header(ws):
+    """
+    Garante que a primeira linha tenha os cabeçalhos corretos.
+    """
+    expected = ["Data", "Tipo", "Categoria", "Descrição", "Valor"]
+    first = ws.row_values(1)
+
+    if [c.strip() for c in first[:5]] != expected:
+        # se estiver vazio, cria cabeçalho
+        if len(first) == 0:
+            ws.append_row(expected)
         else:
-            # se tem algo diferente, tenta sobrescrever a linha 1
-            ws.update("A1:E1", [HEADERS])
+            # tenta corrigir só se a planilha estiver "quase"
+            ws.update("A1:E1", [expected])
 
-    return ws
+
+def _fetch_rows(ws) -> List[Dict[str, Any]]:
+    """
+    Lê todas as linhas (exceto cabeçalho) e devolve lista de dicts.
+    """
+    values = ws.get_all_values()  # inclui cabeçalho
+    if not values or len(values) < 2:
+        return []
+
+    header = values[0]
+    rows = values[1:]
+
+    # garante colunas mínimas
+    # Data, Tipo, Categoria, Descrição, Valor
+    out = []
+    for r in rows:
+        # pad para 5 colunas
+        r = (r + ["", "", "", "", ""])[:5]
+        item = {
+            "Data": r[0].strip(),
+            "Tipo": r[1].strip(),
+            "Categoria": r[2].strip(),
+            "Descrição": r[3].strip(),
+            "Valor": _to_float(r[4]),
+        }
+        # ignora linhas totalmente vazias
+        if any([item["Data"], item["Tipo"], item["Categoria"], item["Descrição"], item["Valor"]]):
+            out.append(item)
+    return out
+
+
+def _month_key(d: date) -> Tuple[int, int]:
+    return (d.year, d.month)
+
+
+def _group_category_sum(items: List[Dict[str, Any]]) -> Tuple[List[str], List[float]]:
+    """
+    Soma por categoria (case-insensitive), mantendo o primeiro nome visto.
+    Ordena por maior valor.
+    """
+    sums: Dict[str, float] = {}
+    display: Dict[str, str] = {}
+
+    for it in items:
+        cat_raw = (it.get("Categoria") or "").strip()
+        if not cat_raw:
+            cat_raw = "Sem categoria"
+        key = cat_raw.lower()
+
+        if key not in display:
+            display[key] = cat_raw
+        sums[key] = sums.get(key, 0.0) + float(it.get("Valor") or 0.0)
+
+    # ordena desc
+    pairs = sorted(sums.items(), key=lambda kv: kv[1], reverse=True)
+
+    labels = [display[k] for k, _ in pairs]
+    values = [round(v, 2) for _, v in pairs]
+    return labels, values
 
 
 # =========================
 # ROUTES
 # =========================
-@app.get("/")
-def home():
-    return render_template("index.html")
-
-
-@app.post("/lancar")
-def lancar():
-    data = request.get_json(silent=True) or {}
-
-    tipo = norm_tipo(data.get("tipo"))
-    categoria = str(data.get("categoria") or "").strip()
-    descricao = str(data.get("descricao") or "").strip()
-    valor = parse_float(data.get("valor"))
-
-    data_txt = str(data.get("data") or "").strip()
-
-    if not categoria or not descricao or valor <= 0:
-        return jsonify({"ok": False, "msg": "Preencha categoria, descrição e valor (> 0)."}), 400
-
-    # se não veio data, usa hoje
-    if not data_txt:
-        data_txt = datetime.now().strftime("%d/%m/%Y")
-
-    # valida data
-    try:
-        d = parse_data_br(data_txt)
-        data_txt = d.strftime("%d/%m/%Y")
-    except Exception:
-        return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
-
-    ws = get_sheet()
-
-    # grava no final
-    ws.append_row([data_txt, tipo, categoria, descricao, float(valor)], value_input_option="USER_ENTERED")
-
-    return jsonify({"ok": True})
-
-
-@app.get("/ultimos")
-def ultimos():
-    ws = get_sheet()
-    rows = ws.get_all_records()  # lista de dicts
-
-    # transforma e normaliza
-    arr = []
-    for r in rows:
-        data_txt = pick(r, "Data", "data")
-        if not data_txt:
-            continue
-        try:
-            d = parse_data_br(str(data_txt))
-        except Exception:
-            continue
-
-        tipo = norm_tipo(pick(r, "Tipo", "tipo") or "")
-        categoria = str(pick(r, "Categoria", "categoria") or "")
-        descricao = str(pick(r, "Descrição", "Descricao", "descricao") or "")
-        valor = parse_float(pick(r, "Valor", "valor"))
-
-        arr.append(
-            {
-                "Data": d.strftime("%d/%m/%Y"),
-                "Tipo": tipo,
-                "Categoria": categoria,
-                "Descrição": descricao,
-                "Valor": valor,
-                "_ts": d.toordinal(),  # pra ordenar
-            }
-        )
-
-    # ordena por data
-    arr.sort(key=lambda x: x["_ts"])
-
-    # pega últimos 10
-    last10 = arr[-10:]
-    for x in last10:
-        x.pop("_ts", None)
-
-    return jsonify(last10)
-
-
-@app.get("/resumo")
-def resumo():
-    """
-    /resumo?mes=YYYY-MM (ex: 2026-02)
-    Se não passar, usa mês atual.
-    Retorna também pizza por categoria (gastos e receitas separados).
-    """
-    mes = request.args.get("mes")
-    hoje = datetime.now().date()
-
-    if not mes:
-        mes = hoje.strftime("%Y-%m")
-
-    try:
-        ano, mm = mes.split("-")
-        ano = int(ano)
-        mm = int(mm)
-    except Exception:
-        return jsonify({"ok": False, "msg": "mes inválido. Use YYYY-MM"}), 400
-
-    ws = get_sheet()
-    dados = ws.get_all_records()
-
-    do_mes = []
-    for r in dados:
-        data_txt = pick(r, "Data", "data")
-        if not data_txt:
-            continue
-
-        try:
-            d = parse_data_br(str(data_txt))
-        except Exception:
-            continue
-
-        if d.year == ano and d.month == mm:
-            tipo = norm_tipo(pick(r, "Tipo", "tipo") or "")
-            valor = parse_float(pick(r, "Valor", "valor"))
-            categoria = str(pick(r, "Categoria", "categoria") or "").strip() or "Sem categoria"
-            descricao = str(pick(r, "Descrição", "Descricao", "descricao") or "")
-
-            do_mes.append(
-                {
-                    "data": d.strftime("%d/%m/%Y"),
-                    "tipo": tipo,  # Receita/Gasto
-                    "categoria": categoria,
-                    "descricao": descricao,
-                    "valor": float(valor),
-                    "_d": d,
-                }
-            )
-
-    entradas = sum(x["valor"] for x in do_mes if x["tipo"] == "Receita")
-    saidas = sum(x["valor"] for x in do_mes if x["tipo"] == "Gasto")
-    saldo = entradas - saidas
-
-    # ===== Série por dia =====
-    por_dia = {}
-    for x in do_mes:
-        dia = x["_d"].day  # int
-        por_dia.setdefault(dia, {"receita": 0.0, "gasto": 0.0})
-        if x["tipo"] == "Receita":
-            por_dia[dia]["receita"] += x["valor"]
-        else:
-            por_dia[dia]["gasto"] += x["valor"]
-
-    dias = sorted(por_dia.keys())
-    dias_labels = [f"{d:02d}" for d in dias]
-    serie_receita = [por_dia[d]["receita"] for d in dias]
-    serie_gasto = [por_dia[d]["gasto"] for d in dias]
-
-    # ===== Pizza por categoria (separado) =====
-    gastos_cat = {}
-    receitas_cat = {}
-
-    for x in do_mes:
-        cat = x["categoria"] or "Sem categoria"
-        if x["tipo"] == "Gasto":
-            gastos_cat[cat] = gastos_cat.get(cat, 0.0) + x["valor"]
-        else:
-            receitas_cat[cat] = receitas_cat.get(cat, 0.0) + x["valor"]
-
-    # ordena do maior pro menor (fica bonito na pizza)
-    gastos_ord = sorted(gastos_cat.items(), key=lambda kv: kv[1], reverse=True)
-    receitas_ord = sorted(receitas_cat.items(), key=lambda kv: kv[1], reverse=True)
-
-    pizza_gastos_labels = [k for k, _ in gastos_ord]
-    pizza_gastos_values = [v for _, v in gastos_ord]
-
-    pizza_receitas_labels = [k for k, _ in receitas_ord]
-    pizza_receitas_values = [v for _, v in receitas_ord]
-
-    # ===== últimos 10 do mês =====
-    do_mes.sort(key=lambda x: x["_d"])
-    ultimos = do_mes[-10:]
-    for x in ultimos:
-        x.pop("_d", None)
-
-    return jsonify(
-        {
-            "mes": mes,
-            "entradas": entradas,
-            "saidas": saidas,
-            "saldo": saldo,
-            "dias": dias_labels,
-            "serie_receita": serie_receita,
-            "serie_gasto": serie_gasto,
-            "ultimos": ultimos,
-            "qtd": len(do_mes),
-            # pizzas
-            "pizza_gastos_labels": pizza_gastos_labels,
-            "pizza_gastos_values": pizza_gastos_values,
-            "pizza_receitas_labels": pizza_receitas_labels,
-            "pizza_receitas_values": pizza_receitas_values,
-        }
-    )
-
-
-# healthcheck opcional
 @app.get("/health")
 def health():
     return jsonify({"ok": True})
 
 
-if __name__ == "__main__":
-    # local
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+@app.get("/")
+def home():
+    # precisa existir: templates/index.html
+    return render_template("index.html")
+
+
+@app.post("/lancar")
+def lancar():
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return _fail("JSON inválido.")
+
+    tipo = (data.get("tipo") or "").strip()
+    categoria = (data.get("categoria") or "").strip()
+    descricao = (data.get("descricao") or "").strip()
+    valor = data.get("valor")
+    data_str = (data.get("data") or "").strip()  # dd/mm/aaaa
+
+    if tipo not in ["Gasto", "Receita"]:
+        return _fail("Campo 'tipo' deve ser 'Gasto' ou 'Receita'.")
+    if not categoria:
+        return _fail("Informe a categoria.")
+    if not descricao:
+        return _fail("Informe a descrição.")
+
+    try:
+        valor_f = float(valor)
+    except Exception:
+        valor_f = _to_float(valor)
+    if valor_f <= 0:
+        return _fail("Valor deve ser maior que zero.")
+
+    try:
+        d = _parse_ddmmyyyy(data_str)
+        data_fmt = d.strftime("%d/%m/%Y")
+    except Exception as e:
+        return _fail(str(e))
+
+    try:
+        ws = _get_ws()
+        _ensure_header(ws)
+
+        # append: Data, Tipo, Categoria, Descrição, Valor
+        ws.append_row([data_fmt, tipo, categoria, descricao, f"{valor_f:.2f}"])
+        return jsonify({"ok": True})
+    except Exception as e:
+        return _fail(f"Erro ao salvar na planilha: {e}", 500)
+
+
+@app.get("/ultimos")
+def ultimos():
+    try:
+        ws = _get_ws()
+        _ensure_header(ws)
+        rows = _fetch_rows(ws)
+
+        # últimos 10 (pela ordem em que estão na planilha)
+        last = rows[-10:]
+        # devolve como lista (front já sabe lidar)
+        # mantém 'Valor' numérico
+        return jsonify(last)
+    except Exception as e:
+        return _fail(f"Erro ao ler planilha: {e}", 500)
+
+
+@app.get("/resumo")
+def resumo():
+    """
+    Retorna:
+      entradas, saidas, saldo,
+      dias, serie_receita, serie_gasto,
+      pizza_gastos_labels, pizza_gastos_values,
+      pizza_receitas_labels, pizza_receitas_values
+    """
+    try:
+        ws = _get_ws()
+        _ensure_header(ws)
+        rows = _fetch_rows(ws)
+
+        hoje = datetime.now().date()
+        y, m = hoje.year, hoje.month
+        days_in_month = calendar.monthrange(y, m)[1]
+
+        # Filtra só lançamentos do mês atual
+        month_items = []
+        for it in rows:
+            try:
+                d = _parse_ddmmyyyy(it.get("Data", ""))
+            except Exception:
+                continue
+            if _month_key(d) == (y, m):
+                it2 = dict(it)
+                it2["_date"] = d
+                month_items.append(it2)
+
+        # totais
+        entradas = sum(i["Valor"] for i in month_items if (i.get("Tipo") or "").lower().startswith("rece"))
+        saidas = sum(i["Valor"] for i in month_items if (i.get("Tipo") or "").lower().startswith("gas"))
+        saldo = entradas - saidas
+
+        # séries por dia (1..days_in_month)
+        serie_receita = [0.0] * days_in_month
+        serie_gasto = [0.0] * days_in_month
+
+        for it in month_items:
+            d: date = it["_date"]
+            idx = d.day - 1
+            if idx < 0 or idx >= days_in_month:
+                continue
+            tipo = (it.get("Tipo") or "").lower()
+            if tipo.startswith("rece"):
+                serie_receita[idx] += float(it["Valor"])
+            elif tipo.startswith("gas"):
+                serie_gasto[idx] += float(it["Valor"])
+
+        serie_receita = [round(v, 2) for v in serie_receita]
+        serie_gasto = [round(v, 2) for v in serie_gasto]
+        dias = list(range(1, days_in_month + 1))
+
+        # pizzas (por categoria) separadas
+        gastos_items = [i for i in month_items if (i.get("Tipo") or "").lower().startswith("gas")]
+        receitas_items = [i for i in month_items if (i.get("Tipo") or "").lower().startswith("rece")]
+
+        pizza_gastos_labels, pizza_gastos_values = _group_category_sum(gastos_items)
+        pizza_receitas_labels, pizza_receitas_values = _group_category_sum(receitas_items)
+
+        return jsonify({
+            "entradas": round(entradas, 2),
+            "saidas": round(saidas, 2),
+            "saldo": round(saldo, 2),
+
+            "dias": dias,
+            "serie_receita": serie_receita,
+            "serie_gasto": serie_gasto,
+
+            # pizzas
+            "pizza_gastos_labels": pizza_gastos_labels,
+            "pizza_gastos_values": pizza_gastos_values,
+            "pizza_receitas_labels": pizza_receitas_labels,
+            "pizza_receitas_values": pizza_receitas_values,
+        })
+
+    except Exception as e:
+        return _fail(f"Erro no /resumo: {e}", 500)
+
+
+# Importante: no Render você roda via gunicorn (Procfile),
+# então NÃO precisa app.run() aqui.
+# Se quiser testar local:
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=5000, debug=True)
