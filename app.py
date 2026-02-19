@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -18,7 +18,7 @@ def get_sheet():
 
 @app.get("/")
 def home():
-    return "Finance AI online!"
+    return render_template("index.html")
 
 @app.post("/lancar")
 def lancar():
@@ -45,4 +45,5 @@ def ultimos():
     sh = get_sheet()
     dados = sh.get_all_records()
     return jsonify(dados[-10:])
+
 
