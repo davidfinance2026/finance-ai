@@ -243,6 +243,133 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
+  let chartPizzaGastos;
+  let chartPizzaReceitas;
+
+  function brl(n){
+    const v = Number(n || 0);
+    return v.toLocaleString("pt-BR", {
+      style:"currency",
+      currency:"BRL"
+    });
+  }
+
+  // ============================
+  // PALETAS FIXAS
+  // ============================
+
+  const PIE_REDS = [
+    "rgba(255,90,106,0.95)",
+    "rgba(255,90,106,0.80)",
+    "rgba(255,90,106,0.65)",
+    "rgba(255,90,106,0.50)",
+    "rgba(255,90,106,0.35)",
+    "rgba(255,90,106,0.25)"
+  ];
+
+  const PIE_BLUES = [
+    "rgba(79,140,255,0.95)",
+    "rgba(79,140,255,0.80)",
+    "rgba(79,140,255,0.65)",
+    "rgba(79,140,255,0.50)",
+    "rgba(79,140,255,0.35)",
+    "rgba(79,140,255,0.25)"
+  ];
+
+  function getColors(palette, n){
+    const arr = [];
+    for(let i=0;i<n;i++){
+      arr.push(palette[i % palette.length]);
+    }
+    return arr;
+  }
+
+  function donutOptions(){
+    return {
+      responsive:true,
+      maintainAspectRatio:false,
+      cutout:"70%",
+      plugins:{
+        legend:{
+          position:"top",
+          labels:{
+            color:"rgba(234,240,255,.9)"
+          }
+        },
+        tooltip:{
+          callbacks:{
+            label:(tt)=>{
+              const label = tt.label || "";
+              const value = Number(tt.parsed || 0);
+              return `${label}: ${brl(value)}`;
+            }
+          }
+        }
+      }
+    };
+  }
+
+  // ============================
+  // FUNÇÃO PRINCIPAL DAS PIZZAS
+  // ============================
+
+  function atualizarPizzas(j){
+
+    // ===== GASTOS (VERMELHO) =====
+    const labelsG = j.pizza_gastos_labels || [];
+    const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
+
+    const ctxG = document.getElementById("pizzaGastos");
+    if(ctxG){
+
+      if(chartPizzaGastos) chartPizzaGastos.destroy();
+
+      chartPizzaGastos = new Chart(ctxG, {
+        type:"doughnut",
+        data:{
+          labels: labelsG.length ? labelsG : ["Sem dados"],
+          datasets:[{
+            data: valuesG.length ? valuesG : [1],
+            backgroundColor: labelsG.length 
+              ? getColors(PIE_REDS, labelsG.length)
+              : ["rgba(255,90,106,0.20)"],
+            borderColor:"rgba(255,255,255,0.08)",
+            borderWidth:1
+          }]
+        },
+        options: donutOptions()
+      });
+    }
+
+    // ===== RECEITAS (AZUL) =====
+    const labelsR = j.pizza_receitas_labels || [];
+    const valuesR = (j.pizza_receitas_values || []).map(v=>Number(v||0));
+
+    const ctxR = document.getElementById("pizzaReceitas");
+    if(ctxR){
+
+      if(chartPizzaReceitas) chartPizzaReceitas.destroy();
+
+      chartPizzaReceitas = new Chart(ctxR, {
+        type:"doughnut",
+        data:{
+          labels: labelsR.length ? labelsR : ["Sem dados"],
+          datasets:[{
+            data: valuesR.length ? valuesR : [1],
+            backgroundColor: labelsR.length 
+              ? getColors(PIE_BLUES, labelsR.length)
+              : ["rgba(79,140,255,0.20)"],
+            borderColor:"rgba(255,255,255,0.08)",
+            borderWidth:1
+          }]
+        },
+        options: donutOptions()
+      });
+    }
+  }
+</script>
+
+  <script>
     let tipoAtual = "Gasto";
     let chartMov, chartPizzaGastos, chartPizzaReceitas;
 
