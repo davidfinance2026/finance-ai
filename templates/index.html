@@ -543,25 +543,117 @@
       });
     }
 
-    async function carregarTudo(){
-      try{ await carregarResumo(); }catch(e){ console.log(e); }
-      try{ await carregarUltimos(); }catch(e){
-        document.getElementById("lista").innerHTML = `
-          <div class="item">
-            <div class="left">
-              <div class="icon">!</div>
-              <div class="meta"><b>Erro ao carregar</b><span>${e.message}</span></div>
-            </div>
-          </div>`;
-      }
-    }
+    async function excluirLancamento(row){
+  if(!confirm("Excluir este lançamento?")) return;
 
-    // INIT
-    (function init(){
-      const d = new Date();
-      const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-      document.getElementById("data").value = iso;
-    })();
-  </script>
-</body>
-</html>
+  try{
+    const r = await fetch(`/lancamento/${row}`, { method:"DELETE" });
+    const j = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
+    await carregarTudo();
+  }catch(e){
+    alert("❌ " + e.message);
+  }
+}
+
+async function editarLancamento(item){
+  // item vem com _row, Data, Tipo, Categoria, Descrição, Valor
+  const row = item._row;
+
+  const tipo = prompt("Tipo (Gasto ou Receita):", item.Tipo || item.tipo || item["Tipo"] || "Gasto");
+  if(!tipo) return;
+
+  const categoria = prompt("Categoria:", item.Categoria || item.categoria || item["Categoria"] || "");
+  if(!categoria) return;
+
+  const descricao = prompt("Descrição:", item["Descrição"] || item.Descricao || item.descricao || "");
+  if(!descricao) return;
+
+  const valorStr = prompt("Valor (ex: 120.50):", (item.Valor ?? item.valor ?? "").toString());
+  if(!valorStr) return;
+
+  const dataStr = prompt("Data (dd/mm/aaaa):", item.Data || item.data || item["Data"] || "");
+  if(!dataStr) return;
+
+  const payload = {
+    tipo: tipo.trim(),
+    categoria: categoria.trim(),
+    descricao: descricao.trim(),
+    valor: Number(valorStr),
+    data: dataStr.trim()
+  };
+
+  try{
+    const r = await fetch(`/lancamento/${row}`, {
+      method:"PATCH",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json().catch(()=> ({}));
+    if(!r.ok) throw new Error(j?.msg || "Erro ao editar");
+    await carregarTudo();
+  }catch(e){
+    alert("❌ " + e.message);
+  }
+}
+
+async function carregarUltimos(){
+  const lista = document.getElementById("lista");
+  lista.innerHTML = `
+    <div class="item">
+      <div class="left">
+        <div class="icon">…</div>
+        <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
+      </div>
+    </div>`;
+
+  const r = await fetch("/ultimos");
+  if(!r.ok) throw new Error("Falha em /ultimos");
+  const arr = await r.json();
+
+  lista.innerHTML = "";
+
+  if(!Array.isArray(arr) || arr.length === 0){
+    lista.innerHTML = `
+      <div class="item">
+        <div class="left">
+          <div class="icon">∅</div>
+          <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Mostra do mais recente pro mais antigo
+  arr.slice().reverse().forEach(item => {
+    const tipo = getField(item, ["Tipo","tipo"]);
+    const categoria = getField(item, ["Categoria","categoria"]);
+    const descricao = getField(item, ["Descrição","Descricao","descricao"]);
+    const data = getField(item, ["Data","data"]);
+    const valor = getField(item, ["Valor","valor"]);
+    const row = item._row;
+
+    lista.innerHTML += `
+      <div class="item">
+        <div class="left">
+          <div class="icon">${iconFor(item)}</div>
+          <div class="meta">
+            <b>${tipo} • ${categoria}</b>
+            <span>${descricao} • ${data}</span>
+            <span style="margin-top:8px; display:flex; gap:8px;">
+              <button class="btn secondary" style="padding:8px 10px; border-radius:12px;"
+                onclick='editarLancamento(${JSON.stringify(item).replace(/'/g,"&#39;")})'>
+                Editar
+              </button>
+              <button class="btn secondary" style="padding:8px 10px; border-radius:12px; border-color: rgba(255,90,106,.35);"
+                onclick="excluirLancamento(${row})">
+                Excluir
+              </button>
+            </span>
+          </div>
+        </div>
+        <div class="value ${valueClass(item)}">${brl(valor)}</div>
+      </div>
+    `;
+  });
+}
