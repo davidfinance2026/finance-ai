@@ -32,20 +32,11 @@
       display:flex;
       justify-content:center;
     }
-    .app{
-      width:min(520px, 100%);
-      padding-bottom:18px;
-    }
-    .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin-bottom:14px;
-    }
-    .brand{display:flex; flex-direction:column; line-height:1.1;}
-    .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
-    .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
+    .app{ width:min(520px, 100%); padding-bottom:18px; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .brand{ display:flex; flex-direction:column; line-height:1.1; }
+    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
+    .brand span{ color:var(--muted); font-size:13px; margin-top:4px; }
     .pill{
       padding:10px 12px;
       border:1px solid var(--border);
@@ -58,7 +49,7 @@
       gap:8px;
       user-select:none;
     }
-    .tabs{display:flex; gap:10px; margin:14px 0;}
+    .tabs{ display:flex; gap:10px; margin:14px 0; }
     .tab{
       flex:1;
       padding:12px 12px;
@@ -82,8 +73,8 @@
       box-shadow:var(--shadow);
       padding:16px;
     }
-    .row{display:flex; gap:10px;}
-    .row > *{flex:1}
+    .row{ display:flex; gap:10px; }
+    .row > *{ flex:1; }
     label{
       display:block;
       margin-top:12px;
@@ -103,7 +94,7 @@
       color:var(--text);
       outline:none;
     }
-    input::placeholder{color:rgba(159,176,218,.65)}
+    input::placeholder{ color:rgba(159,176,218,.65); }
     .seg{
       display:flex;
       gap:10px;
@@ -123,11 +114,8 @@
       font-weight:800;
       cursor:pointer;
     }
-    .seg button.active{
-      background:rgba(79,140,255,.25);
-      color:var(--text);
-    }
-    .actions{display:flex; gap:10px; margin-top:14px;}
+    .seg button.active{ background:rgba(79,140,255,.25); color:var(--text); }
+    .actions{ display:flex; gap:10px; margin-top:14px; }
     .btn{
       border:0;
       border-radius:16px;
@@ -153,8 +141,8 @@
       background: rgba(15,23,48,.6);
       display:none;
     }
-    .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
-    .msg.err{display:block; border-color: rgba(255,90,106,.35); }
+    .msg.ok{ display:block; border-color: rgba(33,192,122,.35); }
+    .msg.err{ display:block; border-color: rgba(255,90,106,.35); }
 
     .cards{
       display:grid;
@@ -184,6 +172,8 @@
       font-size:14px;
       white-space:nowrap;
     }
+    .mini-card .value.pos{ color:#7dffbf; }
+    .mini-card .value.neg{ color:#ff9aa5; }
 
     .chart-card{ margin-top: 14px; }
     #grafico{
@@ -208,7 +198,7 @@
       justify-content:space-between;
       gap:10px;
     }
-    .left{display:flex; gap:10px; align-items:flex-start;}
+    .left{ display:flex; gap:10px; align-items:flex-start; }
     .icon{
       width:38px; height:38px;
       border-radius:14px;
@@ -220,23 +210,18 @@
       color:var(--text);
       flex:0 0 auto;
     }
-    .meta b{display:block; font-size:14px}
-    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
+    .meta b{ display:block; font-size:14px; }
+    .meta span{ display:block; color:var(--muted); font-size:12px; margin-top:4px; }
     .value{
       text-align:right;
       font-weight:900;
       font-size:14px;
       white-space:nowrap;
     }
-    .value.green{color: #7dffbf}
-    .value.red{color: #ff9aa5}
+    .value.green{ color: #7dffbf; }
+    .value.red{ color: #ff9aa5; }
 
-    .hint{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:12px;
-      opacity:.9;
-    }
+    .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
   </style>
 </head>
 
@@ -290,7 +275,6 @@
 
     <!-- TELA ÚLTIMOS -->
     <div class="card" id="screen-ultimos" style="display:none;">
-      <!-- cards resumo -->
       <div class="cards">
         <div class="mini-card">
           <div class="label">Entradas (mês)</div>
@@ -306,7 +290,6 @@
         </div>
       </div>
 
-      <!-- gráfico -->
       <div class="card chart-card" style="margin-top:12px;">
         <div class="label" style="margin:0 0 10px 0; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; font-size:12px;">
           Movimento do mês (barras) + Saldo acumulado (linha)
@@ -324,8 +307,8 @@
     </div>
   </div>
 
-  <!-- IMPORTANTE: Chart.js precisa vir ANTES do script que cria o gráfico -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- trava versão moderna do Chart.js (importante!) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
   <script>
     let tipoAtual = "Gasto";
@@ -393,7 +376,7 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO) // dd/mm/aaaa (se seu backend aceitar)
+        data: formatBRfromISO(dataISO)
       };
 
       try{
@@ -434,6 +417,24 @@
       return "";
     }
 
+    // plugin para desenhar a linha do zero (2)
+    const zeroLine = {
+      id: "zeroLine",
+      afterDraw(chart){
+        const {ctx, scales:{y}} = chart;
+        if(!y) return;
+        const yZero = y.getPixelForValue(0);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(chart.chartArea.left, yZero);
+        ctx.lineTo(chart.chartArea.right, yZero);
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+
     // =========================
     // RESUMO + GRÁFICO (1,2,3)
     // =========================
@@ -444,7 +445,14 @@
 
       document.getElementById("entradas").innerText = brl(j.entradas);
       document.getElementById("saidas").innerText   = brl(j.saidas);
-      document.getElementById("saldo").innerText    = brl(j.saldo);
+
+      const saldoEl = document.getElementById("saldo");
+      saldoEl.innerText = brl(j.saldo);
+
+      // (3) saldo do card muda cor
+      saldoEl.classList.remove("pos","neg");
+      if(Number(j.saldo || 0) >= 0) saldoEl.classList.add("pos");
+      else saldoEl.classList.add("neg");
 
       atualizarGrafico(j);
     }
@@ -455,18 +463,21 @@
       const ctx = canvas.getContext("2d");
 
       const dias = (j.dias || []);
-      const rec  = (j.serie_receita || []).map(v => Number(v || 0)); // +
-      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));   // +
-      const gas  = gasP.map(v => -v); // (1) espelho: gastos abaixo
+      const rec  = (j.serie_receita || []).map(v => Number(v || 0));
+      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
+      const gas  = gasP.map(v => -v);
 
-      // (2) saldo acumulado por dia
+      // saldo acumulado
       let acc = 0;
       const saldoAcum = dias.map((_, i) => {
         acc += (rec[i] || 0) - (gasP[i] || 0);
         return acc;
       });
 
-      // degradês para barras
+      // (1) cores ponto a ponto
+      const lineColors = saldoAcum.map(v => v >= 0 ? "rgba(33,192,122,1)" : "rgba(255,90,106,1)");
+      const pointBg    = saldoAcum.map(v => v >= 0 ? "rgba(33,192,122,1)" : "rgba(255,90,106,1)");
+
       const gradRec = ctx.createLinearGradient(0, 0, 0, 260);
       gradRec.addColorStop(0, "rgba(79,140,255,0.70)");
       gradRec.addColorStop(1, "rgba(79,140,255,0.12)");
@@ -478,10 +489,10 @@
       if(chart) chart.destroy();
 
       chart = new Chart(ctx, {
+        plugins: [zeroLine],
         data: {
           labels: dias,
           datasets: [
-            // (3) barras
             {
               type: "bar",
               label: "Receitas",
@@ -494,24 +505,24 @@
             {
               type: "bar",
               label: "Gastos",
-              data: gas, // negativo p/ ficar abaixo
+              data: gas,
               backgroundColor: gradGas,
               borderRadius: 10,
               barPercentage: 0.9,
               categoryPercentage: 0.8
             },
-            // (2) linha do saldo acumulado
             {
               type: "line",
               label: "Saldo acumulado",
               data: saldoAcum,
-              borderColor: "rgba(33,192,122,1)",
-              backgroundColor: "rgba(33,192,122,0.18)",
-              fill: false,
+              borderWidth: 2,
               tension: 0.35,
               pointRadius: 2,
               pointHoverRadius: 5,
-              borderWidth: 2
+              fill: false,
+              borderColor: lineColors,
+              pointBackgroundColor: pointBg,
+              pointBorderColor: pointBg
             }
           ]
         },
@@ -521,11 +532,7 @@
           interaction: { mode: "index", intersect: false },
           plugins: {
             legend: {
-              labels: {
-                color: "rgba(234,240,255,.9)",
-                boxWidth: 12,
-                boxHeight: 12
-              }
+              labels: { color: "rgba(234,240,255,.9)", boxWidth: 12, boxHeight: 12 }
             },
             tooltip: {
               backgroundColor: "rgba(15, 23, 48, 0.95)",
@@ -537,8 +544,6 @@
                 label: (tt) => {
                   const label = tt.dataset.label || "";
                   const y = Number(tt.parsed.y || 0);
-
-                  // mostrar gasto como positivo no tooltip
                   if(label.toLowerCase().includes("gasto")) return `${label}: ${brl(Math.abs(y))}`;
                   return `${label}: ${brl(y)}`;
                 }
@@ -551,10 +556,10 @@
               grid: { color: "rgba(255,255,255,0.05)" }
             },
             y: {
-              beginAtZero: false, // precisa para espelho (negativo e positivo)
+              beginAtZero: false,
               ticks: {
                 color: "rgba(159,176,218,.85)",
-                callback: (v) => brl(Math.abs(v)) // eixo mostra R$ sempre positivo
+                callback: (v) => brl(Math.abs(v))
               },
               grid: { color: "rgba(255,255,255,0.05)" }
             }
@@ -617,15 +622,8 @@
     }
 
     async function carregarTudo(){
-      try{
-        await carregarResumo();
-      }catch(e){
-        // se /resumo falhar, não trava a tela
-        console.log(e);
-      }
-      try{
-        await carregarUltimos();
-      }catch(e){
+      try{ await carregarResumo(); }catch(e){ console.log(e); }
+      try{ await carregarUltimos(); }catch(e){
         const lista = document.getElementById("lista");
         lista.innerHTML = `
           <div class="item">
@@ -637,7 +635,6 @@
       }
     }
 
-    // set data hoje
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
