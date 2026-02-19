@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finance AI</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --card:#121a33;
+      --card2:#0f1730;
+      --text:#eaf0ff;
+      --muted:#9fb0da;
+      --border:rgba(255,255,255,.08);
+      --blue:#4f8cff;
+      --green:#21c07a;
+      --red:#ff5a6a;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 10% 0%, rgba(79,140,255,.35), transparent 60%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(33,192,122,.25), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      min-height:100vh;
+      padding:18px;
+      display:flex;
+      justify-content:center;
+    }
+    .app{
+      width:min(520px, 100%);
+      padding-bottom:18px;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .brand{
+      display:flex; flex-direction:column; line-height:1.1;
+    }
+    .brand h1{
+      margin:0; font-size:22px; letter-spacing:.2px;
+    }
+    .brand span{
+      color:var(--muted); font-size:13px; margin-top:4px;
+    }
+    .pill{
+      padding:10px 12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      border-radius:999px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+    }
+    .tabs{
+      display:flex;
+      gap:10px;
+      margin:14px 0;
+    }
+    .tab{
+      flex:1;
+      padding:12px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      font-weight:700;
+      cursor:pointer;
+    }
+    .tab.active{
+      background:linear-gradient(180deg, rgba(79,140,255,.25), rgba(79,140,255,.08));
+      color:var(--text);
+      border-color: rgba(79,140,255,.35);
+    }
+
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:16px;
+    }
+    .row{
+      display:flex;
+      gap:10px;
+    }
+    .row > *{flex:1}
+    label{
+      display:block;
+      margin-top:12px;
+      font-weight:700;
+      color:var(--muted);
+      font-size:12px;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+    input, select{
+      width:100%;
+      margin-top:8px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,48,.75);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{color:rgba(159,176,218,.65)}
+    .seg{
+      display:flex;
+      gap:10px;
+      margin-top:10px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--border);
+      padding:6px;
+      border-radius:999px;
+    }
+    .seg button{
+      flex:1;
+      border:0;
+      background:transparent;
+      color:var(--muted);
+      padding:10px 10px;
+      border-radius:999px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .seg button.active{
+      background:rgba(79,140,255,.25);
+      color:var(--text);
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      margin-top:14px;
+    }
+    .btn{
+      border:0;
+      border-radius:16px;
+      padding:12px 12px;
+      font-weight:900;
+      cursor:pointer;
+      color:#061022;
+      background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
+      box-shadow: 0 12px 20px rgba(79,140,255,.22);
+      flex:1;
+    }
+    .btn.secondary{
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border:1px solid var(--border);
+      box-shadow:none;
+    }
+    .msg{
+      margin-top:12px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,48,.6);
+      display:none;
+    }
+    .msg.ok{display:block; border-color: rgba(33,192,122,.35); }
+    .msg.err{display:block; border-color: rgba(255,90,106,.35); }
+
+    .list{
+      margin-top:14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .item{
+      background: rgba(15,23,48,.65);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .left{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .icon{
+      width:38px; height:38px;
+      border-radius:14px;
+      display:grid;
+      place-items:center;
+      font-weight:900;
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--border);
+      color:var(--text);
+      flex:0 0 auto;
+    }
+    .meta b{display:block; font-size:14px}
+    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
+    .value{
+      text-align:right;
+      font-weight:900;
+      font-size:14px;
+      white-space:nowrap;
+    }
+    .value.green{color: #7dffbf}
+    .value.red{color: #ff9aa5}
+
+    .hint{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12px;
+      opacity:.9;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <h1>Finance AI</h1>
+        <span>Controle financeiro • simples e rápido</span>
+      </div>
+      <div class="pill">● Online</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
+      <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
+    </div>
+
+    <!-- TELA LANÇAR -->
+    <div class="card" id="screen-lancar">
+      <div class="seg">
+        <button id="btnGasto" class="active" onclick="setTipo('Gasto')">Gasto</button>
+        <button id="btnReceita" onclick="setTipo('Receita')">Receita</button>
+      </div>
+
+      <label>Categoria</label>
+      <input id="categoria" placeholder="Ex: Alimentação" />
+
+      <label>Descrição</label>
+      <input id="descricao" placeholder="Ex: mercado" />
+
+      <div class="row">
+        <div>
+          <label>Valor</label>
+          <input id="valor" type="number" step="0.01" placeholder="Ex: 120" />
+        </div>
+        <div>
+          <label>Data</label>
+          <input id="data" type="date" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="enviar()">Salvar</button>
+        <button class="btn secondary" onclick="limpar()">Limpar</button>
+      </div>
+
+      <div id="msg" class="msg"></div>
+      <div class="hint">Dica: depois de salvar, abra a aba “Últimos” para ver a lista.</div>
+    </div>
+
+    <!-- TELA ÚLTIMOS -->
+    <div class="card" id="screen-ultimos" style="display:none;">
+      <div class="actions" style="margin-top:0;">
+        <button class="btn secondary" onclick="carregar()">Atualizar</button>
+        <button class="btn" onclick="showTab('lancar')">Novo lançamento</button>
+      </div>
+
+      <div class="list" id="lista"></div>
+      <div class="hint">Mostrando até 10 lançamentos mais recentes.</div>
+    </div>
+  </div>
+
+  <script>
+    let tipoAtual = "Gasto";
+
+    function showTab(tab){
+      document.getElementById("tab1").classList.toggle("active", tab==="lancar");
+      document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
+
+      document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
+      document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
+
+      if(tab==="ultimos") carregar();
+    }
+
+    function setTipo(tipo){
+      tipoAtual = tipo;
+      document.getElementById("btnGasto").classList.toggle("active", tipo==="Gasto");
+      document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
+    }
+
+    function limpar(){
+      document.getElementById("categoria").value = "";
+      document.getElementById("descricao").value = "";
+      document.getElementById("valor").value = "";
+      setMsg("", "");
+    }
+
+    function setMsg(kind, text){
+      const el = document.getElementById("msg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function pad2(n){ return String(n).padStart(2,"0"); }
+    function formatBRfromISO(iso){
+      // iso: yyyy-mm-dd
+      if(!iso) return null;
+      const [y,m,d] = iso.split("-");
+      return `${d}/${m}/${y}`;
+    }
+
+    async function enviar(){
+      setMsg("", "");
+      const categoria = document.getElementById("categoria").value.trim();
+      const descricao = document.getElementById("descricao").value.trim();
+      const valorRaw = document.getElementById("valor").value;
+      const dataISO = document.getElementById("data").value;
+
+      if(!categoria || !descricao || !valorRaw){
+        setMsg("err", "Preencha categoria, descrição e valor.");
+        return;
+      }
+
+      const payload = {
+        tipo: tipoAtual,
+        categoria,
+        descricao,
+        valor: Number(valorRaw),
+        data: formatBRfromISO(dataISO) // opcional (se seu backend ignorar, tudo bem)
+      };
+
+      try{
+        const r = await fetch("/lancar", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await r.json().catch(()=> ({}));
+        if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
+
+        setMsg("ok", "✅ Lançamento salvo!");
+        document.getElementById("descricao").value = "";
+        document.getElementById("valor").value = "";
+        showTab("ultimos");
+      }catch(e){
+        setMsg("err", "❌ " + e.message);
+      }
+    }
+
+    function iconFor(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "⬆";
+      return "⬇";
+    }
+
+    function valueClass(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      if(t.includes("rece")) return "green";
+      return "red";
+    }
+
+    function getField(obj, keys){
+      for(const k of keys){
+        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return "";
+    }
+
+    async function carregar(){
+      const lista = document.getElementById("lista");
+      lista.innerHTML = `<div class="item"><div class="left"><div class="icon">…</div><div class="meta"><b>Carregando</b><span>Aguarde</span></div></div></div>`;
+
+      try{
+        const r = await fetch("/ultimos");
+        const dados = await r.json();
+
+        lista.innerHTML = "";
+        const arr = Array.isArray(dados) ? dados : [];
+
+        if(arr.length === 0){
+          lista.innerHTML = `<div class="item"><div class="left"><div class="icon">∅</div><div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div></div></div>`;
+          return;
+        }
+
+        // Mostra do mais recente para o mais antigo
+        arr.slice().reverse().forEach(item => {
+          const tipo = getField(item, ["Tipo","tipo"]);
+          const categoria = getField(item, ["Categoria","categoria"]);
+          const descricao = getField(item, ["Descrição","Descricao","descricao"]);
+          const data = getField(item, ["Data","data"]);
+          const valor = getField(item, ["Valor","valor"]);
+
+          lista.innerHTML += `
+            <div class="item">
+              <div class="left">
+                <div class="icon">${iconFor(item)}</div>
+                <div class="meta">
+                  <b>${tipo} • ${categoria}</b>
+                  <span>${descricao} • ${data}</span>
+                </div>
+              </div>
+              <div class="value ${valueClass(item)}">R$ ${valor}</div>
+            </div>
+          `;
+        });
+      }catch(e){
+        lista.innerHTML = `<div class="item"><div class="left"><div class="icon">!</div><div class="meta"><b>Erro ao carregar</b><span>${e.message}</span></div></div></div>`;
+      }
+    }
+
+    // set data hoje
+    (function init(){
+      const d = new Date();
+      const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+      document.getElementById("data").value = iso;
+    })();
+  </script>
+</body>
+</html>
