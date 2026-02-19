@@ -6,23 +6,23 @@ from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
-def get_sheet():
+   def get_sheet():
     import gspread
     from google.oauth2.service_account import Credentials
 
-    scope = [
+    scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
+        "https://www.googleapis.com/auth/drive",
     ]
 
     creds = Credentials.from_service_account_file(
         "google_creds.json",
-        scopes=scope
+        scopes=scopes
     )
 
-    client = gspread.authorize(creds)
-    return client.open("Controle Financeiro").sheet1
-    
+    gc = gspread.authorize(creds)
+    return gc.open("Controle Financeiro").sheet1
+ 
 
 @app.get("/")
 def home():
@@ -53,4 +53,5 @@ def ultimos():
 
 # NÃO use app.run() em produção no Render.
 # Gunicorn é quem roda o servidor.
+
 
