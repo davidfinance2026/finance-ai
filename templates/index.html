@@ -1,3 +1,17 @@
+<div class="cards">
+  <div class="card">
+    <div class="label">Entradas (mês)</div>
+    <div class="value" id="entradas">R$ 0,00</div>
+  </div>
+  <div class="card">
+    <div class="label">Saídas (mês)</div>
+    <div class="value" id="saidas">R$ 0,00</div>
+  </div>
+  <div class="card">
+    <div class="label">Saldo (mês)</div>
+    <div class="value" id="saldo">R$ 0,00</div>
+  </div>
+</div>
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -437,3 +451,50 @@
   </script>
 </body>
 </html>
+<script>
+function brl(n){
+  return (n || 0).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
+}
+
+async function carregarResumo(){
+  const r = await fetch("/resumo");
+  const j = await r.json();
+  document.getElementById("entradas").innerText = brl(j.entradas);
+  document.getElementById("saidas").innerText   = brl(j.saidas);
+  document.getElementById("saldo").innerText    = brl(j.saldo);
+  atualizarGrafico(j);
+}
+window.addEventListener("load", carregarResumo);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<div class="card chart-card">
+  <div class="label">Movimento do mês</div>
+  <canvas id="grafico"></canvas>
+</div>
+<script>
+let chart;
+
+function atualizarGrafico(j){
+  const ctx = document.getElementById("grafico");
+  if (!ctx) return;
+
+  const data = {
+    labels: j.dias,
+    datasets: [
+      { label: "Receitas", data: j.serie_receita, tension: 0.35 },
+      { label: "Gastos",   data: j.serie_gasto,   tension: 0.35 }
+    ]
+  };
+
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "line",
+    data,
+    options: {
+      responsive: true,
+      plugins: { legend: { display: true } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+</script>
