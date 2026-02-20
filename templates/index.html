@@ -66,7 +66,7 @@
       display:block; margin-top:12px; font-weight:700;
       color:var(--muted); font-size:12px; letter-spacing:.3px; text-transform:uppercase;
     }
-    input, select{
+    input{
       width:100%; margin-top:8px; padding:12px 12px;
       border-radius:14px; border:1px solid var(--border);
       background: rgba(15,23,48,.75); color:var(--text); outline:none;
@@ -95,10 +95,17 @@
       border:1px solid var(--border); box-shadow:none;
     }
     .btn.danger{
-      background:rgba(255,90,106,.14);
-      color:var(--text);
-      border:1px solid rgba(255,90,106,.35);
+      background: rgba(255,90,106,.12);
+      color: var(--text);
+      border:1px solid rgba(255,90,106,.28);
       box-shadow:none;
+    }
+    .btn.small{
+      padding:8px 10px;
+      border-radius:12px;
+      font-weight:800;
+      flex:0 0 auto;
+      white-space:nowrap;
     }
 
     .msg{
@@ -131,49 +138,24 @@
       border-radius:16px; padding:12px; display:flex;
       align-items:flex-start; justify-content:space-between; gap:10px;
     }
-    .left{display:flex; gap:10px; align-items:flex-start; flex:1;}
+    .left{display:flex; gap:10px; align-items:flex-start; min-width:0;}
     .icon{
       width:38px; height:38px; border-radius:14px; display:grid; place-items:center;
       font-weight:900; background:rgba(255,255,255,.06); border:1px solid var(--border);
       color:var(--text); flex:0 0 auto;
     }
-    .meta{flex:1;}
-    .meta b{display:block; font-size:14px}
-    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
-    .right{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap:10px;
-      min-width:120px;
-    }
+    .meta{min-width:0;}
+    .meta b{display:block; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .meta .ops{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
     .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
     .value.green{color:#7dffbf}
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    .mini-actions{
-      display:flex;
-      gap:8px;
-    }
-    .mini-actions button{
-      padding:8px 10px;
-      border-radius:12px;
-      font-weight:900;
-      cursor:pointer;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-    }
-    .mini-actions button.danger{
-      border-color: rgba(255,90,106,.35);
-      background: rgba(255,90,106,.14);
-    }
-
     /* ===== MODAL ===== */
-    .modal-backdrop{
-      position:fixed;
-      inset:0;
+    .modalOverlay{
+      position:fixed; inset:0;
       background:rgba(0,0,0,.55);
       display:none;
       align-items:center;
@@ -181,37 +163,35 @@
       padding:18px;
       z-index:9999;
     }
+    .modalOverlay.open{display:flex;}
     .modal{
       width:min(520px, 100%);
       background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
       border:1px solid var(--border);
-      border-radius:22px;
-      box-shadow: 0 18px 50px rgba(0,0,0,.55);
+      border-radius:20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
       padding:16px;
     }
-    .modal-top{
+    .modalHeader{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
-      gap:12px;
+      gap:10px;
       margin-bottom:8px;
     }
-    .modal-title{
+    .modalHeader h2{
       margin:0;
-      font-size:14px;
-      font-weight:1000;
-      letter-spacing:.3px;
-      text-transform:uppercase;
-      color:var(--muted);
+      font-size:16px;
+      letter-spacing:.2px;
     }
-    .xbtn{
+    .closeBtn{
       border:1px solid var(--border);
       background:rgba(255,255,255,.06);
       color:var(--text);
-      border-radius:14px;
+      border-radius:12px;
       padding:8px 10px;
-      font-weight:900;
       cursor:pointer;
+      font-weight:900;
     }
   </style>
 </head>
@@ -309,43 +289,47 @@
     </div>
   </div>
 
-  <!-- MODAL EDITAR -->
-  <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+  <!-- MODAL EDIÇÃO -->
+  <div class="modalOverlay" id="modalOverlay" onclick="closeModalIfOutside(event)">
     <div class="modal" onclick="event.stopPropagation()">
-      <div class="modal-top">
-        <h3 class="modal-title">Editar lançamento</h3>
-        <button class="xbtn" onclick="closeModal()">✕</button>
+      <div class="modalHeader">
+        <div>
+          <h2>Editar lançamento</h2>
+          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
+            Linha: <span id="edit_row">—</span>
+          </div>
+        </div>
+        <button class="closeBtn" onclick="closeEditModal()">Fechar</button>
       </div>
 
-      <label>Tipo</label>
-      <select id="m_tipo">
-        <option value="Gasto">Gasto</option>
-        <option value="Receita">Receita</option>
-      </select>
+      <div class="seg">
+        <button id="edit_btnGasto" class="active" onclick="setEditTipo('Gasto')">Gasto</button>
+        <button id="edit_btnReceita" onclick="setEditTipo('Receita')">Receita</button>
+      </div>
 
       <label>Categoria</label>
-      <input id="m_categoria" placeholder="Ex: Alimentação" />
+      <input id="edit_categoria" placeholder="Ex: Alimentação" />
 
       <label>Descrição</label>
-      <input id="m_descricao" placeholder="Ex: mercado" />
+      <input id="edit_descricao" placeholder="Ex: mercado" />
 
       <div class="row">
         <div>
           <label>Valor</label>
-          <input id="m_valor" type="number" step="0.01" placeholder="Ex: 120" />
+          <input id="edit_valor" type="number" step="0.01" placeholder="Ex: 120" />
         </div>
         <div>
-          <label>Data</label>
-          <input id="m_data" type="text" placeholder="dd/mm/aaaa" />
+          <label>Data (dd/mm/aaaa)</label>
+          <input id="edit_data" placeholder="19/02/2026" />
         </div>
       </div>
 
       <div class="actions">
         <button class="btn" onclick="salvarEdicao()">Salvar alterações</button>
-        <button class="btn danger" onclick="excluirNoModal()">Excluir</button>
+        <button class="btn danger" onclick="excluirEdicao()">Excluir</button>
       </div>
 
-      <div class="hint" id="m_hint"></div>
+      <div id="edit_msg" class="msg"></div>
     </div>
   </div>
 
@@ -360,7 +344,10 @@
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
 
-    let editingItem = null; // item atual em edição (inclui _row)
+    let editState = {
+      row: null,
+      tipo: "Gasto"
+    };
 
     // =========================
     // HELPERS
@@ -370,13 +357,11 @@
       return v.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
     }
     function pad2(n){ return String(n).padStart(2,"0"); }
-
     function formatBRfromISO(iso){
       if(!iso) return null;
       const [y,m,d] = iso.split("-");
       return `${d}/${m}/${y}`;
     }
-
     function setMsg(kind, text){
       const el = document.getElementById("msg");
       el.className = "msg";
@@ -386,27 +371,28 @@
       el.classList.add(kind);
       el.style.display = "block";
     }
-
-    function normalizeTipoFront(t){
-      t = (t || "").toString().toLowerCase();
-      return t.includes("rece") ? "Receita" : "Gasto";
+    function setEditMsg(kind, text){
+      const el = document.getElementById("edit_msg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
     }
-
     function getField(obj, keys){
       for(const k of keys){
         if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
       }
       return "";
     }
-
     function iconFor(item){
-      const t = normalizeTipoFront(getField(item, ["Tipo","tipo"]));
-      return t === "Receita" ? "⬆" : "⬇";
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("rece") ? "⬆" : "⬇";
     }
-
     function valueClass(item){
-      const t = normalizeTipoFront(getField(item, ["Tipo","tipo"]));
-      return t === "Receita" ? "green" : "red";
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("rece") ? "green" : "red";
     }
 
     // =========================
@@ -419,13 +405,11 @@
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       if(tab==="ultimos") carregarTudo();
     }
-
     function setTipo(tipo){
       tipoAtual = tipo;
       document.getElementById("btnGasto").classList.toggle("active", tipo==="Gasto");
       document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
     }
-
     function limpar(){
       document.getElementById("categoria").value = "";
       document.getElementById("descricao").value = "";
@@ -434,7 +418,7 @@
     }
 
     // =========================
-    // ENVIAR
+    // ENVIAR (NOVO)
     // =========================
     async function enviar(){
       setMsg("", "");
@@ -619,8 +603,8 @@
     // =========================
     async function carregarResumo(){
       const r = await fetch("/resumo");
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok) throw new Error(j?.msg || "Falha em /resumo");
+      if(!r.ok) throw new Error("Falha em /resumo");
+      const j = await r.json();
 
       document.getElementById("entradas").innerText = brl(j.entradas);
       document.getElementById("saidas").innerText   = brl(j.saidas);
@@ -628,92 +612,6 @@
 
       atualizarMovimento(j);
       atualizarPizzas(j);
-    }
-
-    function renderLista(items){
-      const lista = document.getElementById("lista");
-      lista.innerHTML = "";
-
-      if(!Array.isArray(items) || items.length === 0){
-        const empty = document.createElement("div");
-        empty.className = "item";
-        empty.innerHTML = `
-          <div class="left">
-            <div class="icon">∅</div>
-            <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
-          </div>`;
-        lista.appendChild(empty);
-        return;
-      }
-
-      // Mostra do mais recente pro mais antigo
-      items.slice().reverse().forEach(item => {
-        const tipo = normalizeTipoFront(getField(item, ["Tipo","tipo"]));
-        const categoria = getField(item, ["Categoria","categoria"]);
-        const descricao = getField(item, ["Descrição","Descricao","descricao"]);
-        const data = getField(item, ["Data","data"]);
-        const valor = getField(item, ["Valor","valor"]);
-        const row = item._row;
-
-        const wrap = document.createElement("div");
-        wrap.className = "item";
-
-        const left = document.createElement("div");
-        left.className = "left";
-
-        const icon = document.createElement("div");
-        icon.className = "icon";
-        icon.textContent = iconFor(item);
-
-        const meta = document.createElement("div");
-        meta.className = "meta";
-
-        const b = document.createElement("b");
-        b.textContent = `${tipo} • ${categoria || "Sem categoria"}`;
-
-        const s1 = document.createElement("span");
-        s1.textContent = `${descricao || ""} • ${data || ""}`.trim();
-
-        const s2 = document.createElement("span");
-        s2.style.marginTop = "8px";
-
-        const mini = document.createElement("div");
-        mini.className = "mini-actions";
-
-        const btnEdit = document.createElement("button");
-        btnEdit.textContent = "Editar";
-        btnEdit.onclick = () => openModal(item);
-
-        const btnDel = document.createElement("button");
-        btnDel.textContent = "Excluir";
-        btnDel.className = "danger";
-        btnDel.onclick = () => excluirLancamento(row);
-
-        mini.appendChild(btnEdit);
-        mini.appendChild(btnDel);
-        s2.appendChild(mini);
-
-        meta.appendChild(b);
-        meta.appendChild(s1);
-        meta.appendChild(s2);
-
-        left.appendChild(icon);
-        left.appendChild(meta);
-
-        const right = document.createElement("div");
-        right.className = "right";
-
-        const valEl = document.createElement("div");
-        valEl.className = `value ${valueClass(item)}`;
-        valEl.textContent = brl(valor);
-
-        right.appendChild(valEl);
-
-        wrap.appendChild(left);
-        wrap.appendChild(right);
-
-        lista.appendChild(wrap);
-      });
     }
 
     async function carregarUltimos(){
@@ -727,15 +625,55 @@
         </div>`;
 
       const r = await fetch("/ultimos");
-      const j = await r.json().catch(()=> ([]));
-      if(!r.ok) throw new Error(j?.msg || "Falha em /ultimos");
+      if(!r.ok) throw new Error("Falha em /ultimos");
+      const dados = await r.json();
+      const arr = Array.isArray(dados) ? dados : [];
 
-      renderLista(j);
+      lista.innerHTML = "";
+      if(arr.length === 0){
+        lista.innerHTML = `
+          <div class="item">
+            <div class="left">
+              <div class="icon">∅</div>
+              <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
+            </div>
+          </div>`;
+        return;
+      }
+
+      // do mais recente pro mais antigo
+      arr.slice().reverse().forEach(item => {
+        const tipo = getField(item, ["Tipo","tipo"]);
+        const categoria = getField(item, ["Categoria","categoria"]);
+        const descricao = getField(item, ["Descrição","Descricao","descricao"]);
+        const data = getField(item, ["Data","data"]);
+        const valor = getField(item, ["Valor","valor"]);
+        const row = item._row;
+
+        const safe = encodeURIComponent(JSON.stringify(item));
+
+        lista.innerHTML += `
+          <div class="item">
+            <div class="left">
+              <div class="icon">${iconFor(item)}</div>
+              <div class="meta">
+                <b>${tipo} • ${categoria}</b>
+                <span>${descricao} • ${data}</span>
+                <div class="ops">
+                  <button class="btn secondary small" onclick="openEditFromEncoded('${safe}')">Editar</button>
+                  <button class="btn danger small" onclick="excluirLancamento(${row})">Excluir</button>
+                </div>
+              </div>
+            </div>
+            <div class="value ${valueClass(item)}">${brl(valor)}</div>
+          </div>
+        `;
+      });
     }
 
     async function carregarTudo(){
-      try{ await carregarResumo(); } catch(e){ console.log(e); }
-      try{ await carregarUltimos(); } catch(e){
+      try{ await carregarResumo(); }catch(e){ console.log(e); }
+      try{ await carregarUltimos(); }catch(e){
         const lista = document.getElementById("lista");
         lista.innerHTML = `
           <div class="item">
@@ -750,40 +688,63 @@
     // =========================
     // EDITAR / EXCLUIR (MODAL)
     // =========================
-    function openModal(item){
-      editingItem = item;
-
-      document.getElementById("m_hint").textContent = `Linha na planilha: ${item._row}`;
-      document.getElementById("m_tipo").value = normalizeTipoFront(getField(item, ["Tipo","tipo"]));
-      document.getElementById("m_categoria").value = getField(item, ["Categoria","categoria"]) || "";
-      document.getElementById("m_descricao").value = getField(item, ["Descrição","Descricao","descricao"]) || "";
-      document.getElementById("m_valor").value = String(getField(item, ["Valor","valor"]) || "");
-      document.getElementById("m_data").value = getField(item, ["Data","data"]) || "";
-
-      document.getElementById("modalBackdrop").style.display = "flex";
+    function openEditFromEncoded(encoded){
+      const item = JSON.parse(decodeURIComponent(encoded));
+      openEditModal(item);
     }
 
-    function closeModal(ev){
-      document.getElementById("modalBackdrop").style.display = "none";
-      editingItem = null;
+    function setEditTipo(tipo){
+      editState.tipo = tipo;
+      document.getElementById("edit_btnGasto").classList.toggle("active", tipo==="Gasto");
+      document.getElementById("edit_btnReceita").classList.toggle("active", tipo==="Receita");
+    }
+
+    function openEditModal(item){
+      setEditMsg("", "");
+      editState.row = item._row;
+
+      const tipo = (item.Tipo || item.tipo || "Gasto").toString();
+      setEditTipo(tipo.toLowerCase().includes("rece") ? "Receita" : "Gasto");
+
+      document.getElementById("edit_row").innerText = String(editState.row || "—");
+      document.getElementById("edit_categoria").value = (item.Categoria || item.categoria || "").toString();
+      document.getElementById("edit_descricao").value = (item["Descrição"] || item.Descricao || item.descricao || "").toString();
+      document.getElementById("edit_valor").value = (item.Valor ?? item.valor ?? "").toString();
+      document.getElementById("edit_data").value = (item.Data || item.data || "").toString();
+
+      document.getElementById("modalOverlay").classList.add("open");
+    }
+
+    function closeEditModal(){
+      document.getElementById("modalOverlay").classList.remove("open");
+      editState.row = null;
+    }
+
+    function closeModalIfOutside(ev){
+      if(ev.target && ev.target.id === "modalOverlay") closeEditModal();
     }
 
     async function salvarEdicao(){
-      if(!editingItem || !editingItem._row) return;
+      setEditMsg("", "");
+      const row = editState.row;
 
-      const row = editingItem._row;
-      const payload = {
-        tipo: document.getElementById("m_tipo").value,
-        categoria: document.getElementById("m_categoria").value.trim(),
-        descricao: document.getElementById("m_descricao").value.trim(),
-        valor: Number(document.getElementById("m_valor").value),
-        data: document.getElementById("m_data").value.trim(), // dd/mm/aaaa
-      };
+      const categoria = document.getElementById("edit_categoria").value.trim();
+      const descricao = document.getElementById("edit_descricao").value.trim();
+      const valorRaw = document.getElementById("edit_valor").value;
+      const data = document.getElementById("edit_data").value.trim();
 
-      if(!payload.categoria || !payload.descricao || !payload.data || !(payload.valor > 0)){
-        alert("Preencha: tipo, categoria, descrição, data (dd/mm/aaaa) e valor > 0.");
-        return;
+      if(!row) return setEditMsg("err", "Linha inválida.");
+      if(!categoria || !descricao || !valorRaw || !data){
+        return setEditMsg("err", "Preencha categoria, descrição, valor e data.");
       }
+
+      const payload = {
+        tipo: editState.tipo,
+        categoria,
+        descricao,
+        valor: Number(valorRaw),
+        data // dd/mm/aaaa
+      };
 
       try{
         const r = await fetch(`/lancamento/${row}`, {
@@ -794,10 +755,11 @@
         const j = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(j?.msg || "Erro ao editar");
 
-        closeModal();
+        setEditMsg("ok", "✅ Alterações salvas!");
         await carregarTudo();
+        setTimeout(closeEditModal, 500);
       }catch(e){
-        alert("❌ " + e.message);
+        setEditMsg("err", "❌ " + e.message);
       }
     }
 
@@ -813,13 +775,25 @@
       }
     }
 
-    async function excluirNoModal(){
-      if(!editingItem || !editingItem._row) return;
-      await excluirLancamento(editingItem._row);
-      closeModal();
+    async function excluirEdicao(){
+      const row = editState.row;
+      if(!row) return;
+      if(!confirm("Excluir este lançamento?")) return;
+
+      try{
+        const r = await fetch(`/lancamento/${row}`, { method:"DELETE" });
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
+        await carregarTudo();
+        closeEditModal();
+      }catch(e){
+        setEditMsg("err", "❌ " + e.message);
+      }
     }
 
-    // data hoje no input
+    // =========================
+    // INIT (data hoje)
+    // =========================
     (function init(){
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
