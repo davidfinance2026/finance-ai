@@ -14,6 +14,9 @@
       --border:rgba(255,255,255,.08);
       --shadow: 0 12px 30px rgba(0,0,0,.35);
       --radius:18px;
+      --blue:#4f8cff;
+      --green:#21c07a;
+      --red:#ff5a6a;
     }
     *{box-sizing:border-box}
     body{
@@ -39,6 +42,18 @@
       color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
     }
+    .pill button{
+      margin-left:8px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border-radius:999px;
+      padding:6px 10px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+    }
+
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
       flex:1; padding:12px 12px; border-radius:999px;
@@ -67,6 +82,8 @@
       border-radius:14px; border:1px solid var(--border);
       background: rgba(15,23,48,.75); color:var(--text); outline:none;
     }
+    input::placeholder{color:rgba(159,176,218,.65)}
+
     .seg{
       display:flex; gap:10px; margin-top:10px;
       background:rgba(255,255,255,.04); border:1px solid var(--border);
@@ -77,6 +94,7 @@
       padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
     }
     .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
+
     .actions{display:flex; gap:10px; margin-top:14px;}
     .btn{
       border:0; border-radius:16px; padding:12px 12px;
@@ -89,6 +107,13 @@
       background:rgba(255,255,255,.06); color:var(--text);
       border:1px solid var(--border); box-shadow:none;
     }
+    .btn.danger{
+      background:rgba(255,90,106,.16);
+      color:var(--text);
+      border:1px solid rgba(255,90,106,.35);
+      box-shadow:none;
+    }
+
     .msg{
       margin-top:12px; padding:12px 12px; border-radius:14px;
       border:1px solid var(--border); background: rgba(15,23,48,.6);
@@ -119,12 +144,13 @@
       border-radius:16px; padding:12px; display:flex;
       align-items:flex-start; justify-content:space-between; gap:10px;
     }
-    .left{display:flex; gap:10px; align-items:flex-start;}
+    .left{display:flex; gap:10px; align-items:flex-start; width:100%;}
     .icon{
       width:38px; height:38px; border-radius:14px; display:grid; place-items:center;
       font-weight:900; background:rgba(255,255,255,.06); border:1px solid var(--border);
       color:var(--text); flex:0 0 auto;
     }
+    .meta{flex:1}
     .meta b{display:block; font-size:14px}
     .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
     .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
@@ -132,36 +158,47 @@
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    /* LOGIN MODAL */
-    .modal-backdrop{
+    .inlineActions{
+      display:flex;
+      gap:8px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .smallBtn{
+      padding:8px 10px;
+      border-radius:12px;
+      font-weight:900;
+      cursor:pointer;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+    }
+    .smallBtn.danger{
+      border-color: rgba(255,90,106,.35);
+      background: rgba(255,90,106,.14);
+    }
+
+    /* Modal login */
+    .modalBack{
       position:fixed; inset:0;
-      background:rgba(0,0,0,.55);
+      background: rgba(0,0,0,.55);
       display:none;
       align-items:center;
       justify-content:center;
       padding:18px;
-      z-index:999;
+      z-index: 9999;
     }
     .modal{
       width:min(420px, 100%);
-      background:rgba(18,26,51,.95);
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
       border:1px solid var(--border);
-      border-radius:18px;
-      box-shadow:var(--shadow);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
       padding:16px;
     }
-    .modal h2{margin:0 0 6px 0; font-size:18px}
-    .modal p{margin:0 0 10px 0; color:var(--muted); font-size:13px}
-    .modal .row2{display:flex; gap:10px; margin-top:10px;}
-    .lockBtn{
-      cursor:pointer;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      color:var(--text);
-      border-radius:999px;
-      padding:10px 12px;
-      font-weight:800;
-    }
+    .modal h2{margin:0; font-size:18px;}
+    .modal p{margin:8px 0 0 0; color:var(--muted); font-size:13px; line-height:1.35;}
+    .modal .actions{margin-top:12px}
   </style>
 </head>
 
@@ -173,9 +210,9 @@
         <span>Controle financeiro • simples e rápido</span>
       </div>
 
-      <div style="display:flex; gap:10px; align-items:center;">
-        <button class="lockBtn" onclick="openLogin()">🔒 Login</button>
-        <div class="pill">● Online</div>
+      <div class="pill">
+        ● Online
+        <button id="btnLoginTop" onclick="openLogin()">Login</button>
       </div>
     </div>
 
@@ -200,7 +237,8 @@
       <div class="row">
         <div>
           <label>Valor</label>
-          <input id="valor" type="number" step="0.01" placeholder="Ex: 120" />
+          <!-- text para permitir vírgula -->
+          <input id="valor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
         </div>
         <div>
           <label>Data</label>
@@ -234,16 +272,19 @@
         </div>
       </div>
 
+      <!-- movimento -->
       <div class="card chart-card">
         <div class="title">Movimento do mês (barras) + saldo acumulado (linha)</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
+      <!-- pizza gastos (vermelho) -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
       </div>
 
+      <!-- pizza receitas (azul) -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -259,17 +300,22 @@
     </div>
   </div>
 
-  <!-- LOGIN MODAL -->
-  <div class="modal-backdrop" id="loginBackdrop">
+  <!-- Modal Login -->
+  <div class="modalBack" id="loginBack">
     <div class="modal">
-      <h2>🔐 Login</h2>
-      <p>Digite a senha configurada no Render (APP_PASSWORD).</p>
-      <input id="loginPass" type="password" placeholder="Senha" />
-      <div class="row2">
-        <button class="btn secondary" onclick="closeLogin()">Cancelar</button>
+      <h2>Login</h2>
+      <p>Digite a senha definida em <b>APP_PASSWORD</b>. Se você não configurou senha, clique em “Continuar”.</p>
+
+      <label>Senha</label>
+      <input id="loginPwd" type="password" placeholder="Sua senha" />
+
+      <div class="actions">
         <button class="btn" onclick="doLogin()">Entrar</button>
+        <button class="btn secondary" onclick="closeLogin()">Cancelar</button>
       </div>
-      <div id="loginMsg" class="msg" style="margin-top:12px;"></div>
+
+      <div id="loginMsg" class="msg"></div>
+      <div class="hint">O token fica salvo neste navegador.</div>
     </div>
   </div>
 
@@ -277,7 +323,7 @@
 
   <script>
     // =========================
-    // AUTH FRONT
+    // AUTH (token)
     // =========================
     const TOKEN_KEY = "finance_ai_token";
 
@@ -285,16 +331,30 @@
       return localStorage.getItem(TOKEN_KEY) || "";
     }
     function setToken(t){
-      localStorage.setItem(TOKEN_KEY, t || "");
+      if(!t) localStorage.removeItem(TOKEN_KEY);
+      else localStorage.setItem(TOKEN_KEY, t);
+      refreshLoginButton();
+    }
+
+    function refreshLoginButton(){
+      const btn = document.getElementById("btnLoginTop");
+      const has = !!getToken();
+      btn.textContent = has ? "Sair" : "Login";
+      btn.onclick = has ? logout : openLogin;
     }
 
     function openLogin(){
-      document.getElementById("loginBackdrop").style.display = "flex";
       document.getElementById("loginMsg").style.display = "none";
-      setTimeout(()=> document.getElementById("loginPass").focus(), 50);
+      document.getElementById("loginPwd").value = "";
+      document.getElementById("loginBack").style.display = "flex";
     }
     function closeLogin(){
-      document.getElementById("loginBackdrop").style.display = "none";
+      document.getElementById("loginBack").style.display = "none";
+    }
+    function logout(){
+      setToken("");
+      alert("Você saiu.");
+      location.reload();
     }
 
     function setLoginMsg(kind, text){
@@ -308,11 +368,9 @@
     }
 
     async function doLogin(){
-      const password = document.getElementById("loginPass").value.trim();
-      if(!password){
-        setLoginMsg("err", "Digite a senha.");
-        return;
-      }
+      setLoginMsg("", "");
+      const password = document.getElementById("loginPwd").value;
+
       try{
         const r = await fetch("/login", {
           method:"POST",
@@ -320,27 +378,26 @@
           body: JSON.stringify({ password })
         });
         const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Senha inválida");
-        setToken(j.token || password);
-        setLoginMsg("ok", "✅ Logado!");
-        setTimeout(closeLogin, 450);
+        if(!r.ok) throw new Error(j?.msg || "Falha no login");
+
+        setToken(j.token || "");
+        closeLogin();
+        alert("✅ Login OK!");
+        // após login, atualiza telas
+        if(document.getElementById("screen-ultimos").style.display !== "none"){
+          carregarTudo();
+        }
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
     }
 
-    // Wrapper fetch com token + auto login ao 401
-    async function apiFetch(url, options={}){
+    // Wrapper fetch com token
+    async function apiFetch(url, options = {}){
+      const headers = options.headers ? {...options.headers} : {};
       const token = getToken();
-      const headers = Object.assign({}, options.headers || {});
       if(token) headers["X-APP-TOKEN"] = token;
-
-      const resp = await fetch(url, Object.assign({}, options, { headers }));
-      if(resp.status === 401){
-        openLogin();
-        throw new Error("Unauthorized (faça login)");
-      }
-      return resp;
+      return fetch(url, { ...options, headers });
     }
 
     // =========================
@@ -388,6 +445,32 @@
       return t.includes("rece") ? "green" : "red";
     }
 
+    // ✅ parse BR/US decimal (impede 360 virar 360000)
+    function parseValorBR(input){
+      if(input === null || input === undefined) return NaN;
+      let s = String(input).trim();
+      if(!s) return NaN;
+
+      s = s.replace("R$", "").replace(/\s/g, "");
+
+      if(s.includes(",") && s.includes(".")){
+        // último separador define decimal
+        if(s.lastIndexOf(",") > s.lastIndexOf(".")){
+          // 1.234,56
+          s = s.replace(/\./g, "").replace(",", ".");
+        }else{
+          // 1,234.56
+          s = s.replace(/,/g, "");
+        }
+      }else if(s.includes(",") && !s.includes(".")){
+        // 360,00
+        s = s.replace(/\./g, "").replace(",", ".");
+      }
+
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
     // =========================
     // UI
     // =========================
@@ -425,12 +508,18 @@
         return;
       }
 
+      const valorNum = parseValorBR(valorRaw);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        setMsg("err", "Valor inválido. Use por exemplo: 360,00");
+        return;
+      }
+
       const payload = {
         tipo: tipoAtual,
         categoria,
         descricao,
-        valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO)
+        valor: valorNum, // ✅ número
+        data: formatBRfromISO(dataISO) // dd/mm/aaaa
       };
 
       try{
@@ -441,6 +530,10 @@
         });
 
         const data = await r.json().catch(()=> ({}));
+        if(r.status === 401){
+          openLogin();
+          throw new Error("Não autorizado. Faça login.");
+        }
         if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
 
         setMsg("ok", "✅ Lançamento salvo!");
@@ -453,7 +546,7 @@
     }
 
     // =========================
-    // MOVIMENTO
+    // MOVIMENTO (BARRAS + LINHA)
     // =========================
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
@@ -548,6 +641,7 @@
     }
 
     function atualizarPizzas(j){
+      // GASTOS
       const labelsG = j.pizza_gastos_labels || [];
       const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
       const canvasG = document.getElementById("pizzaGastos");
@@ -568,6 +662,7 @@
         });
       }
 
+      // RECEITAS
       const labelsR = j.pizza_receitas_labels || [];
       const valuesR = (j.pizza_receitas_values || []).map(v=>Number(v||0));
       const canvasR = document.getElementById("pizzaReceitas");
@@ -594,6 +689,7 @@
     // =========================
     async function carregarResumo(){
       const r = await apiFetch("/resumo");
+      if(r.status === 401){ openLogin(); throw new Error("Não autorizado."); }
       if(!r.ok) throw new Error("Falha em /resumo");
       const j = await r.json();
 
@@ -607,9 +703,11 @@
 
     async function excluirLancamento(row){
       if(!confirm("Excluir este lançamento?")) return;
+
       try{
         const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
         const j = await r.json().catch(()=> ({}));
+        if(r.status === 401){ openLogin(); throw new Error("Não autorizado."); }
         if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
         await carregarTudo();
       }catch(e){
@@ -620,26 +718,32 @@
     async function editarLancamento(item){
       const row = item._row;
 
-      const tipo = prompt("Tipo (Gasto ou Receita):", item.Tipo || item.tipo || "Gasto");
+      const tipo = prompt("Tipo (Gasto ou Receita):", item.Tipo || "Gasto");
       if(!tipo) return;
 
-      const categoria = prompt("Categoria:", item.Categoria || item.categoria || "");
+      const categoria = prompt("Categoria:", item.Categoria || "");
       if(!categoria) return;
 
-      const descricao = prompt("Descrição:", item["Descrição"] || item.Descricao || item.descricao || "");
+      const descricao = prompt("Descrição:", item["Descrição"] || "");
       if(!descricao) return;
 
-      const valorStr = prompt("Valor (ex: 120.50):", (item.Valor ?? item.valor ?? "").toString());
+      const valorStr = prompt("Valor (ex: 360,00):", (item.Valor ?? "").toString());
       if(!valorStr) return;
 
-      const dataStr = prompt("Data (dd/mm/aaaa):", item.Data || item.data || "");
+      const dataStr = prompt("Data (dd/mm/aaaa):", item.Data || "");
       if(!dataStr) return;
+
+      const valorNum = parseValorBR(valorStr);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        alert("Valor inválido.");
+        return;
+      }
 
       const payload = {
         tipo: tipo.trim(),
         categoria: categoria.trim(),
         descricao: descricao.trim(),
-        valor: Number(valorStr),
+        valor: valorNum, // ✅ número
         data: dataStr.trim()
       };
 
@@ -650,6 +754,7 @@
           body: JSON.stringify(payload)
         });
         const j = await r.json().catch(()=> ({}));
+        if(r.status === 401){ openLogin(); throw new Error("Não autorizado."); }
         if(!r.ok) throw new Error(j?.msg || "Erro ao editar");
         await carregarTudo();
       }catch(e){
@@ -668,11 +773,11 @@
         </div>`;
 
       const r = await apiFetch("/ultimos");
+      if(r.status === 401){ openLogin(); throw new Error("Não autorizado."); }
       if(!r.ok) throw new Error("Falha em /ultimos");
-      const arr = await r.json();
+      const arr = await r.json().catch(()=> []);
 
       lista.innerHTML = "";
-
       if(!Array.isArray(arr) || arr.length === 0){
         lista.innerHTML = `
           <div class="item">
@@ -692,7 +797,8 @@
         const valor = getField(item, ["Valor","valor"]);
         const row = item._row;
 
-        const itemSafe = encodeURIComponent(JSON.stringify(item));
+        // item pode conter aspas etc; passamos pelo JSON seguro via base64
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(item))));
 
         lista.innerHTML += `
           <div class="item">
@@ -701,16 +807,11 @@
               <div class="meta">
                 <b>${tipo} • ${categoria}</b>
                 <span>${descricao} • ${data}</span>
-                <span style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-                  <button class="btn secondary" style="padding:8px 10px; border-radius:12px;"
-                    onclick='editarLancamento(JSON.parse(decodeURIComponent("${itemSafe}")))'>
-                    Editar
-                  </button>
-                  <button class="btn secondary" style="padding:8px 10px; border-radius:12px; border-color: rgba(255,90,106,.35);"
-                    onclick="excluirLancamento(${row})">
-                    Excluir
-                  </button>
-                </span>
+
+                <div class="inlineActions">
+                  <button class="smallBtn" onclick="editarLancamento(JSON.parse(decodeURIComponent(escape(atob('${encoded}')))))">Editar</button>
+                  <button class="smallBtn danger" onclick="excluirLancamento(${row})">Excluir</button>
+                </div>
               </div>
             </div>
             <div class="value ${valueClass(item)}">${brl(valor)}</div>
@@ -735,9 +836,14 @@
 
     // data hoje
     (function init(){
+      refreshLoginButton();
+
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
+
+      // Se já tem token, tenta carregar rápido ao abrir "Últimos"
+      // (não força, só deixa preparado)
     })();
   </script>
 </body>
