@@ -1,5 +1,87 @@
 import os
 import json
+import gspread
+from google.oauth2.service_account import Credentials
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+_client_cached = None
+
+def get_client() -> gspread.Client:
+    """
+    Prioridade:
+    1) SERVICE_ACCOUNT_JSON (env com JSON inteiro)
+    2) Secret File do Render em /etc/secrets/google_creds.json
+    3) arquivo local google_creds.json (caso rode local)
+    """
+    global _client_cached
+    if _client_cached is not None:
+        return _client_cached
+
+    # 1) JSON via variável de ambiente
+    raw = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
+    if raw:
+        info = json.loads(raw)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    # 2) Secret file no Render
+    secret_path = "/etc/secrets/google_creds.json"
+    if os.path.exists(secret_path):
+        creds = Credentials.from_service_account_file(secret_path, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    # 3) fallback local
+    local_path = "google_creds.json"
+    if os.path.exists(local_path):
+        creds = Credentials.from_service_account_file(local_path, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    raise RuntimeError(
+        "Credenciais não encontradas. "
+        "Crie SERVICE_ACCOUNT_JSON OU envie Secret File 'google_creds.json' no Render."
+    )
+
+
+def get_sheet() -> gspread.Worksheet:
+    """
+    Usa:
+    - SHEET_ID (obrigatório)
+    - SHEET_TAB (seu env atual) OU WORKSHEET_NAME (alternativo)
+    """
+    sheet_id = os.getenv("SHEET_ID", "").strip()
+    if not sheet_id:
+        raise RuntimeError("Missing env var SHEET_ID")
+
+    client = get_client()
+    sh = client.open_by_key(sheet_id)
+
+    # seu env atual:
+    ws_name = os.getenv("SHEET_TAB", "").strip()
+    # compatível com outras versões:
+    if not ws_name:
+        ws_name = os.getenv("WORKSHEET_NAME", "").strip()
+
+    ws = sh.worksheet(ws_name) if ws_name else sh.get_worksheet(0)
+
+    # garante cabeçalho
+    HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
+    values = ws.get_all_values()
+    if not values or not values[0]:
+        ws.append_row(HEADERS)
+    else:
+        first = [c.strip() for c in values[0]]
+        if first != HEADERS:
+            ws.update("A1", [HEADERS])
+
+    return wsimport os
+import json
 import uuid
 import csv
 import io
@@ -506,3 +588,4 @@ def export_pdf():
 if __name__ == "__main__":
     # local dev
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
+
