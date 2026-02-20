@@ -32,8 +32,8 @@
       display:flex;
       justify-content:center;
     }
-    .app{width:min(520px, 100%); padding-bottom:18px;}
-    .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;}
+    .app{width:min(560px, 100%); padding-bottom:18px;}
+    .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;}
     .brand{display:flex; flex-direction:column; line-height:1.1;}
     .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
     .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
@@ -43,6 +43,29 @@
       color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
     }
+
+    .filters{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin:10px 0 12px 0;
+      flex-wrap:wrap;
+    }
+    .filters input{
+      margin-top:0;
+      border-radius:999px;
+      padding:10px 12px;
+    }
+    .filters .chipBtn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:800;
+    }
+
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
       flex:1; padding:12px 12px; border-radius:999px;
@@ -82,13 +105,14 @@
     }
     .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
 
-    .actions{display:flex; gap:10px; margin-top:14px;}
+    .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
     .btn{
       border:0; border-radius:16px; padding:12px 12px;
       font-weight:900; cursor:pointer; color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
       flex:1;
+      min-width:150px;
     }
     .btn.secondary{
       background:rgba(255,255,255,.06); color:var(--text);
@@ -105,7 +129,7 @@
       border-radius:12px;
       font-weight:800;
       flex:0 0 auto;
-      white-space:nowrap;
+      min-width:auto;
     }
 
     .msg{
@@ -153,7 +177,7 @@
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    /* ===== MODAL ===== */
+    /* MODAL */
     .modalOverlay{
       position:fixed; inset:0;
       background:rgba(0,0,0,.55);
@@ -165,7 +189,7 @@
     }
     .modalOverlay.open{display:flex;}
     .modal{
-      width:min(520px, 100%);
+      width:min(560px, 100%);
       background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
       border:1px solid var(--border);
       border-radius:20px;
@@ -201,9 +225,19 @@
     <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
-        <span>Controle financeiro • simples e rápido</span>
+        <span>Filtro por mês • busca • export CSV/PDF • edição</span>
       </div>
       <div class="pill">● Online</div>
+    </div>
+
+    <!-- filtros globais -->
+    <div class="filters">
+      <input id="filterMonth" type="month" />
+      <input id="filterQ" placeholder="Buscar (categoria, descrição...)" />
+      <button class="chipBtn" onclick="aplicarFiltros()">Aplicar</button>
+      <button class="chipBtn" onclick="exportarCSV()">Exportar CSV</button>
+      <button class="chipBtn" onclick="exportarPDF()">Exportar PDF</button>
+      <button class="chipBtn" onclick="logout()">Sair</button>
     </div>
 
     <div class="tabs">
@@ -241,7 +275,7 @@
       </div>
 
       <div id="msg" class="msg"></div>
-      <div class="hint">Dica: depois de salvar, abra a aba “Últimos” para ver a lista.</div>
+      <div class="hint">O lançamento entra no mês selecionado no filtro (se a data for do mesmo mês).</div>
     </div>
 
     <!-- TELA ÚLTIMOS -->
@@ -261,19 +295,16 @@
         </div>
       </div>
 
-      <!-- movimento -->
       <div class="card chart-card">
         <div class="title">Movimento do mês (barras) + saldo acumulado (linha)</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
-      <!-- pizza gastos (vermelho) -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
       </div>
 
-      <!-- pizza receitas (azul) -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -285,7 +316,30 @@
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Mostrando até 10 lançamentos mais recentes.</div>
+      <div class="hint">Mostrando até 10 lançamentos (do mês selecionado + busca).</div>
+    </div>
+  </div>
+
+  <!-- MODAL LOGIN -->
+  <div class="modalOverlay" id="loginOverlay">
+    <div class="modal">
+      <div class="modalHeader">
+        <div>
+          <h2>Entrar</h2>
+          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
+            Digite a senha (APP_PASSWORD no Render)
+          </div>
+        </div>
+      </div>
+
+      <label>Senha</label>
+      <input id="loginPassword" type="password" placeholder="Sua senha" />
+
+      <div class="actions">
+        <button class="btn" onclick="doLogin()">Entrar</button>
+      </div>
+
+      <div id="loginMsg" class="msg"></div>
     </div>
   </div>
 
@@ -337,6 +391,88 @@
 
   <script>
     // =========================
+    // AUTH TOKEN (localStorage)
+    // =========================
+    function getToken(){ return localStorage.getItem("APP_TOKEN") || ""; }
+    function setToken(t){ localStorage.setItem("APP_TOKEN", t || ""); }
+    function showLogin(show){
+      document.getElementById("loginOverlay").classList.toggle("open", !!show);
+    }
+    function setLoginMsg(kind, text){
+      const el = document.getElementById("loginMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+    async function doLogin(){
+      setLoginMsg("", "");
+      const password = document.getElementById("loginPassword").value.trim();
+      if(!password) return setLoginMsg("err", "Digite a senha.");
+
+      try{
+        const r = await fetch("/login", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ password })
+        });
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Falha no login");
+
+        setToken(j.token || password);
+        showLogin(false);
+        await carregarTudo();
+      }catch(e){
+        setLoginMsg("err", "❌ " + e.message);
+      }
+    }
+    function logout(){
+      setToken("");
+      showLogin(true);
+    }
+
+    async function apiFetch(url, opts={}){
+      const headers = Object.assign({}, opts.headers || {});
+      const token = getToken();
+      if(token) headers["X-APP-TOKEN"] = token;
+      return fetch(url, Object.assign({}, opts, { headers }));
+    }
+
+    // =========================
+    // FILTROS GLOBAIS
+    // =========================
+    function getMonthYear(){
+      const v = document.getElementById("filterMonth").value; // yyyy-mm
+      if(!v){
+        const d = new Date();
+        return { year: d.getFullYear(), month: d.getMonth()+1 };
+      }
+      const [y,m] = v.split("-").map(Number);
+      return { year:y, month:m };
+    }
+    function getQ(){
+      return (document.getElementById("filterQ").value || "").trim();
+    }
+    function qs(){
+      const {year, month} = getMonthYear();
+      const q = encodeURIComponent(getQ());
+      return `month=${month}&year=${year}&q=${q}`;
+    }
+    async function aplicarFiltros(){
+      if(document.getElementById("screen-ultimos").style.display !== "none"){
+        await carregarTudo();
+      }
+    }
+    function exportarCSV(){
+      window.location.href = `/export.csv?${qs()}`;
+    }
+    function exportarPDF(){
+      window.location.href = `/export.pdf?${qs()}`;
+    }
+
+    // =========================
     // ESTADO GLOBAL
     // =========================
     let tipoAtual = "Gasto";
@@ -344,10 +480,7 @@
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
 
-    let editState = {
-      row: null,
-      tipo: "Gasto"
-    };
+    let editState = { row: null, tipo: "Gasto" };
 
     // =========================
     // HELPERS
@@ -437,16 +570,15 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data: formatBRfromISO(dataISO) // dd/mm/aaaa
+        data: formatBRfromISO(dataISO)
       };
 
       try{
-        const r = await fetch("/lancar", {
+        const r = await apiFetch("/lancar", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(payload)
         });
-
         const data = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
 
@@ -553,9 +685,7 @@
         }
       };
     }
-
     function atualizarPizzas(j){
-      // GASTOS
       const labelsG = j.pizza_gastos_labels || [];
       const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
       const canvasG = document.getElementById("pizzaGastos");
@@ -576,7 +706,6 @@
         });
       }
 
-      // RECEITAS
       const labelsR = j.pizza_receitas_labels || [];
       const valuesR = (j.pizza_receitas_values || []).map(v=>Number(v||0));
       const canvasR = document.getElementById("pizzaReceitas");
@@ -602,7 +731,7 @@
     // RESUMO + LISTA
     // =========================
     async function carregarResumo(){
-      const r = await fetch("/resumo");
+      const r = await apiFetch(`/resumo?${qs()}`);
       if(!r.ok) throw new Error("Falha em /resumo");
       const j = await r.json();
 
@@ -624,7 +753,7 @@
           </div>
         </div>`;
 
-      const r = await fetch("/ultimos");
+      const r = await apiFetch(`/ultimos?${qs()}&limit=10`);
       if(!r.ok) throw new Error("Falha em /ultimos");
       const dados = await r.json();
       const arr = Array.isArray(dados) ? dados : [];
@@ -635,13 +764,12 @@
           <div class="item">
             <div class="left">
               <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
+              <div class="meta"><b>Nenhum lançamento</b><span>Sem dados para este mês/busca</span></div>
             </div>
           </div>`;
         return;
       }
 
-      // do mais recente pro mais antigo
       arr.slice().reverse().forEach(item => {
         const tipo = getField(item, ["Tipo","tipo"]);
         const categoria = getField(item, ["Categoria","categoria"]);
@@ -679,7 +807,7 @@
           <div class="item">
             <div class="left">
               <div class="icon">!</div>
-              <div class="meta"><b>Erro ao carregar</b><span>${e.message}</span></div>
+              <div class="meta"><b>Erro</b><span>${e.message}</span></div>
             </div>
           </div>`;
       }
@@ -692,13 +820,11 @@
       const item = JSON.parse(decodeURIComponent(encoded));
       openEditModal(item);
     }
-
     function setEditTipo(tipo){
       editState.tipo = tipo;
       document.getElementById("edit_btnGasto").classList.toggle("active", tipo==="Gasto");
       document.getElementById("edit_btnReceita").classList.toggle("active", tipo==="Receita");
     }
-
     function openEditModal(item){
       setEditMsg("", "");
       editState.row = item._row;
@@ -714,12 +840,10 @@
 
       document.getElementById("modalOverlay").classList.add("open");
     }
-
     function closeEditModal(){
       document.getElementById("modalOverlay").classList.remove("open");
       editState.row = null;
     }
-
     function closeModalIfOutside(ev){
       if(ev.target && ev.target.id === "modalOverlay") closeEditModal();
     }
@@ -743,11 +867,11 @@
         categoria,
         descricao,
         valor: Number(valorRaw),
-        data // dd/mm/aaaa
+        data
       };
 
       try{
-        const r = await fetch(`/lancamento/${row}`, {
+        const r = await apiFetch(`/lancamento/${row}`, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(payload)
@@ -757,7 +881,7 @@
 
         setEditMsg("ok", "✅ Alterações salvas!");
         await carregarTudo();
-        setTimeout(closeEditModal, 500);
+        setTimeout(closeEditModal, 450);
       }catch(e){
         setEditMsg("err", "❌ " + e.message);
       }
@@ -766,7 +890,7 @@
     async function excluirLancamento(row){
       if(!confirm("Excluir este lançamento?")) return;
       try{
-        const r = await fetch(`/lancamento/${row}`, { method:"DELETE" });
+        const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
         const j = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
         await carregarTudo();
@@ -781,7 +905,7 @@
       if(!confirm("Excluir este lançamento?")) return;
 
       try{
-        const r = await fetch(`/lancamento/${row}`, { method:"DELETE" });
+        const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
         const j = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
         await carregarTudo();
@@ -792,12 +916,23 @@
     }
 
     // =========================
-    // INIT (data hoje)
+    // INIT
     // =========================
     (function init(){
+      // set date hoje
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
+
+      // mês filtro: mês atual
+      document.getElementById("filterMonth").value = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+
+      // login
+      if(!getToken()){
+        showLogin(true);
+      }else{
+        carregarTudo();
+      }
     })();
   </script>
 </body>
