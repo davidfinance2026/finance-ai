@@ -3,6 +3,7 @@ import json
 import uuid
 import csv
 import io
+import re
 from datetime import datetime, date
 from calendar import monthrange
 from typing import Any, Dict, List, Tuple
@@ -11,9 +12,9 @@ from flask import Flask, jsonify, request, render_template, Response, abort
 import gspread
 from google.oauth2.service_account import Credentials
 
-# PDF (reportlab)
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
+
 
 app = Flask(__name__)
 
@@ -24,27 +25,28 @@ SCOPES = [
 
 HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
 
+DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+
+
 # =========================
 # AUTH (senha simples)
 # =========================
 def require_auth():
     pwd = os.getenv("APP_PASSWORD", "").strip()
     if not pwd:
-        return  # sem senha -> sem auth
-
+        return
     token = request.headers.get("X-APP-TOKEN", "").strip()
     if token != pwd:
         abort(401)
 
 @app.before_request
 def _auth_middleware():
-    # Libera HOME e LOGIN sem auth
-    # (senão o browser mostra Unauthorized antes de renderizar o HTML)
+    # libera HOME/LOGIN
     endpoint = (request.endpoint or "").lower()
     if endpoint in ("home", "login", "static"):
         return
-    # protege todas as outras rotas (API)
     require_auth()
+
 
 # =========================
 # GOOGLE SHEETS
@@ -56,7 +58,7 @@ def get_client() -> gspread.Client:
     Prioridade:
     1) SERVICE_ACCOUNT_JSON (env com JSON inteiro)
     2) Secret File do Render em /etc/secrets/google_creds.json
-    3) arquivo local google_creds.json (caso rode local)
+    3) arquivo local google_creds.json
     """
     global _client_cached
     if _client_cached is not None:
@@ -86,6 +88,86 @@ def get_client() -> gspread.Client:
         "Crie SERVICE_ACCOUNT_JSON OU envie Secret File 'google_creds.json' no Render."
     )
 
+def _norm(s: str) -> str:
+    return (s or "").strip().lower()
+
+def _looks_like_br_date(s: str) -> bool:
+    s = (s or "").strip()
+    return bool(DATE_RE.match(s))
+
+def ensure_headers_and_fix_alignment(ws: gspread.Worksheet):
+    """
+    Corrige automaticamente:
+    - planilha antiga: [Data, Tipo, Categoria, Descrição, Valor]
+    - planilha com header novo mas dados desalinhados (A2 é data)
+    """
+    values = ws.get_all_values()
+
+    # se vazio, só escreve header
+    if not values:
+        ws.update("A1", [HEADERS])
+        return
+
+    header = values[0]
+    header_norm = [_norm(x) for x in header]
+
+    # possíveis headers antigos
+    legacy1 = ["data", "tipo", "categoria", "descrição", "valor"]
+    legacy2 = ["data", "tipo", "categoria", "descricao", "valor"]
+
+    # ✅ Caso 1: header é legacy (começa em A)
+    if header_norm[:5] == legacy1 or header_norm[:5] == legacy2:
+        # insere coluna A para ID (vai empurrar tudo pra direita)
+        ws.insert_cols([["ID"]], 1)
+
+        # garante CreatedAt no final
+        # após inserir, recarrega header
+        header2 = ws.get_all_values()[0]
+        if len(header2) < len(HEADERS):
+            ws.add_cols(len(HEADERS) - len(header2))
+
+        # escreve header final correto
+        ws.update("A1", [HEADERS])
+        return
+
+    # ✅ Caso 2: header já é o novo (ou quase), mas pode estar desalinhado
+    # Recarrega valores pra evitar inconsistência
+    values = ws.get_all_values()
+    header = values[0]
+    header_trim = [c.strip() for c in header[:len(HEADERS)]]
+
+    is_new_header = header_trim == HEADERS
+
+    # Se tem pelo menos 2 linhas, checa se a coluna "Data" realmente tem data.
+    if len(values) >= 2:
+        row2 = values[1]
+        # tenta pegar coluna Data (index 1 no header novo)
+        data_cell = row2[1].strip() if len(row2) > 1 else ""
+        id_cell = row2[0].strip() if len(row2) > 0 else ""
+
+        # Se header novo e "Data" não parece data,
+        # MAS "ID" parece data, então está desalinhado por 1 coluna.
+        if is_new_header and (not _looks_like_br_date(data_cell)) and _looks_like_br_date(id_cell):
+            # insere nova coluna A (empurra tudo pra direita)
+            ws.insert_cols([[""]], 1)
+            # garante número de colunas
+            header2 = ws.get_all_values()[0]
+            if len(header2) < len(HEADERS):
+                ws.add_cols(len(HEADERS) - len(header2))
+            # reescreve header correto
+            ws.update("A1", [HEADERS])
+            return
+
+    # ✅ Caso 3: header diferente (custom)
+    # Não destrói nada: só tenta garantir que tenha colunas suficientes e header correto
+    # (se você quiser forçar, deixe como está)
+    if not is_new_header:
+        # Se estiver muito diferente, só garante colunas e escreve header
+        # (se preferir não forçar, comente as 3 linhas abaixo)
+        if len(header) < len(HEADERS):
+            ws.add_cols(len(HEADERS) - len(header))
+        ws.update("A1", [HEADERS])
+
 def get_sheet() -> gspread.Worksheet:
     sheet_id = os.getenv("SHEET_ID", "").strip()
     if not sheet_id:
@@ -94,25 +176,19 @@ def get_sheet() -> gspread.Worksheet:
     client = get_client()
     sh = client.open_by_key(sheet_id)
 
-    # seu env atual:
     ws_name = os.getenv("SHEET_TAB", "").strip()
-    # compatível com outras versões:
     if not ws_name:
         ws_name = os.getenv("WORKSHEET_NAME", "").strip()
 
     ws = sh.worksheet(ws_name) if ws_name else sh.get_worksheet(0)
 
-    # garante cabeçalho
-    values = ws.get_all_values()
-    if not values or not values[0]:
-        ws.append_row(HEADERS)
-    else:
-        first = [c.strip() for c in values[0]]
-        if first != HEADERS:
-            ws.update("A1", [HEADERS])
-
+    ensure_headers_and_fix_alignment(ws)
     return ws
 
+
+# =========================
+# UTILS
+# =========================
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
@@ -183,6 +259,7 @@ def get_month_year_from_request() -> Tuple[int, int]:
     if year < 1900:
         year = today.year
     return month, year
+
 
 # =========================
 # ROUTES
