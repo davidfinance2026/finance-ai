@@ -14,10 +14,6 @@
       --border:rgba(255,255,255,.08);
       --shadow: 0 12px 30px rgba(0,0,0,.35);
       --radius:18px;
-
-      --blue:#4f8cff;
-      --green:#21c07a;
-      --red:#ff5a6a;
     }
     *{box-sizing:border-box}
     body{
@@ -32,8 +28,8 @@
       display:flex;
       justify-content:center;
     }
-    .app{width:min(560px, 100%); padding-bottom:18px;}
-    .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;}
+    .app{width:min(520px, 100%); padding-bottom:18px;}
+    .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;}
     .brand{display:flex; flex-direction:column; line-height:1.1;}
     .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
     .brand span{color:var(--muted); font-size:13px; margin-top:4px;}
@@ -43,29 +39,6 @@
       color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
     }
-
-    .filters{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      margin:10px 0 12px 0;
-      flex-wrap:wrap;
-    }
-    .filters input{
-      margin-top:0;
-      border-radius:999px;
-      padding:10px 12px;
-    }
-    .filters .chipBtn{
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:999px;
-      cursor:pointer;
-      font-weight:800;
-    }
-
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
       flex:1; padding:12px 12px; border-radius:999px;
@@ -104,34 +77,18 @@
       padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
     }
     .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
-
-    .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+    .actions{display:flex; gap:10px; margin-top:14px;}
     .btn{
       border:0; border-radius:16px; padding:12px 12px;
       font-weight:900; cursor:pointer; color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
       flex:1;
-      min-width:150px;
     }
     .btn.secondary{
       background:rgba(255,255,255,.06); color:var(--text);
       border:1px solid var(--border); box-shadow:none;
     }
-    .btn.danger{
-      background: rgba(255,90,106,.12);
-      color: var(--text);
-      border:1px solid rgba(255,90,106,.28);
-      box-shadow:none;
-    }
-    .btn.small{
-      padding:8px 10px;
-      border-radius:12px;
-      font-weight:800;
-      flex:0 0 auto;
-      min-width:auto;
-    }
-
     .msg{
       margin-top:12px; padding:12px 12px; border-radius:14px;
       border:1px solid var(--border); background: rgba(15,23,48,.6);
@@ -162,60 +119,48 @@
       border-radius:16px; padding:12px; display:flex;
       align-items:flex-start; justify-content:space-between; gap:10px;
     }
-    .left{display:flex; gap:10px; align-items:flex-start; min-width:0;}
+    .left{display:flex; gap:10px; align-items:flex-start;}
     .icon{
       width:38px; height:38px; border-radius:14px; display:grid; place-items:center;
       font-weight:900; background:rgba(255,255,255,.06); border:1px solid var(--border);
       color:var(--text); flex:0 0 auto;
     }
-    .meta{min-width:0;}
-    .meta b{display:block; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-    .meta .ops{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+    .meta b{display:block; font-size:14px}
+    .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
     .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
     .value.green{color:#7dffbf}
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    /* MODAL */
-    .modalOverlay{
+    /* LOGIN MODAL */
+    .modal-backdrop{
       position:fixed; inset:0;
       background:rgba(0,0,0,.55);
       display:none;
       align-items:center;
       justify-content:center;
       padding:18px;
-      z-index:9999;
+      z-index:999;
     }
-    .modalOverlay.open{display:flex;}
     .modal{
-      width:min(560px, 100%);
-      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      width:min(420px, 100%);
+      background:rgba(18,26,51,.95);
       border:1px solid var(--border);
-      border-radius:20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      border-radius:18px;
+      box-shadow:var(--shadow);
       padding:16px;
     }
-    .modalHeader{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom:8px;
-    }
-    .modalHeader h2{
-      margin:0;
-      font-size:16px;
-      letter-spacing:.2px;
-    }
-    .closeBtn{
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      border-radius:12px;
-      padding:8px 10px;
+    .modal h2{margin:0 0 6px 0; font-size:18px}
+    .modal p{margin:0 0 10px 0; color:var(--muted); font-size:13px}
+    .modal .row2{display:flex; gap:10px; margin-top:10px;}
+    .lockBtn{
       cursor:pointer;
-      font-weight:900;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      border-radius:999px;
+      padding:10px 12px;
+      font-weight:800;
     }
   </style>
 </head>
@@ -225,19 +170,13 @@
     <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
-        <span>Filtro por mês • busca • export CSV/PDF • edição</span>
+        <span>Controle financeiro • simples e rápido</span>
       </div>
-      <div class="pill">● Online</div>
-    </div>
 
-    <!-- filtros globais -->
-    <div class="filters">
-      <input id="filterMonth" type="month" />
-      <input id="filterQ" placeholder="Buscar (categoria, descrição...)" />
-      <button class="chipBtn" onclick="aplicarFiltros()">Aplicar</button>
-      <button class="chipBtn" onclick="exportarCSV()">Exportar CSV</button>
-      <button class="chipBtn" onclick="exportarPDF()">Exportar PDF</button>
-      <button class="chipBtn" onclick="logout()">Sair</button>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="lockBtn" onclick="openLogin()">🔒 Login</button>
+        <div class="pill">● Online</div>
+      </div>
     </div>
 
     <div class="tabs">
@@ -275,7 +214,7 @@
       </div>
 
       <div id="msg" class="msg"></div>
-      <div class="hint">O lançamento entra no mês selecionado no filtro (se a data for do mesmo mês).</div>
+      <div class="hint">Dica: depois de salvar, abra a aba “Últimos” para ver a lista.</div>
     </div>
 
     <!-- TELA ÚLTIMOS -->
@@ -316,74 +255,21 @@
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Mostrando até 10 lançamentos (do mês selecionado + busca).</div>
+      <div class="hint">Mostrando até 10 lançamentos mais recentes.</div>
     </div>
   </div>
 
-  <!-- MODAL LOGIN -->
-  <div class="modalOverlay" id="loginOverlay">
+  <!-- LOGIN MODAL -->
+  <div class="modal-backdrop" id="loginBackdrop">
     <div class="modal">
-      <div class="modalHeader">
-        <div>
-          <h2>Entrar</h2>
-          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
-            Digite a senha (APP_PASSWORD no Render)
-          </div>
-        </div>
-      </div>
-
-      <label>Senha</label>
-      <input id="loginPassword" type="password" placeholder="Sua senha" />
-
-      <div class="actions">
+      <h2>🔐 Login</h2>
+      <p>Digite a senha configurada no Render (APP_PASSWORD).</p>
+      <input id="loginPass" type="password" placeholder="Senha" />
+      <div class="row2">
+        <button class="btn secondary" onclick="closeLogin()">Cancelar</button>
         <button class="btn" onclick="doLogin()">Entrar</button>
       </div>
-
-      <div id="loginMsg" class="msg"></div>
-    </div>
-  </div>
-
-  <!-- MODAL EDIÇÃO -->
-  <div class="modalOverlay" id="modalOverlay" onclick="closeModalIfOutside(event)">
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="modalHeader">
-        <div>
-          <h2>Editar lançamento</h2>
-          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
-            Linha: <span id="edit_row">—</span>
-          </div>
-        </div>
-        <button class="closeBtn" onclick="closeEditModal()">Fechar</button>
-      </div>
-
-      <div class="seg">
-        <button id="edit_btnGasto" class="active" onclick="setEditTipo('Gasto')">Gasto</button>
-        <button id="edit_btnReceita" onclick="setEditTipo('Receita')">Receita</button>
-      </div>
-
-      <label>Categoria</label>
-      <input id="edit_categoria" placeholder="Ex: Alimentação" />
-
-      <label>Descrição</label>
-      <input id="edit_descricao" placeholder="Ex: mercado" />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="edit_valor" type="number" step="0.01" placeholder="Ex: 120" />
-        </div>
-        <div>
-          <label>Data (dd/mm/aaaa)</label>
-          <input id="edit_data" placeholder="19/02/2026" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="salvarEdicao()">Salvar alterações</button>
-        <button class="btn danger" onclick="excluirEdicao()">Excluir</button>
-      </div>
-
-      <div id="edit_msg" class="msg"></div>
+      <div id="loginMsg" class="msg" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -391,13 +277,26 @@
 
   <script>
     // =========================
-    // AUTH TOKEN (localStorage)
+    // AUTH FRONT
     // =========================
-    function getToken(){ return localStorage.getItem("APP_TOKEN") || ""; }
-    function setToken(t){ localStorage.setItem("APP_TOKEN", t || ""); }
-    function showLogin(show){
-      document.getElementById("loginOverlay").classList.toggle("open", !!show);
+    const TOKEN_KEY = "finance_ai_token";
+
+    function getToken(){
+      return localStorage.getItem(TOKEN_KEY) || "";
     }
+    function setToken(t){
+      localStorage.setItem(TOKEN_KEY, t || "");
+    }
+
+    function openLogin(){
+      document.getElementById("loginBackdrop").style.display = "flex";
+      document.getElementById("loginMsg").style.display = "none";
+      setTimeout(()=> document.getElementById("loginPass").focus(), 50);
+    }
+    function closeLogin(){
+      document.getElementById("loginBackdrop").style.display = "none";
+    }
+
     function setLoginMsg(kind, text){
       const el = document.getElementById("loginMsg");
       el.className = "msg";
@@ -407,11 +306,13 @@
       el.classList.add(kind);
       el.style.display = "block";
     }
-    async function doLogin(){
-      setLoginMsg("", "");
-      const password = document.getElementById("loginPassword").value.trim();
-      if(!password) return setLoginMsg("err", "Digite a senha.");
 
+    async function doLogin(){
+      const password = document.getElementById("loginPass").value.trim();
+      if(!password){
+        setLoginMsg("err", "Digite a senha.");
+        return;
+      }
       try{
         const r = await fetch("/login", {
           method:"POST",
@@ -419,57 +320,27 @@
           body: JSON.stringify({ password })
         });
         const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Falha no login");
-
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Senha inválida");
         setToken(j.token || password);
-        showLogin(false);
-        await carregarTudo();
+        setLoginMsg("ok", "✅ Logado!");
+        setTimeout(closeLogin, 450);
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
     }
-    function logout(){
-      setToken("");
-      showLogin(true);
-    }
 
-    async function apiFetch(url, opts={}){
-      const headers = Object.assign({}, opts.headers || {});
+    // Wrapper fetch com token + auto login ao 401
+    async function apiFetch(url, options={}){
       const token = getToken();
+      const headers = Object.assign({}, options.headers || {});
       if(token) headers["X-APP-TOKEN"] = token;
-      return fetch(url, Object.assign({}, opts, { headers }));
-    }
 
-    // =========================
-    // FILTROS GLOBAIS
-    // =========================
-    function getMonthYear(){
-      const v = document.getElementById("filterMonth").value; // yyyy-mm
-      if(!v){
-        const d = new Date();
-        return { year: d.getFullYear(), month: d.getMonth()+1 };
+      const resp = await fetch(url, Object.assign({}, options, { headers }));
+      if(resp.status === 401){
+        openLogin();
+        throw new Error("Unauthorized (faça login)");
       }
-      const [y,m] = v.split("-").map(Number);
-      return { year:y, month:m };
-    }
-    function getQ(){
-      return (document.getElementById("filterQ").value || "").trim();
-    }
-    function qs(){
-      const {year, month} = getMonthYear();
-      const q = encodeURIComponent(getQ());
-      return `month=${month}&year=${year}&q=${q}`;
-    }
-    async function aplicarFiltros(){
-      if(document.getElementById("screen-ultimos").style.display !== "none"){
-        await carregarTudo();
-      }
-    }
-    function exportarCSV(){
-      window.location.href = `/export.csv?${qs()}`;
-    }
-    function exportarPDF(){
-      window.location.href = `/export.pdf?${qs()}`;
+      return resp;
     }
 
     // =========================
@@ -479,8 +350,6 @@
     let chartMov = null;
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
-
-    let editState = { row: null, tipo: "Gasto" };
 
     // =========================
     // HELPERS
@@ -497,15 +366,6 @@
     }
     function setMsg(kind, text){
       const el = document.getElementById("msg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-    function setEditMsg(kind, text){
-      const el = document.getElementById("edit_msg");
       el.className = "msg";
       el.style.display = "none";
       if(!text) return;
@@ -551,7 +411,7 @@
     }
 
     // =========================
-    // ENVIAR (NOVO)
+    // ENVIAR
     // =========================
     async function enviar(){
       setMsg("", "");
@@ -579,6 +439,7 @@
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(payload)
         });
+
         const data = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
 
@@ -592,7 +453,7 @@
     }
 
     // =========================
-    // MOVIMENTO (BARRAS + LINHA)
+    // MOVIMENTO
     // =========================
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
@@ -685,6 +546,7 @@
         }
       };
     }
+
     function atualizarPizzas(j){
       const labelsG = j.pizza_gastos_labels || [];
       const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
@@ -731,7 +593,7 @@
     // RESUMO + LISTA
     // =========================
     async function carregarResumo(){
-      const r = await apiFetch(`/resumo?${qs()}`);
+      const r = await apiFetch("/resumo");
       if(!r.ok) throw new Error("Falha em /resumo");
       const j = await r.json();
 
@@ -741,150 +603,6 @@
 
       atualizarMovimento(j);
       atualizarPizzas(j);
-    }
-
-    async function carregarUltimos(){
-      const lista = document.getElementById("lista");
-      lista.innerHTML = `
-        <div class="item">
-          <div class="left">
-            <div class="icon">…</div>
-            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
-          </div>
-        </div>`;
-
-      const r = await apiFetch(`/ultimos?${qs()}&limit=10`);
-      if(!r.ok) throw new Error("Falha em /ultimos");
-      const dados = await r.json();
-      const arr = Array.isArray(dados) ? dados : [];
-
-      lista.innerHTML = "";
-      if(arr.length === 0){
-        lista.innerHTML = `
-          <div class="item">
-            <div class="left">
-              <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum lançamento</b><span>Sem dados para este mês/busca</span></div>
-            </div>
-          </div>`;
-        return;
-      }
-
-      arr.slice().reverse().forEach(item => {
-        const tipo = getField(item, ["Tipo","tipo"]);
-        const categoria = getField(item, ["Categoria","categoria"]);
-        const descricao = getField(item, ["Descrição","Descricao","descricao"]);
-        const data = getField(item, ["Data","data"]);
-        const valor = getField(item, ["Valor","valor"]);
-        const row = item._row;
-
-        const safe = encodeURIComponent(JSON.stringify(item));
-
-        lista.innerHTML += `
-          <div class="item">
-            <div class="left">
-              <div class="icon">${iconFor(item)}</div>
-              <div class="meta">
-                <b>${tipo} • ${categoria}</b>
-                <span>${descricao} • ${data}</span>
-                <div class="ops">
-                  <button class="btn secondary small" onclick="openEditFromEncoded('${safe}')">Editar</button>
-                  <button class="btn danger small" onclick="excluirLancamento(${row})">Excluir</button>
-                </div>
-              </div>
-            </div>
-            <div class="value ${valueClass(item)}">${brl(valor)}</div>
-          </div>
-        `;
-      });
-    }
-
-    async function carregarTudo(){
-      try{ await carregarResumo(); }catch(e){ console.log(e); }
-      try{ await carregarUltimos(); }catch(e){
-        const lista = document.getElementById("lista");
-        lista.innerHTML = `
-          <div class="item">
-            <div class="left">
-              <div class="icon">!</div>
-              <div class="meta"><b>Erro</b><span>${e.message}</span></div>
-            </div>
-          </div>`;
-      }
-    }
-
-    // =========================
-    // EDITAR / EXCLUIR (MODAL)
-    // =========================
-    function openEditFromEncoded(encoded){
-      const item = JSON.parse(decodeURIComponent(encoded));
-      openEditModal(item);
-    }
-    function setEditTipo(tipo){
-      editState.tipo = tipo;
-      document.getElementById("edit_btnGasto").classList.toggle("active", tipo==="Gasto");
-      document.getElementById("edit_btnReceita").classList.toggle("active", tipo==="Receita");
-    }
-    function openEditModal(item){
-      setEditMsg("", "");
-      editState.row = item._row;
-
-      const tipo = (item.Tipo || item.tipo || "Gasto").toString();
-      setEditTipo(tipo.toLowerCase().includes("rece") ? "Receita" : "Gasto");
-
-      document.getElementById("edit_row").innerText = String(editState.row || "—");
-      document.getElementById("edit_categoria").value = (item.Categoria || item.categoria || "").toString();
-      document.getElementById("edit_descricao").value = (item["Descrição"] || item.Descricao || item.descricao || "").toString();
-      document.getElementById("edit_valor").value = (item.Valor ?? item.valor ?? "").toString();
-      document.getElementById("edit_data").value = (item.Data || item.data || "").toString();
-
-      document.getElementById("modalOverlay").classList.add("open");
-    }
-    function closeEditModal(){
-      document.getElementById("modalOverlay").classList.remove("open");
-      editState.row = null;
-    }
-    function closeModalIfOutside(ev){
-      if(ev.target && ev.target.id === "modalOverlay") closeEditModal();
-    }
-
-    async function salvarEdicao(){
-      setEditMsg("", "");
-      const row = editState.row;
-
-      const categoria = document.getElementById("edit_categoria").value.trim();
-      const descricao = document.getElementById("edit_descricao").value.trim();
-      const valorRaw = document.getElementById("edit_valor").value;
-      const data = document.getElementById("edit_data").value.trim();
-
-      if(!row) return setEditMsg("err", "Linha inválida.");
-      if(!categoria || !descricao || !valorRaw || !data){
-        return setEditMsg("err", "Preencha categoria, descrição, valor e data.");
-      }
-
-      const payload = {
-        tipo: editState.tipo,
-        categoria,
-        descricao,
-        valor: Number(valorRaw),
-        data
-      };
-
-      try{
-        const r = await apiFetch(`/lancamento/${row}`, {
-          method:"PATCH",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify(payload)
-        });
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(j?.msg || "Erro ao editar");
-
-        setEditMsg("ok", "✅ Alterações salvas!");
-        await carregarTudo();
-        setTimeout(closeEditModal, 450);
-      }catch(e){
-        setEditMsg("err", "❌ " + e.message);
-      }
     }
 
     async function excluirLancamento(row){
@@ -899,40 +617,127 @@
       }
     }
 
-    async function excluirEdicao(){
-      const row = editState.row;
-      if(!row) return;
-      if(!confirm("Excluir este lançamento?")) return;
+    async function editarLancamento(item){
+      const row = item._row;
+
+      const tipo = prompt("Tipo (Gasto ou Receita):", item.Tipo || item.tipo || "Gasto");
+      if(!tipo) return;
+
+      const categoria = prompt("Categoria:", item.Categoria || item.categoria || "");
+      if(!categoria) return;
+
+      const descricao = prompt("Descrição:", item["Descrição"] || item.Descricao || item.descricao || "");
+      if(!descricao) return;
+
+      const valorStr = prompt("Valor (ex: 120.50):", (item.Valor ?? item.valor ?? "").toString());
+      if(!valorStr) return;
+
+      const dataStr = prompt("Data (dd/mm/aaaa):", item.Data || item.data || "");
+      if(!dataStr) return;
+
+      const payload = {
+        tipo: tipo.trim(),
+        categoria: categoria.trim(),
+        descricao: descricao.trim(),
+        valor: Number(valorStr),
+        data: dataStr.trim()
+      };
 
       try{
-        const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
+        const r = await apiFetch(`/lancamento/${row}`, {
+          method:"PATCH",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
         const j = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(j?.msg || "Erro ao excluir");
+        if(!r.ok) throw new Error(j?.msg || "Erro ao editar");
         await carregarTudo();
-        closeEditModal();
       }catch(e){
-        setEditMsg("err", "❌ " + e.message);
+        alert("❌ " + e.message);
       }
     }
 
-    // =========================
-    // INIT
-    // =========================
+    async function carregarUltimos(){
+      const lista = document.getElementById("lista");
+      lista.innerHTML = `
+        <div class="item">
+          <div class="left">
+            <div class="icon">…</div>
+            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
+          </div>
+        </div>`;
+
+      const r = await apiFetch("/ultimos");
+      if(!r.ok) throw new Error("Falha em /ultimos");
+      const arr = await r.json();
+
+      lista.innerHTML = "";
+
+      if(!Array.isArray(arr) || arr.length === 0){
+        lista.innerHTML = `
+          <div class="item">
+            <div class="left">
+              <div class="icon">∅</div>
+              <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
+            </div>
+          </div>`;
+        return;
+      }
+
+      arr.slice().reverse().forEach(item => {
+        const tipo = getField(item, ["Tipo","tipo"]);
+        const categoria = getField(item, ["Categoria","categoria"]);
+        const descricao = getField(item, ["Descrição","Descricao","descricao"]);
+        const data = getField(item, ["Data","data"]);
+        const valor = getField(item, ["Valor","valor"]);
+        const row = item._row;
+
+        const itemSafe = encodeURIComponent(JSON.stringify(item));
+
+        lista.innerHTML += `
+          <div class="item">
+            <div class="left">
+              <div class="icon">${iconFor(item)}</div>
+              <div class="meta">
+                <b>${tipo} • ${categoria}</b>
+                <span>${descricao} • ${data}</span>
+                <span style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                  <button class="btn secondary" style="padding:8px 10px; border-radius:12px;"
+                    onclick='editarLancamento(JSON.parse(decodeURIComponent("${itemSafe}")))'>
+                    Editar
+                  </button>
+                  <button class="btn secondary" style="padding:8px 10px; border-radius:12px; border-color: rgba(255,90,106,.35);"
+                    onclick="excluirLancamento(${row})">
+                    Excluir
+                  </button>
+                </span>
+              </div>
+            </div>
+            <div class="value ${valueClass(item)}">${brl(valor)}</div>
+          </div>
+        `;
+      });
+    }
+
+    async function carregarTudo(){
+      try{ await carregarResumo(); } catch(e){ console.log(e); }
+      try{ await carregarUltimos(); } catch(e){
+        const lista = document.getElementById("lista");
+        lista.innerHTML = `
+          <div class="item">
+            <div class="left">
+              <div class="icon">!</div>
+              <div class="meta"><b>Erro ao carregar</b><span>${e.message}</span></div>
+            </div>
+          </div>`;
+      }
+    }
+
+    // data hoje
     (function init(){
-      // set date hoje
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
-
-      // mês filtro: mês atual
-      document.getElementById("filterMonth").value = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
-
-      // login
-      if(!getToken()){
-        showLogin(true);
-      }else{
-        carregarTudo();
-      }
     })();
   </script>
 </body>
