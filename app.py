@@ -15,7 +15,6 @@ from google.oauth2.service_account import Credentials
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 
-
 app = Flask(__name__)
 
 SCOPES = [
@@ -24,9 +23,6 @@ SCOPES = [
 ]
 
 HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
-
-_client_cached = None
-
 
 # =========================
 # AUTH (senha simples)
@@ -40,17 +36,21 @@ def require_auth():
     if token != pwd:
         abort(401)
 
-
 @app.before_request
 def _auth_middleware():
-    # Se quiser liberar "/" sem senha, comente estas 2 linhas e
-    # chame require_auth() apenas nas rotas de API.
+    # Libera HOME e LOGIN sem auth
+    # (senão o browser mostra Unauthorized antes de renderizar o HTML)
+    endpoint = (request.endpoint or "").lower()
+    if endpoint in ("home", "login", "static"):
+        return
+    # protege todas as outras rotas (API)
     require_auth()
-
 
 # =========================
 # GOOGLE SHEETS
 # =========================
+_client_cached = None
+
 def get_client() -> gspread.Client:
     """
     Prioridade:
@@ -86,13 +86,7 @@ def get_client() -> gspread.Client:
         "Crie SERVICE_ACCOUNT_JSON OU envie Secret File 'google_creds.json' no Render."
     )
 
-
 def get_sheet() -> gspread.Worksheet:
-    """
-    Usa:
-    - SHEET_ID (obrigatório)
-    - SHEET_TAB (seu env atual) OU WORKSHEET_NAME (alternativo)
-    """
     sheet_id = os.getenv("SHEET_ID", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing env var SHEET_ID")
@@ -100,7 +94,9 @@ def get_sheet() -> gspread.Worksheet:
     client = get_client()
     sh = client.open_by_key(sheet_id)
 
+    # seu env atual:
     ws_name = os.getenv("SHEET_TAB", "").strip()
+    # compatível com outras versões:
     if not ws_name:
         ws_name = os.getenv("WORKSHEET_NAME", "").strip()
 
@@ -117,13 +113,8 @@ def get_sheet() -> gspread.Worksheet:
 
     return ws
 
-
-# =========================
-# HELPERS
-# =========================
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
-
 
 def safe_float(v: Any) -> float:
     if v is None:
@@ -136,11 +127,7 @@ def safe_float(v: Any) -> float:
     except:
         return 0.0
 
-
 def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Retorna headers e lista de dicts com _row (número da linha real no Sheets).
-    """
     values = ws.get_all_values()
     if not values or len(values) < 2:
         return HEADERS, []
@@ -148,9 +135,9 @@ def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[st
     headers = values[0]
     data_rows = values[1:]
 
-    out: List[Dict[str, Any]] = []
+    out = []
     for idx, row in enumerate(data_rows, start=2):
-        obj: Dict[str, Any] = {}
+        obj = {}
         for h_i, h in enumerate(headers):
             obj[h] = row[h_i] if h_i < len(row) else ""
         obj["_row"] = idx
@@ -158,10 +145,9 @@ def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[st
 
     return headers, out
 
-
 def filter_rows(rows: List[Dict[str, Any]], month: int, year: int, q: str) -> List[Dict[str, Any]]:
     q = (q or "").strip().lower()
-    filtered: List[Dict[str, Any]] = []
+    filtered = []
 
     for r in rows:
         d_str = (r.get("Data") or "").strip()
@@ -188,7 +174,6 @@ def filter_rows(rows: List[Dict[str, Any]], month: int, year: int, q: str) -> Li
 
     return filtered
 
-
 def get_month_year_from_request() -> Tuple[int, int]:
     today = datetime.now().date()
     month = request.args.get("month", default=today.month, type=int)
@@ -199,14 +184,12 @@ def get_month_year_from_request() -> Tuple[int, int]:
         year = today.year
     return month, year
 
-
 # =========================
 # ROUTES
 # =========================
 @app.get("/")
 def home():
     return render_template("index.html")
-
 
 @app.post("/login")
 def login():
@@ -220,7 +203,6 @@ def login():
         return jsonify({"ok": False, "msg": "Senha inválida"}), 401
     return jsonify({"ok": True, "token": password})
 
-
 @app.post("/lancar")
 def lancar():
     ws = get_sheet()
@@ -230,7 +212,7 @@ def lancar():
     categoria = str(body.get("categoria", "")).strip()
     descricao = str(body.get("descricao", "")).strip()
     valor = body.get("valor", None)
-    data_str = str(body.get("data", "")).strip()  # dd/mm/aaaa
+    data_str = str(body.get("data", "")).strip()
 
     if tipo not in ("Gasto", "Receita"):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
@@ -252,7 +234,6 @@ def lancar():
     ws.append_row([new_id, data_str, tipo, categoria, descricao, f"{v:.2f}", created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
-
 @app.get("/ultimos")
 def ultimos():
     ws = get_sheet()
@@ -261,7 +242,8 @@ def ultimos():
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str)
     limit = request.args.get("limit", default=10, type=int)
-    limit = max(1, min(limit, 200))
+    if limit < 1: limit = 10
+    if limit > 200: limit = 200
 
     filtered = filter_rows(rows, month, year, q)
 
@@ -275,7 +257,6 @@ def ultimos():
     filtered.sort(key=sort_key)
     last = filtered[-limit:] if len(filtered) > limit else filtered
     return jsonify(last)
-
 
 @app.get("/resumo")
 def resumo():
@@ -305,8 +286,8 @@ def resumo():
             d = parse_br_date(r.get("Data"))
         except:
             continue
-
         di = d.day - 1
+
         if tipo == "Receita":
             entradas += val
             if 0 <= di < last_day:
@@ -319,7 +300,7 @@ def resumo():
             pizza_gastos[cat] = pizza_gastos.get(cat, 0.0) + val
 
     saldo = entradas - saidas
-    dias = [str(i + 1).zfill(2) for i in range(last_day)]
+    dias = [str(i+1).zfill(2) for i in range(last_day)]
 
     def collapse_top(d: Dict[str, float], top_n=12):
         items = sorted(d.items(), key=lambda x: x[1], reverse=True)
@@ -349,7 +330,6 @@ def resumo():
         "pizza_receitas_values": pr_v
     })
 
-
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
     ws = get_sheet()
@@ -375,7 +355,6 @@ def editar(row: int):
     if v <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido."}), 400
 
-    # B=Data C=Tipo D=Categoria E=Descrição F=Valor
     ws.update(f"B{row}", [[data_str]])
     ws.update(f"C{row}", [[tipo]])
     ws.update(f"D{row}", [[categoria]])
@@ -384,7 +363,6 @@ def editar(row: int):
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
-
 @app.delete("/lancamento/<int:row>")
 def deletar(row: int):
     ws = get_sheet()
@@ -392,7 +370,6 @@ def deletar(row: int):
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
     ws.delete_rows(row)
     return jsonify({"ok": True, "msg": "Excluído com sucesso!"})
-
 
 def build_filtered_for_export() -> List[Dict[str, Any]]:
     ws = get_sheet()
@@ -403,11 +380,9 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     filtered.sort(key=lambda r: (parse_br_date(r.get("Data", "01/01/1900")), r.get("_row", 0)))
     return filtered
 
-
 @app.get("/export.csv")
 def export_csv():
     filtered = build_filtered_for_export()
-
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Data", "Tipo", "Categoria", "Descrição", "Valor"])
@@ -419,14 +394,12 @@ def export_csv():
             r.get("Descrição", ""),
             r.get("Valor", ""),
         ])
-
     data = output.getvalue().encode("utf-8-sig")
     return Response(
         data,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=finance-ai.csv"}
     )
-
 
 @app.get("/export.pdf")
 def export_pdf():
@@ -506,14 +479,13 @@ def export_pdf():
 
     c.showPage()
     c.save()
-
     buf.seek(0)
+
     return Response(
         buf.getvalue(),
         mimetype="application/pdf",
         headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
     )
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
