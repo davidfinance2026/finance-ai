@@ -11,7 +11,7 @@ from flask import Flask, jsonify, request, render_template, Response, abort, ses
 import gspread
 from google.oauth2.service_account import Credentials
 
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # PDF (reportlab)
@@ -20,14 +20,14 @@ from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
 
-# Render/Proxy: garante que Flask "enxerga" https corretamente (cookies)
+# Render/Proxy: garante que Flask "enxerga" https corretamente (cookies/sessão)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Sessão (cookie)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,  # Render é https
+    SESSION_COOKIE_SECURE=True,  # no Render é https
 )
 
 SCOPES = [
@@ -38,22 +38,6 @@ SCOPES = [
 HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
 
 _client_cached: Optional[gspread.Client] = None
-
-
-# =========================
-# HASH GEN (TEMPORÁRIO!)
-# =========================
-@app.get("/_genhash")
-def genhash():
-    """
-    ROTA TEMPORÁRIA para você gerar um hash pelo celular.
-    Use: /_genhash?pwd=1234
-    Depois de gerar e configurar o Render, REMOVA essa rota.
-    """
-    pwd = request.args.get("pwd", "")
-    if not pwd:
-        return "Passe ?pwd=SUASENHA", 400
-    return generate_password_hash(pwd)
 
 
 # =========================
@@ -85,8 +69,7 @@ def require_auth():
 
 @app.before_request
 def _auth_middleware():
-    # libera páginas públicas + rota temporária do hash
-    public_paths = {"/", "/login", "/me", "/_genhash"}
+    public_paths = {"/", "/login", "/logout", "/me"}
     if request.path in public_paths:
         return
     if request.path.startswith("/static"):
@@ -393,8 +376,8 @@ def me():
 
 @app.post("/login")
 def login():
+    # Se não configurou login, deixa aberto
     if not _email_password_auth_enabled():
-        # se não configurou APP_EMAIL/APP_PASSWORD_HASH, deixa aberto
         return jsonify({"ok": True})
 
     body = request.get_json(force=True, silent=True) or {}
@@ -442,7 +425,7 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # salva como número no Sheets
+    # ✅ salva como número no Sheets
     ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
@@ -603,7 +586,7 @@ def editar(row: int):
     ws.update(f"C{row}", [[tipo]])
     ws.update(f"D{row}", [[categoria]])
     ws.update(f"E{row}", [[descricao]])
-    ws.update(f"F{row}", [[v]])  # número
+    ws.update(f"F{row}", [[v]])  # ✅ número
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
@@ -685,4 +668,22 @@ def export_pdf():
         c.drawString(40, y, f"Valor: min {request.args.get('value_min','')} / max {request.args.get('value_max','')}")
         y -= 16
     if q:
-        c.drawStri
+        c.drawString(40, y, f"Busca: {q}")
+        y -= 16
+    c.drawString(40, y, f"Ordenação: {order}")
+    y -= 18
+
+    entradas = 0.0
+    saidas = 0.0
+    for r in filtered:
+        t = (r.get("Tipo") or "").strip()
+        v = safe_float(r.get("Valor"))
+        if t == "Receita":
+            entradas += v
+        else:
+            saidas += v
+    saldo = entradas - saidas
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(40, y, f"Entradas: R$ {entradas:.2f}   Saídas: R$ {saidas:.2f}   Saldo: R$ {saldo:.2f}")
+    y -
