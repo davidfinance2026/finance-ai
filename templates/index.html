@@ -154,6 +154,27 @@
       .filters{grid-template-columns:1fr;}
     }
 
+    .quickRow{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+    .chip{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border-radius:999px;
+      padding:8px 10px;
+      font-weight:900;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .chip.secondary{
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+    }
+
     .pager{
       margin-top:12px;
       display:flex;
@@ -209,7 +230,6 @@
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    /* TABELA CATEGORIAS */
     .tableWrap{
       margin-top:10px;
       border:1px solid var(--border);
@@ -217,11 +237,7 @@
       overflow:hidden;
       background: rgba(15,23,48,.45);
     }
-    table{
-      width:100%;
-      border-collapse:collapse;
-      font-size:13px;
-    }
+    table{width:100%; border-collapse:collapse; font-size:13px;}
     th, td{
       padding:10px 12px;
       border-bottom:1px solid rgba(255,255,255,.06);
@@ -345,7 +361,7 @@
         </div>
       </div>
 
-      <!-- FILTROS / BUSCA / EXPORT -->
+      <!-- FILTROS -->
       <div class="filters">
         <div>
           <label>Mês</label>
@@ -354,6 +370,17 @@
         <div>
           <label>Ano</label>
           <select id="fYear"></select>
+        </div>
+
+        <div class="full">
+          <label>Atalhos</label>
+          <div class="quickRow">
+            <button class="chip" onclick="setQuickThisMonth()">Mês atual</button>
+            <button class="chip" onclick="setQuickLastDays(7)">Últimos 7 dias</button>
+            <button class="chip" onclick="setQuickLastDays(30)">Últimos 30 dias</button>
+            <button class="chip" onclick="setQuickLastDays(90)">Últimos 90 dias</button>
+            <button class="chip secondary" onclick="clearQuickDates()">Limpar datas</button>
+          </div>
         </div>
 
         <div class="full">
@@ -382,6 +409,15 @@
         <div>
           <label>Até</label>
           <input id="fTo" type="date" />
+        </div>
+
+        <div>
+          <label>Valor mínimo</label>
+          <input id="fMin" type="text" inputmode="decimal" placeholder="Ex: 50,00" />
+        </div>
+        <div>
+          <label>Valor máximo</label>
+          <input id="fMax" type="text" inputmode="decimal" placeholder="Ex: 1000,00" />
         </div>
 
         <div class="full">
@@ -422,9 +458,7 @@
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
         <div class="tableWrap" id="tblGastosWrap" style="display:none;">
           <table>
-            <thead>
-              <tr><th>Categoria</th><th>Total</th></tr>
-            </thead>
+            <thead><tr><th>Categoria</th><th>Total</th></tr></thead>
             <tbody id="tblGastos"></tbody>
           </table>
         </div>
@@ -436,9 +470,7 @@
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
         <div class="tableWrap" id="tblReceitasWrap" style="display:none;">
           <table>
-            <thead>
-              <tr><th>Categoria</th><th>Total</th></tr>
-            </thead>
+            <thead><tr><th>Categoria</th><th>Total</th></tr></thead>
             <tbody id="tblReceitas"></tbody>
           </table>
         </div>
@@ -460,7 +492,7 @@
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Use os filtros e a paginação para navegar pelos lançamentos.</div>
+      <div class="hint">Use os filtros + atalhos para navegar rápido.</div>
     </div>
   </div>
 
@@ -616,6 +648,8 @@
       order: "recent",
       date_from: "",
       date_to: "",
+      value_min: "",
+      value_max: "",
       limit: 10,
       page: 1,
       total: 0
@@ -633,6 +667,20 @@
       if(!iso) return null;
       const [y,m,d] = iso.split("-");
       return `${d}/${m}/${y}`;
+    }
+    function isoToday(){
+      const d = new Date();
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+    }
+    function isoAddDays(iso, days){
+      const [y,m,d] = iso.split("-").map(Number);
+      const dt = new Date(y, m-1, d);
+      dt.setDate(dt.getDate() + days);
+      return `${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())}`;
+    }
+    function isoFirstOfMonth(iso){
+      const [y,m] = iso.split("-").map(Number);
+      return `${y}-${pad2(m)}-01`;
     }
 
     // Corrige 360,00 / 1.234,56 / 360.00 etc
@@ -725,6 +773,43 @@
     }
 
     // =========================
+    // QUICK FILTERS (ATALHOS)
+    // =========================
+    function setQuickThisMonth(){
+      const today = isoToday();
+      const from = isoFirstOfMonth(today);
+      document.getElementById("fFrom").value = from;
+      document.getElementById("fTo").value = today;
+
+      // ajusta selects mês/ano pro mês atual
+      const [y,m] = today.split("-").map(Number);
+      document.getElementById("fMonth").value = String(m);
+      document.getElementById("fYear").value = String(y);
+
+      aplicarFiltros();
+    }
+
+    function setQuickLastDays(n){
+      const today = isoToday();
+      const from = isoAddDays(today, -(n-1));
+      document.getElementById("fFrom").value = from;
+      document.getElementById("fTo").value = today;
+
+      // para o gráfico do mês: usa mês atual (fica consistente)
+      const [y,m] = today.split("-").map(Number);
+      document.getElementById("fMonth").value = String(m);
+      document.getElementById("fYear").value = String(y);
+
+      aplicarFiltros();
+    }
+
+    function clearQuickDates(){
+      document.getElementById("fFrom").value = "";
+      document.getElementById("fTo").value = "";
+      aplicarFiltros();
+    }
+
+    // =========================
     // FILTROS
     // =========================
     function fillMonthYear(){
@@ -747,6 +832,8 @@
       filtros.order = "recent";
       filtros.date_from = "";
       filtros.date_to = "";
+      filtros.value_min = "";
+      filtros.value_max = "";
       filtros.limit = 10;
       filtros.page = 1;
 
@@ -757,6 +844,8 @@
       document.getElementById("fSearch").value = "";
       document.getElementById("fFrom").value = "";
       document.getElementById("fTo").value = "";
+      document.getElementById("fMin").value = "";
+      document.getElementById("fMax").value = "";
       document.getElementById("fLimit").value = String(filtros.limit);
 
       setTitleMov();
@@ -768,7 +857,9 @@
       const t = filtros.tipo === "Todos" ? "Todos" : (filtros.tipo === "Gasto" ? "Gastos" : "Receitas");
       const df = filtros.date_from ? ` • De ${filtros.date_from}` : "";
       const dt = filtros.date_to ? ` até ${filtros.date_to}` : "";
-      document.getElementById("titleMov").textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}${df}${dt}`;
+      const vm = filtros.value_min ? ` • Min ${filtros.value_min}` : "";
+      const vx = filtros.value_max ? ` • Max ${filtros.value_max}` : "";
+      document.getElementById("titleMov").textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}${df}${dt}${vm}${vx}`;
     }
 
     function aplicarFiltros(){
@@ -779,9 +870,12 @@
       filtros.q = (document.getElementById("fSearch").value || "").trim();
       filtros.limit = Number(document.getElementById("fLimit").value) || 10;
 
-      // Intervalo vai em ISO yyyy-mm-dd (o backend aceita)
       filtros.date_from = (document.getElementById("fFrom").value || "").trim();
       filtros.date_to = (document.getElementById("fTo").value || "").trim();
+
+      // min/max mantém string (backend parseia)
+      filtros.value_min = (document.getElementById("fMin").value || "").trim();
+      filtros.value_max = (document.getElementById("fMax").value || "").trim();
 
       filtros.page = 1;
       setTitleMov();
@@ -1032,7 +1126,9 @@
         tipo: filtros.tipo,
         q: filtros.q,
         date_from: filtros.date_from,
-        date_to: filtros.date_to
+        date_to: filtros.date_to,
+        value_min: filtros.value_min,
+        value_max: filtros.value_max
       };
 
       const r = await apiFetch("/resumo" + qs(params));
@@ -1069,6 +1165,8 @@
         order: filtros.order,
         date_from: filtros.date_from,
         date_to: filtros.date_to,
+        value_min: filtros.value_min,
+        value_max: filtros.value_max,
         page: filtros.page,
         limit: filtros.limit
       };
@@ -1239,7 +1337,9 @@
           q: filtros.q,
           order: filtros.order,
           date_from: filtros.date_from,
-          date_to: filtros.date_to
+          date_to: filtros.date_to,
+          value_min: filtros.value_min,
+          value_max: filtros.value_max
         };
         const url = (tipo === "pdf" ? "/export.pdf" : "/export.csv") + qs(params);
 
@@ -1275,11 +1375,17 @@
       setPill();
       fillMonthYear();
 
-      const d = new Date();
-      const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-      document.getElementById("data").value = iso;
+      document.getElementById("data").value = isoToday();
 
       document.getElementById("fSearch").addEventListener("keydown", (ev)=>{
+        if(ev.key === "Enter") aplicarFiltros();
+      });
+
+      // Enter em min/max também aplica
+      document.getElementById("fMin").addEventListener("keydown", (ev)=>{
+        if(ev.key === "Enter") aplicarFiltros();
+      });
+      document.getElementById("fMax").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
 
