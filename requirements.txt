@@ -3,3 +3,4 @@ gunicorn
 gspread
 google-auth
 reportlab
+werkzeug
