@@ -16,6 +16,7 @@
       --blue:#4f8cff;
       --red:#ff5a6a;
       --green:#21c07a;
+      --card: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
     }
     *{box-sizing:border-box}
     body{
@@ -30,7 +31,7 @@
       display:flex;
       justify-content:center;
     }
-    .app{width:min(520px, 100%); padding-bottom:18px;}
+    .app{width:min(560px, 100%); padding-bottom:18px;}
     .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;}
     .brand{display:flex; flex-direction:column; line-height:1.1;}
     .brand h1{margin:0; font-size:22px; letter-spacing:.2px;}
@@ -40,36 +41,43 @@
       background:rgba(255,255,255,.04); border-radius:999px;
       color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
+      cursor:pointer;
     }
+
     .tabs{display:flex; gap:10px; margin:14px 0;}
     .tab{
       flex:1; padding:12px 12px; border-radius:999px;
       border:1px solid var(--border); background:rgba(255,255,255,.04);
-      color:var(--muted); font-weight:700; cursor:pointer;
+      color:var(--muted); font-weight:800; cursor:pointer;
     }
     .tab.active{
       background:linear-gradient(180deg, rgba(79,140,255,.25), rgba(79,140,255,.08));
       color:var(--text); border-color: rgba(79,140,255,.35);
     }
+
     .card{
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      background:var(--card);
       border:1px solid var(--border);
       border-radius:var(--radius);
       box-shadow:var(--shadow);
       padding:16px;
     }
+
     .row{display:flex; gap:10px;}
     .row > *{flex:1}
+
     label{
-      display:block; margin-top:12px; font-weight:700;
+      display:block; margin-top:12px; font-weight:800;
       color:var(--muted); font-size:12px; letter-spacing:.3px; text-transform:uppercase;
     }
-    input{
+
+    input, select{
       width:100%; margin-top:8px; padding:12px 12px;
       border-radius:14px; border:1px solid var(--border);
       background: rgba(15,23,48,.75); color:var(--text); outline:none;
     }
     input::placeholder{color:rgba(159,176,218,.65)}
+
     .seg{
       display:flex; gap:10px; margin-top:10px;
       background:rgba(255,255,255,.04); border:1px solid var(--border);
@@ -77,27 +85,35 @@
     }
     .seg button{
       flex:1; border:0; background:transparent; color:var(--muted);
-      padding:10px 10px; border-radius:999px; font-weight:800; cursor:pointer;
+      padding:10px 10px; border-radius:999px; font-weight:900; cursor:pointer;
     }
     .seg button.active{background:rgba(79,140,255,.25); color:var(--text);}
-    .actions{display:flex; gap:10px; margin-top:14px;}
+
+    .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
     .btn{
       border:0; border-radius:16px; padding:12px 12px;
       font-weight:900; cursor:pointer; color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
       flex:1;
+      min-width:140px;
     }
     .btn.secondary{
       background:rgba(255,255,255,.06); color:var(--text);
       border:1px solid var(--border); box-shadow:none;
     }
     .btn.danger{
-      background:rgba(255,90,106,.12);
-      color:var(--text);
-      border:1px solid rgba(255,90,106,.35);
-      box-shadow:none;
+      background:rgba(255,90,106,.14); color:var(--text);
+      border:1px solid rgba(255,90,106,.35); box-shadow:none;
     }
+    .btn.small{
+      padding:10px 10px;
+      border-radius:12px;
+      min-width:auto;
+      flex:0 0 auto;
+      font-weight:900;
+    }
+
     .msg{
       margin-top:12px; padding:12px 12px; border-radius:14px;
       border:1px solid var(--border); background: rgba(15,23,48,.6);
@@ -112,7 +128,7 @@
       border-radius:16px; padding:12px;
       display:flex; justify-content:space-between; align-items:center; gap:10px;
     }
-    .mini-card .label{color: var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.3px;}
+    .mini-card .label{color: var(--muted); font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.3px;}
     .mini-card .value{font-weight:900; font-size:14px; white-space:nowrap;}
 
     .chart-card{ margin-top: 12px; }
@@ -120,6 +136,22 @@
     .title{
       margin:0 0 10px 0; font-weight:900; color:var(--muted);
       text-transform:uppercase; letter-spacing:.3px; font-size:12px;
+    }
+
+    .filters{
+      margin-top:12px;
+      padding:12px;
+      border-radius:16px;
+      border:1px solid var(--border);
+      background: rgba(15,23,48,.45);
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    .filters .full{grid-column: 1 / -1;}
+    .filters .actions{margin-top:0;}
+    @media(max-width:480px){
+      .filters{grid-template-columns:1fr;}
     }
 
     .list{margin-top:14px; display:flex; flex-direction:column; gap:10px;}
@@ -137,12 +169,13 @@
     .meta{flex:1;}
     .meta b{display:block; font-size:14px}
     .meta span{display:block; color:var(--muted); font-size:12px; margin-top:4px}
+    .inlineBtns{margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;}
     .value{text-align:right; font-weight:900; font-size:14px; white-space:nowrap;}
     .value.green{color:#7dffbf}
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
-    /* Login modal */
+    /* MODAIS */
     .modalBack{
       position:fixed; inset:0;
       background:rgba(0,0,0,.55);
@@ -153,8 +186,8 @@
       z-index:9999;
     }
     .modal{
-      width:min(420px, 100%);
-      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      width:min(460px, 100%);
+      background:var(--card);
       border:1px solid var(--border);
       border-radius:20px;
       box-shadow:var(--shadow);
@@ -162,6 +195,22 @@
     }
     .modal h2{margin:0 0 6px 0; font-size:18px;}
     .modal p{margin:0 0 12px 0; color:var(--muted); font-size:13px;}
+    .modal .closeRow{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .xBtn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border-radius:12px;
+      padding:8px 10px;
+      cursor:pointer;
+      font-weight:900;
+    }
   </style>
 </head>
 
@@ -172,7 +221,7 @@
         <h1>Finance AI</h1>
         <span>Controle financeiro • simples e rápido</span>
       </div>
-      <div class="pill" id="statusPill">● Online</div>
+      <div class="pill" id="statusPill" onclick="openLogin()">🔒 Login</div>
     </div>
 
     <div class="tabs">
@@ -196,7 +245,6 @@
       <div class="row">
         <div>
           <label>Valor</label>
-          <!-- IMPORTANTE: text para aceitar 360,00 -->
           <input id="valor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
         </div>
         <div>
@@ -231,16 +279,46 @@
         </div>
       </div>
 
+      <!-- FILTROS / BUSCA / EXPORT -->
+      <div class="filters">
+        <div>
+          <label>Mês</label>
+          <select id="fMonth"></select>
+        </div>
+        <div>
+          <label>Ano</label>
+          <select id="fYear"></select>
+        </div>
+
+        <div class="full">
+          <label>Buscar</label>
+          <input id="fSearch" placeholder="Ex: mercado, lazer, alimentação..." />
+        </div>
+
+        <div class="full actions">
+          <button class="btn secondary" onclick="aplicarFiltros()">Aplicar filtros</button>
+          <button class="btn" onclick="limparFiltros()">Limpar</button>
+        </div>
+
+        <div class="full actions">
+          <button class="btn secondary" onclick="exportar('csv')">⬇ Exportar CSV</button>
+          <button class="btn secondary" onclick="exportar('pdf')">⬇ Exportar PDF</button>
+        </div>
+      </div>
+
+      <!-- movimento -->
       <div class="card chart-card">
-        <div class="title">Movimento do mês (barras) + saldo acumulado (linha)</div>
+        <div class="title" id="titleMov">Movimento do mês</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
+      <!-- pizza gastos -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
       </div>
 
+      <!-- pizza receitas -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria (mês)</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -252,15 +330,20 @@
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Mostrando até 10 lançamentos mais recentes.</div>
+      <div class="hint">Mostrando até 10 lançamentos mais recentes (com filtros aplicados).</div>
     </div>
   </div>
 
   <!-- LOGIN MODAL -->
   <div class="modalBack" id="loginBack">
     <div class="modal">
-      <h2>🔒 Login</h2>
-      <p>Digite a senha para acessar seus lançamentos.</p>
+      <div class="closeRow">
+        <div>
+          <h2>🔒 Login</h2>
+          <p>Digite a senha para acessar seus lançamentos.</p>
+        </div>
+        <button class="xBtn" onclick="closeLogin()">✕</button>
+      </div>
       <label>Senha</label>
       <input id="loginPwd" type="password" placeholder="Sua senha" />
       <div class="actions" style="margin-top:12px;">
@@ -268,6 +351,51 @@
         <button class="btn secondary" onclick="logout()">Sair</button>
       </div>
       <div id="loginMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- EDIT MODAL -->
+  <div class="modalBack" id="editBack">
+    <div class="modal">
+      <div class="closeRow">
+        <div>
+          <h2>✏️ Editar lançamento</h2>
+          <p>Altere os campos e clique em “Salvar alterações”.</p>
+        </div>
+        <button class="xBtn" onclick="closeEdit()">✕</button>
+      </div>
+
+      <input type="hidden" id="editRow" />
+
+      <label>Tipo</label>
+      <select id="editTipo">
+        <option value="Gasto">Gasto</option>
+        <option value="Receita">Receita</option>
+      </select>
+
+      <label>Categoria</label>
+      <input id="editCategoria" placeholder="Ex: Alimentação" />
+
+      <label>Descrição</label>
+      <input id="editDescricao" placeholder="Ex: mercado" />
+
+      <div class="row">
+        <div>
+          <label>Valor</label>
+          <input id="editValor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
+        </div>
+        <div>
+          <label>Data (dd/mm/aaaa)</label>
+          <input id="editData" type="text" placeholder="Ex: 19/02/2026" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="salvarEdicao()">Salvar alterações</button>
+        <button class="btn secondary" onclick="closeEdit()">Cancelar</button>
+      </div>
+
+      <div id="editMsg" class="msg"></div>
     </div>
   </div>
 
@@ -279,17 +407,19 @@
     // =========================
     const TOKEN_KEY = "finance_ai_token";
 
-    function getToken(){
-      return localStorage.getItem(TOKEN_KEY) || "";
+    function getToken(){ return localStorage.getItem(TOKEN_KEY) || ""; }
+    function setToken(t){ localStorage.setItem(TOKEN_KEY, t || ""); }
+
+    function setPill(){
+      const pill = document.getElementById("statusPill");
+      const has = !!getToken();
+      pill.textContent = has ? "🔓 Conectado" : "🔒 Login";
+      pill.style.opacity = has ? "1" : "0.9";
     }
-    function setToken(t){
-      localStorage.setItem(TOKEN_KEY, t || "");
-    }
-    function showLogin(show){
-      document.getElementById("loginBack").style.display = show ? "flex" : "none";
-      document.getElementById("loginMsg").style.display = "none";
-      document.getElementById("loginMsg").className = "msg";
-    }
+
+    function openLogin(){ document.getElementById("loginBack").style.display = "flex"; }
+    function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
+
     function setLoginMsg(kind, text){
       const el = document.getElementById("loginMsg");
       el.className = "msg";
@@ -302,19 +432,18 @@
 
     async function doLogin(){
       const password = document.getElementById("loginPwd").value.trim();
-
       try{
         const r = await fetch("/login", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ password })
         });
-
         const j = await r.json().catch(()=> ({}));
         if(!r.ok || !j.ok) throw new Error(j.msg || "Senha inválida");
 
         setToken(j.token || "");
-        showLogin(false);
+        setPill();
+        closeLogin();
         await carregarTudo();
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
@@ -323,7 +452,8 @@
 
     function logout(){
       setToken("");
-      showLogin(true);
+      setPill();
+      openLogin();
     }
 
     async function apiFetch(url, opts={}){
@@ -333,6 +463,11 @@
       return fetch(url, Object.assign({}, opts, { headers }));
     }
 
+    function mustLogin(){
+      openLogin();
+      setLoginMsg("err", "❌ Faça login para continuar.");
+    }
+
     // =========================
     // ESTADO GLOBAL
     // =========================
@@ -340,6 +475,13 @@
     let chartMov = null;
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
+
+    // filtros (estado)
+    const filtros = {
+      month: null,
+      year: null,
+      q: ""
+    };
 
     // =========================
     // HELPERS
@@ -354,6 +496,35 @@
       const [y,m,d] = iso.split("-");
       return `${d}/${m}/${y}`;
     }
+
+    function parseMoneyBR(str){
+      if(str == null) return NaN;
+      let s = String(str).trim();
+      if(!s) return NaN;
+
+      s = s.replace("R$", "").trim();
+
+      const hasComma = s.includes(",");
+      const hasDot = s.includes(".");
+
+      if(hasComma && hasDot){
+        if(s.lastIndexOf(",") > s.lastIndexOf(".")){
+          s = s.replace(/\./g, "");
+          s = s.replace(",", ".");
+        }else{
+          s = s.replace(/,/g, "");
+        }
+      }else if(hasComma){
+        s = s.replace(/\./g, "");
+        s = s.replace(",", ".");
+      }else{
+        s = s.replace(/,/g, "");
+      }
+
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
     function setMsg(kind, text){
       const el = document.getElementById("msg");
       el.className = "msg";
@@ -363,6 +534,7 @@
       el.classList.add(kind);
       el.style.display = "block";
     }
+
     function getField(obj, keys){
       for(const k of keys){
         if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
@@ -378,38 +550,15 @@
       return t.includes("rece") ? "green" : "red";
     }
 
-    // parse do valor em pt-BR (resolve 360,00)
-    function parseMoneyBR(str){
-      if(str == null) return NaN;
-      let s = String(str).trim();
-      if(!s) return NaN;
-
-      s = s.replace("R$", "").trim();
-
-      const hasComma = s.includes(",");
-      const hasDot = s.includes(".");
-
-      if(hasComma && hasDot){
-        // qual é o decimal? decide pelo último separador
-        if(s.lastIndexOf(",") > s.lastIndexOf(".")){
-          // decimal vírgula
-          s = s.replace(/\./g, "");
-          s = s.replace(",", ".");
-        }else{
-          // decimal ponto
-          s = s.replace(/,/g, "");
-        }
-      }else if(hasComma){
-        // decimal vírgula
-        s = s.replace(/\./g, "");
-        s = s.replace(",", ".");
-      }else{
-        // decimal ponto ou inteiro
-        s = s.replace(/,/g, "");
+    function qs(params){
+      const u = new URLSearchParams();
+      for(const [k,v] of Object.entries(params)){
+        if(v === null || v === undefined) continue;
+        if(String(v).trim() === "") continue;
+        u.set(k, String(v));
       }
-
-      const n = Number(s);
-      return Number.isFinite(n) ? n : NaN;
+      const s = u.toString();
+      return s ? ("?" + s) : "";
     }
 
     // =========================
@@ -422,16 +571,72 @@
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       if(tab==="ultimos") carregarTudo();
     }
+
     function setTipo(tipo){
       tipoAtual = tipo;
       document.getElementById("btnGasto").classList.toggle("active", tipo==="Gasto");
       document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
     }
+
     function limpar(){
       document.getElementById("categoria").value = "";
       document.getElementById("descricao").value = "";
       document.getElementById("valor").value = "";
       setMsg("", "");
+    }
+
+    // =========================
+    // FILTROS / BUSCA
+    // =========================
+    function fillMonthYear(){
+      const mSel = document.getElementById("fMonth");
+      const ySel = document.getElementById("fYear");
+
+      const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      mSel.innerHTML = monthNames.map((n,i)=> `<option value="${i+1}">${String(i+1).padStart(2,"0")} - ${n}</option>`).join("");
+
+      const now = new Date();
+      const y = now.getFullYear();
+      const years = [];
+      for(let i=y-5;i<=y+2;i++) years.push(i);
+      ySel.innerHTML = years.map(v=> `<option value="${v}">${v}</option>`).join("");
+
+      // defaults: mês/ano atual
+      filtros.month = now.getMonth()+1;
+      filtros.year = now.getFullYear();
+      filtros.q = "";
+
+      mSel.value = String(filtros.month);
+      ySel.value = String(filtros.year);
+      document.getElementById("fSearch").value = "";
+      setTitleMov();
+    }
+
+    function setTitleMov(){
+      const m = filtros.month;
+      const y = filtros.year;
+      const title = document.getElementById("titleMov");
+      title.textContent = `Movimento do mês (${String(m).padStart(2,"0")}/${y}) — barras + saldo acumulado`;
+    }
+
+    function aplicarFiltros(){
+      filtros.month = Number(document.getElementById("fMonth").value);
+      filtros.year = Number(document.getElementById("fYear").value);
+      filtros.q = (document.getElementById("fSearch").value || "").trim();
+      setTitleMov();
+      carregarTudo();
+    }
+
+    function limparFiltros(){
+      const now = new Date();
+      filtros.month = now.getMonth()+1;
+      filtros.year = now.getFullYear();
+      filtros.q = "";
+      document.getElementById("fMonth").value = String(filtros.month);
+      document.getElementById("fYear").value = String(filtros.year);
+      document.getElementById("fSearch").value = "";
+      setTitleMov();
+      carregarTudo();
     }
 
     // =========================
@@ -460,7 +665,7 @@
         categoria,
         descricao,
         valor: valorNum,
-        data: formatBRfromISO(dataISO) // dd/mm/aaaa
+        data: formatBRfromISO(dataISO)
       };
 
       try{
@@ -470,6 +675,8 @@
           body: JSON.stringify(payload)
         });
 
+        if(r.status === 401){ mustLogin(); return; }
+
         const data = await r.json().catch(()=> ({}));
         if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
 
@@ -478,16 +685,12 @@
         document.getElementById("valor").value = "";
         showTab("ultimos");
       }catch(e){
-        if(String(e.message || "").includes("401")){
-          showLogin(true);
-          return;
-        }
         setMsg("err", "❌ " + e.message);
       }
     }
 
     // =========================
-    // MOVIMENTO (BARRAS + LINHA)
+    // MOVIMENTO
     // =========================
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
@@ -554,7 +757,7 @@
     }
 
     // =========================
-    // PIZZAS (GASTOS VERMELHO / RECEITAS AZUL)
+    // PIZZAS
     // =========================
     const PIE_REDS = [
       "rgba(255,90,106,0.95)","rgba(255,90,106,0.80)","rgba(255,90,106,0.65)",
@@ -580,6 +783,7 @@
         }
       };
     }
+
     function atualizarPizzas(j){
       const labelsG = j.pizza_gastos_labels || [];
       const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
@@ -623,11 +827,12 @@
     }
 
     // =========================
-    // RESUMO + LISTA
+    // API: RESUMO + LISTA
     // =========================
     async function carregarResumo(){
-      const r = await apiFetch("/resumo");
-      if(r.status === 401){ showLogin(true); throw new Error("401"); }
+      const params = { month: filtros.month, year: filtros.year, q: filtros.q };
+      const r = await apiFetch("/resumo" + qs(params));
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
       if(!r.ok) throw new Error("Falha em /resumo");
       const j = await r.json();
 
@@ -637,66 +842,6 @@
 
       atualizarMovimento(j);
       atualizarPizzas(j);
-    }
-
-    async function excluirLancamento(row){
-      if(!confirm("Excluir este lançamento?")) return;
-
-      const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
-      if(r.status === 401){ showLogin(true); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok) alert("❌ " + (j.msg || "Erro ao excluir"));
-      await carregarTudo();
-    }
-
-    async function editarLancamento(item){
-      const row = item._row;
-
-      const tipo = prompt("Tipo (Gasto ou Receita):", item.Tipo || "Gasto");
-      if(!tipo) return;
-
-      const categoria = prompt("Categoria:", item.Categoria || "");
-      if(!categoria) return;
-
-      const descricao = prompt("Descrição:", item["Descrição"] || "");
-      if(!descricao) return;
-
-      const valorStr = prompt("Valor (ex: 360,00):", String(item.Valor || ""));
-      if(!valorStr) return;
-
-      const dataStr = prompt("Data (dd/mm/aaaa):", item.Data || "");
-      if(!dataStr) return;
-
-      const valorNum = parseMoneyBR(valorStr);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        alert("❌ Valor inválido.");
-        return;
-      }
-
-      const payload = {
-        tipo: tipo.trim(),
-        categoria: categoria.trim(),
-        descricao: descricao.trim(),
-        valor: valorNum,
-        data: dataStr.trim()
-      };
-
-      const r = await apiFetch(`/lancamento/${row}`, {
-        method:"PATCH",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if(r.status === 401){ showLogin(true); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        alert("❌ " + (j.msg || "Erro ao editar"));
-        return;
-      }
-
-      await carregarTudo();
     }
 
     async function carregarUltimos(){
@@ -709,8 +854,9 @@
           </div>
         </div>`;
 
-      const r = await apiFetch("/ultimos");
-      if(r.status === 401){ showLogin(true); throw new Error("401"); }
+      const params = { month: filtros.month, year: filtros.year, q: filtros.q, limit: 10 };
+      const r = await apiFetch("/ultimos" + qs(params));
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
       if(!r.ok) throw new Error("Falha em /ultimos");
 
       const arr = await r.json().catch(()=> ([]));
@@ -721,12 +867,13 @@
           <div class="item">
             <div class="left">
               <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum lançamento</b><span>Faça seu primeiro lançamento</span></div>
+              <div class="meta"><b>Nenhum lançamento</b><span>Não há dados nesse filtro</span></div>
             </div>
           </div>`;
         return;
       }
 
+      // mais recente por último -> render invertido
       arr.slice().reverse().forEach(item => {
         const tipo = getField(item, ["Tipo"]);
         const categoria = getField(item, ["Categoria"]);
@@ -735,6 +882,8 @@
         const valor = getField(item, ["Valor"]);
         const row = item._row;
 
+        const encoded = encodeURIComponent(JSON.stringify(item));
+
         lista.innerHTML += `
           <div class="item">
             <div class="left">
@@ -742,32 +891,17 @@
               <div class="meta">
                 <b>${tipo} • ${categoria}</b>
                 <span>${descricao} • ${data}</span>
-                <span style="margin-top:10px; display:flex; gap:8px;">
-                  <button class="btn secondary" style="padding:8px 10px; border-radius:12px;"
-                    onclick='editarLancamento(${encodeURIComponent(JSON.stringify(item))})'>
-                    Editar
-                  </button>
-                  <button class="btn danger" style="padding:8px 10px; border-radius:12px;"
-                    onclick="excluirLancamento(${row})">
-                    Excluir
-                  </button>
-                </span>
+
+                <div class="inlineBtns">
+                  <button class="btn secondary small" onclick='openEdit("${encoded}")'>Editar</button>
+                  <button class="btn danger small" onclick="excluirLancamento(${row})">Excluir</button>
+                </div>
               </div>
             </div>
             <div class="value ${valueClass(item)}">${brl(parseMoneyBR(valor) || valor)}</div>
           </div>
         `;
       });
-
-      // decodifica o item da edição
-      window.editarLancamento = async (encoded) => {
-        try{
-          const item = JSON.parse(decodeURIComponent(encoded));
-          return editarLancamento(item);
-        }catch(e){
-          alert("❌ Erro ao abrir edição");
-        }
-      };
     }
 
     async function carregarTudo(){
@@ -776,26 +910,161 @@
     }
 
     // =========================
+    // EDIT MODAL
+    // =========================
+    function setEditMsg(kind, text){
+      const el = document.getElementById("editMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function openEdit(encoded){
+      try{
+        const item = JSON.parse(decodeURIComponent(encoded));
+        document.getElementById("editRow").value = item._row || "";
+        document.getElementById("editTipo").value = (item.Tipo || "Gasto");
+        document.getElementById("editCategoria").value = (item.Categoria || "");
+        document.getElementById("editDescricao").value = (item["Descrição"] || "");
+        document.getElementById("editValor").value = String(item.Valor || "");
+        document.getElementById("editData").value = String(item.Data || "");
+        setEditMsg("", "");
+        document.getElementById("editBack").style.display = "flex";
+      }catch(e){
+        alert("❌ Erro ao abrir edição.");
+      }
+    }
+
+    function closeEdit(){
+      document.getElementById("editBack").style.display = "none";
+    }
+
+    async function salvarEdicao(){
+      setEditMsg("", "");
+
+      const row = Number(document.getElementById("editRow").value);
+      const tipo = document.getElementById("editTipo").value.trim();
+      const categoria = document.getElementById("editCategoria").value.trim();
+      const descricao = document.getElementById("editDescricao").value.trim();
+      const valorTxt = document.getElementById("editValor").value;
+      const dataStr = document.getElementById("editData").value.trim();
+
+      if(!row || row < 2){
+        setEditMsg("err", "Linha inválida.");
+        return;
+      }
+      if(!categoria || !descricao || !dataStr){
+        setEditMsg("err", "Preencha categoria, descrição e data.");
+        return;
+      }
+      const valorNum = parseMoneyBR(valorTxt);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        setEditMsg("err", "Valor inválido. Ex: 360,00");
+        return;
+      }
+
+      const payload = {
+        tipo,
+        categoria,
+        descricao,
+        valor: valorNum,
+        data: dataStr
+      };
+
+      const r = await apiFetch(`/lancamento/${row}`, {
+        method:"PATCH",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if(r.status === 401){ mustLogin(); return; }
+
+      const j = await r.json().catch(()=> ({}));
+      if(!r.ok){
+        setEditMsg("err", "❌ " + (j.msg || "Erro ao editar"));
+        return;
+      }
+
+      setEditMsg("ok", "✅ Alterações salvas!");
+      await carregarTudo();
+      setTimeout(()=> closeEdit(), 450);
+    }
+
+    // =========================
+    // EXCLUIR
+    // =========================
+    async function excluirLancamento(row){
+      if(!confirm("Excluir este lançamento?")) return;
+
+      const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
+      if(r.status === 401){ mustLogin(); return; }
+
+      const j = await r.json().catch(()=> ({}));
+      if(!r.ok){
+        alert("❌ " + (j.msg || "Erro ao excluir"));
+        return;
+      }
+      await carregarTudo();
+    }
+
+    // =========================
+    // EXPORT (CSV/PDF) com AUTH
+    // =========================
+    async function exportar(tipo){
+      try{
+        const params = { month: filtros.month, year: filtros.year, q: filtros.q };
+        const url = (tipo === "pdf" ? "/export.pdf" : "/export.csv") + qs(params);
+
+        const r = await apiFetch(url, { method:"GET" });
+        if(r.status === 401){ mustLogin(); return; }
+        if(!r.ok) throw new Error("Falha ao exportar");
+
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        const objUrl = URL.createObjectURL(blob);
+
+        const mm = String(filtros.month).padStart(2,"0");
+        const yy = String(filtros.year);
+
+        a.href = objUrl;
+        a.download = tipo === "pdf"
+          ? `finance-ai-${mm}-${yy}.pdf`
+          : `finance-ai-${mm}-${yy}.csv`;
+
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objUrl);
+      }catch(e){
+        alert("❌ " + e.message);
+      }
+    }
+
+    // =========================
     // INIT
     // =========================
     (function init(){
-      // seta data de hoje
+      setPill();
+      fillMonthYear();
+
+      // data hoje no lançar
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
 
-      // tenta validar token (se APP_PASSWORD não existir, /login retorna ok true token "")
-      // se existir e token estiver errado, vai pedir senha ao chamar API
+      // ENTER na busca aplica filtros
+      document.getElementById("fSearch").addEventListener("keydown", (ev)=>{
+        if(ev.key === "Enter") aplicarFiltros();
+      });
+
+      // tenta carregar (se 401, vai pedir login)
       (async ()=>{
-        // teste simples de acesso: tenta carregar resumo
         try{
-          await carregarResumo();
-          await carregarUltimos();
-        }catch(e){
-          // se for 401, abre modal
-          // (o backend só dá 401 se APP_PASSWORD estiver configurada)
-          showLogin(true);
-        }
+          await carregarTudo();
+        }catch(e){}
       })();
     })();
   </script>
