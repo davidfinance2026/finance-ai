@@ -508,14 +508,14 @@
       </div>
 
       <label>E-mail</label>
-      <input id="loginEmail" type="email" placeholder="admin@seusistema.com" autocomplete="username" />
+      <input id="loginEmail" type="email" placeholder="admin@financeai.com" />
 
       <label>Senha</label>
-      <input id="loginPwd" type="password" placeholder="Sua senha" autocomplete="current-password" />
+      <input id="loginPwd" type="password" placeholder="Sua senha" />
 
       <div class="actions" style="margin-top:12px;">
         <button class="btn" onclick="doLogin()">Entrar</button>
-        <button class="btn secondary" onclick="logout()">Sair</button>
+        <button class="btn secondary" onclick="doLogout()">Sair</button>
       </div>
       <div id="loginMsg" class="msg"></div>
     </div>
@@ -570,23 +570,16 @@
 
   <script>
     // =========================
-    // AUTH (sessão por cookie)
+    // AUTH (cookie session)
     // =========================
-    let currentEmail = "";
-
-    function setPill(){
+    function setPillText(isOn){
       const pill = document.getElementById("statusPill");
-      const has = !!currentEmail;
-      pill.textContent = has ? `🔓 Conectado` : "🔒 Login";
+      pill.textContent = isOn ? "🔓 Conectado" : "🔒 Login";
     }
 
     function openLogin(){
       document.getElementById("loginBack").style.display = "flex";
       setLoginMsg("", "");
-      setTimeout(()=> {
-        const el = document.getElementById("loginEmail");
-        if(el) el.focus();
-      }, 50);
     }
     function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
 
@@ -601,37 +594,32 @@
     }
 
     async function apiFetch(url, opts={}){
-      // IMPORTANTE: credentials include para cookie de sessão
-      const headers = Object.assign({}, opts.headers || {});
-      return fetch(url, Object.assign({}, opts, {
-        headers,
-        credentials: "include"
-      }));
+      // IMPORTANTÍSSIMO: credentials include para cookie de sessão
+      return fetch(url, Object.assign({ credentials: "include" }, opts));
     }
 
-    async function checkSession(){
+    async function refreshAuthUI(){
       try{
         const r = await apiFetch("/me");
-        if(!r.ok){
-          currentEmail = "";
-          setPill();
-          return false;
+        if(r.ok){
+          const j = await r.json().catch(()=>({}));
+          setPillText(!!j.ok);
+        }else{
+          setPillText(false);
         }
-        const j = await r.json().catch(()=> ({}));
-        if(j && j.ok){
-          currentEmail = j.email || "";
-          setPill();
-          return !!currentEmail;
-        }
-      }catch(e){}
-      currentEmail = "";
-      setPill();
-      return false;
+      }catch(e){
+        setPillText(false);
+      }
+    }
+
+    function mustLogin(){
+      openLogin();
+      setLoginMsg("err", "❌ Faça login para continuar.");
     }
 
     async function doLogin(){
-      const email = document.getElementById("loginEmail").value.trim().toLowerCase();
-      const password = document.getElementById("loginPwd").value.trim();
+      const email = (document.getElementById("loginEmail").value || "").trim();
+      const password = (document.getElementById("loginPwd").value || "").trim();
 
       if(!email || !password){
         setLoginMsg("err", "❌ Informe e-mail e senha.");
@@ -644,10 +632,12 @@
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ email, password })
         });
+
         const j = await r.json().catch(()=> ({}));
         if(!r.ok || !j.ok) throw new Error(j.msg || "Credenciais inválidas");
 
-        await checkSession();
+        setLoginMsg("ok", "✅ Login OK!");
+        await refreshAuthUI();
         closeLogin();
         await carregarTudo();
       }catch(e){
@@ -655,19 +645,13 @@
       }
     }
 
-    async function logout(){
+    async function doLogout(){
       try{
         await apiFetch("/logout", { method:"POST" });
       }catch(e){}
-      currentEmail = "";
-      setPill();
+      await refreshAuthUI();
       openLogin();
-      setLoginMsg("ok", "✅ Você saiu. Faça login novamente.");
-    }
-
-    function mustLogin(){
-      openLogin();
-      setLoginMsg("err", "❌ Faça login para continuar.");
+      setLoginMsg("ok", "✅ Você saiu.");
     }
 
     // =========================
@@ -721,7 +705,6 @@
       return `${y}-${pad2(m)}-01`;
     }
 
-    // Corrige 360,00 / 1.234,56 / 360.00 etc
     function parseMoneyBR(str){
       if(str == null) return NaN;
       let s = String(str).trim();
@@ -811,7 +794,7 @@
     }
 
     // =========================
-    // QUICK FILTERS (ATALHOS)
+    // QUICK FILTERS
     // =========================
     function setQuickThisMonth(){
       const today = isoToday();
@@ -908,7 +891,6 @@
 
       filtros.date_from = (document.getElementById("fFrom").value || "").trim();
       filtros.date_to = (document.getElementById("fTo").value || "").trim();
-
       filtros.value_min = (document.getElementById("fMin").value || "").trim();
       filtros.value_max = (document.getElementById("fMax").value || "").trim();
 
@@ -1407,15 +1389,12 @@
     // INIT
     // =========================
     (function init(){
-      setPill();
       fillMonthYear();
-
       document.getElementById("data").value = isoToday();
 
       document.getElementById("fSearch").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
-
       document.getElementById("fMin").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
@@ -1423,16 +1402,8 @@
         if(ev.key === "Enter") aplicarFiltros();
       });
 
-      // enter no modal de login
-      document.getElementById("loginPwd").addEventListener("keydown", (ev)=>{
-        if(ev.key === "Enter") doLogin();
-      });
-      document.getElementById("loginEmail").addEventListener("keydown", (ev)=>{
-        if(ev.key === "Enter") doLogin();
-      });
-
       (async ()=>{
-        await checkSession();
+        await refreshAuthUI();
         try{ await carregarTudo(); }catch(e){}
       })();
     })();
