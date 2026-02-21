@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple, Optional
 from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
 from google.oauth2.service_account import Credentials
-
+from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -19,7 +19,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
-
+@app.get("/_genhash")
+def genhash():
+    pwd = request.args.get("pwd", "")
+    if not pwd:
+        return "Passe ?pwd=SUASENHA", 400
+    return generate_password_hash(pwd)
 # Render/Proxy: garante que Flask "enxerga" https corretamente
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -729,3 +734,4 @@ def export_pdf():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
+
