@@ -7,15 +7,22 @@ from datetime import datetime, date
 from calendar import monthrange
 from typing import Any, Dict, List, Tuple, Optional
 
-from flask import Flask, jsonify, request, render_template, Response, abort
+from flask import (
+    Flask, jsonify, request, render_template, Response, abort, session
+)
 import gspread
 from google.oauth2.service_account import Credentials
+
+from werkzeug.security import check_password_hash
 
 # PDF (reportlab)
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
+
+# Sessão (cookie)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -28,17 +35,43 @@ _client_cached: Optional[gspread.Client] = None
 
 
 # =========================
-# AUTH
+# AUTH (EMAIL/SENHA + compat opcional token)
 # =========================
-def require_auth():
-    """Protege as rotas de API usando X-APP-TOKEN == APP_PASSWORD (se existir)."""
-    pwd = os.getenv("APP_PASSWORD", "").strip()
-    if not pwd:
-        return  # sem senha -> sem auth
+def _email_password_auth_enabled() -> bool:
+    email = os.getenv("APP_EMAIL", "").strip()
+    pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+    return bool(email and pwd_hash)
 
-    token = request.headers.get("X-APP-TOKEN", "").strip()
-    if token != pwd:
-        abort(401)
+def _token_auth_enabled() -> bool:
+    # compat com seu modelo antigo
+    pwd = os.getenv("APP_PASSWORD", "").strip()
+    return bool(pwd)
+
+def is_logged() -> bool:
+    return bool(session.get("user_email"))
+
+def require_auth():
+    """
+    Prioridade:
+    1) Sessão (login email/senha) se configurado APP_EMAIL + APP_PASSWORD_HASH
+    2) Compat: X-APP-TOKEN == APP_PASSWORD (se existir)
+    3) Se nada configurado -> sem auth
+    """
+    if _email_password_auth_enabled():
+        if not is_logged():
+            abort(401)
+        return
+
+    # fallback compatível com o que você já tinha
+    if _token_auth_enabled():
+        token = request.headers.get("X-APP-TOKEN", "").strip()
+        pwd = os.getenv("APP_PASSWORD", "").strip()
+        if token != pwd:
+            abort(401)
+        return
+
+    # sem auth configurado
+    return
 
 
 @app.before_request
@@ -236,10 +269,6 @@ def get_date_range() -> Tuple[Optional[date], Optional[date]]:
 
 
 def get_value_range() -> Tuple[Optional[float], Optional[float]]:
-    """
-    value_min / value_max:
-    aceita "100", "100,00", "1.234,56"
-    """
     vmin_raw = request.args.get("value_min", default="", type=str)
     vmax_raw = request.args.get("value_max", default="", type=str)
 
@@ -251,7 +280,6 @@ def get_value_range() -> Tuple[Optional[float], Optional[float]]:
     if vmax is not None and vmax < 0:
         vmax = None
 
-    # se inverteram sem querer (min > max), troca
     if vmin is not None and vmax is not None and vmin > vmax:
         vmin, vmax = vmax, vmin
 
@@ -278,7 +306,6 @@ def filter_rows(
         if not d:
             continue
 
-        # data range manda no filtro
         if dfrom or dto:
             if dfrom and d < dfrom:
                 continue
@@ -345,17 +372,47 @@ def home():
     return render_template("index.html")
 
 
+@app.get("/me")
+def me():
+    if not _email_password_auth_enabled():
+        # modo antigo (token) ou sem auth
+        return jsonify({"ok": True, "email": ""})
+    if not is_logged():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "email": session.get("user_email")})
+
+
 @app.post("/login")
 def login():
-    pwd = os.getenv("APP_PASSWORD", "").strip()
-    if not pwd:
-        return jsonify({"ok": True, "token": ""})
+    # Se você não configurou email/senha -> mantém comportamento antigo
+    if not _email_password_auth_enabled():
+        pwd = os.getenv("APP_PASSWORD", "").strip()
+        if not pwd:
+            return jsonify({"ok": True, "token": ""})
+        body = request.get_json(force=True, silent=True) or {}
+        password = str(body.get("password", "")).strip()
+        if password != pwd:
+            return jsonify({"ok": False, "msg": "Senha inválida"}), 401
+        return jsonify({"ok": True, "token": password})
 
     body = request.get_json(force=True, silent=True) or {}
+    email = str(body.get("email", "")).strip().lower()
     password = str(body.get("password", "")).strip()
-    if password != pwd:
-        return jsonify({"ok": False, "msg": "Senha inválida"}), 401
-    return jsonify({"ok": True, "token": password})
+
+    app_email = os.getenv("APP_EMAIL", "").strip().lower()
+    pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+
+    if email != app_email or not check_password_hash(pwd_hash, password):
+        return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
+
+    session["user_email"] = email
+    return jsonify({"ok": True})
+
+
+@app.post("/logout")
+def logout():
+    session.pop("user_email", None)
+    return jsonify({"ok": True})
 
 
 @app.post("/lancar")
@@ -384,7 +441,9 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    ws.append_row([new_id, data_str, tipo, categoria, descricao, f"{v:.2f}", created_at])
+    # ✅ IMPORTANTE: salvar como NÚMERO no Sheets (não string "360.00")
+    ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
+
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
 
@@ -456,7 +515,6 @@ def resumo():
         if not d:
             continue
 
-        # séries do mês/ano selecionado (ok mesmo com intervalo)
         if d.month == month and d.year == year:
             di = d.day - 1
             if 0 <= di < last_day:
@@ -543,7 +601,9 @@ def editar(row: int):
     ws.update(f"C{row}", [[tipo]])
     ws.update(f"D{row}", [[categoria]])
     ws.update(f"E{row}", [[descricao]])
-    ws.update(f"F{row}", [[f"{v:.2f}"]])
+
+    # ✅ salvar como número no Sheets
+    ws.update(f"F{row}", [[v]])
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
