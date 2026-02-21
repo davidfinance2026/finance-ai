@@ -43,12 +43,9 @@ def require_auth():
 
 @app.before_request
 def _auth_middleware():
-    # Home e login ficam livres para o app carregar.
-    # Protege API e exports.
     public_paths = {"/", "/login"}
     if request.path in public_paths:
         return
-    # se você tiver /static, também libera:
     if request.path.startswith("/static"):
         return
     require_auth()
@@ -94,27 +91,16 @@ def get_client() -> gspread.Client:
 
 
 def ensure_headers(ws: gspread.Worksheet):
-    """
-    Garante que a linha 1 tenha o header correto.
-    Não apaga dados: só ajusta a linha 1.
-    """
     values = ws.get_all_values()
     if not values:
         ws.append_row(HEADERS)
         return
-
     first = [c.strip() for c in (values[0] or [])]
     if first != HEADERS:
-        # Atualiza apenas A1:G1
         ws.update("A1", [HEADERS])
 
 
 def get_sheet() -> gspread.Worksheet:
-    """
-    Usa:
-    - SHEET_ID (obrigatório)
-    - SHEET_TAB (nome da aba, ex: Lancamentos) (opcional)
-    """
     sheet_id = os.getenv("SHEET_ID", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing env var SHEET_ID")
@@ -134,6 +120,25 @@ def get_sheet() -> gspread.Worksheet:
 # =========================
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
+
+
+def parse_iso_date(s: str) -> date:
+    # yyyy-mm-dd
+    return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+
+
+def parse_any_date(s: str) -> Optional[date]:
+    if not s:
+        return None
+    s = str(s).strip()
+    if not s:
+        return None
+    try:
+        if "-" in s:
+            return parse_iso_date(s)
+        return parse_br_date(s)
+    except:
+        return None
 
 
 def safe_float(v: Any) -> float:
@@ -160,20 +165,13 @@ def safe_float(v: Any) -> float:
     has_dot = "." in s
 
     if has_comma and has_dot:
-        # decide pelo último separador
         if s.rfind(",") > s.rfind("."):
-            # BR: 1.234,56 -> remove pontos, troca vírgula por ponto
             s = s.replace(".", "").replace(",", ".")
         else:
-            # US: 1,234.56 -> remove vírgulas
             s = s.replace(",", "")
     elif has_comma:
-        # 1234,56 -> troca vírgula por ponto; remove pontos (milhar)
         s = s.replace(".", "").replace(",", ".")
     else:
-        # só ponto (ou nada). Se vier "360.00" é ok.
-        # Se vier "1.234" pode ser milhar — mas sem vírgula é ambíguo.
-        # Vamos manter como número normal:
         s = s.replace(",", "")
 
     try:
@@ -186,9 +184,6 @@ def safe_float(v: Any) -> float:
 # ROWS
 # =========================
 def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Retorna headers e lista de dicts com _row (número da linha real no Sheets).
-    """
     values = ws.get_all_values()
     if not values or len(values) < 2:
         return HEADERS, []
@@ -207,6 +202,9 @@ def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[st
     return headers, out
 
 
+# =========================
+# FILTERS
+# =========================
 def get_month_year_from_request() -> Tuple[int, int]:
     today = datetime.now().date()
     month = request.args.get("month", default=today.month, type=int)
@@ -219,13 +217,29 @@ def get_month_year_from_request() -> Tuple[int, int]:
 
 
 def get_tipo_filter() -> str:
-    """
-    tipo=Todos|Gasto|Receita
-    """
     t = (request.args.get("tipo", default="Todos", type=str) or "Todos").strip()
     if t not in ("Todos", "Gasto", "Receita"):
         t = "Todos"
     return t
+
+
+def get_order() -> str:
+    # recent | oldest | value_desc | value_asc
+    o = (request.args.get("order", default="recent", type=str) or "recent").strip()
+    if o not in ("recent", "oldest", "value_desc", "value_asc"):
+        o = "recent"
+    return o
+
+
+def get_date_range() -> Tuple[Optional[date], Optional[date]]:
+    """
+    date_from / date_to podem vir como:
+    - dd/mm/aaaa
+    - yyyy-mm-dd
+    """
+    dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
+    dto = parse_any_date(request.args.get("date_to", default="", type=str))
+    return dfrom, dto
 
 
 def filter_rows(
@@ -233,20 +247,29 @@ def filter_rows(
     month: int,
     year: int,
     q: str,
-    tipo_filter: str
+    tipo_filter: str,
+    dfrom: Optional[date],
+    dto: Optional[date]
 ) -> List[Dict[str, Any]]:
     q = (q or "").strip().lower()
 
     filtered: List[Dict[str, Any]] = []
     for r in rows:
         d_str = (r.get("Data") or "").strip()
-        try:
-            d = parse_br_date(d_str)
-        except:
+        d = parse_any_date(d_str)
+        if not d:
             continue
 
-        if d.month != month or d.year != year:
-            continue
+        # Se tiver intervalo, ele manda no filtro.
+        # Se NÃO tiver intervalo, usa mês/ano.
+        if dfrom or dto:
+            if dfrom and d < dfrom:
+                continue
+            if dto and d > dto:
+                continue
+        else:
+            if d.month != month or d.year != year:
+                continue
 
         tipo = (r.get("Tipo") or "").strip()
         if tipo_filter != "Todos" and tipo != tipo_filter:
@@ -268,13 +291,28 @@ def filter_rows(
     return filtered
 
 
-def sort_key_desc(r: Dict[str, Any]):
-    try:
-        d = parse_br_date(r.get("Data", "01/01/1900"))
-    except:
-        d = date(1900, 1, 1)
-    rownum = int(r.get("_row", 0) or 0)
-    return (d, rownum)
+def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
+    def dkey(r: Dict[str, Any]) -> date:
+        d = parse_any_date(r.get("Data", ""))
+        return d or date(1900, 1, 1)
+
+    def vkey(r: Dict[str, Any]) -> float:
+        return safe_float(r.get("Valor"))
+
+    def rownum(r: Dict[str, Any]) -> int:
+        try:
+            return int(r.get("_row", 0) or 0)
+        except:
+            return 0
+
+    if order == "oldest":
+        return sorted(rows, key=lambda r: (dkey(r), rownum(r)))
+    if order == "value_asc":
+        return sorted(rows, key=lambda r: (vkey(r), dkey(r), rownum(r)))
+    if order == "value_desc":
+        return sorted(rows, key=lambda r: (-vkey(r), dkey(r), rownum(r)))
+    # recent (default)
+    return sorted(rows, key=lambda r: (dkey(r), rownum(r)), reverse=True)
 
 
 # =========================
@@ -307,16 +345,14 @@ def lancar():
     categoria = str(body.get("categoria", "")).strip()
     descricao = str(body.get("descricao", "")).strip()
     valor = body.get("valor", None)
-    data_str = str(body.get("data", "")).strip()
+    data_str = str(body.get("data", "")).strip()  # dd/mm/aaaa
 
     if tipo not in ("Gasto", "Receita"):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
     if not categoria or not descricao or not data_str:
         return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
 
-    try:
-        parse_br_date(data_str)
-    except:
+    if not parse_any_date(data_str):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
 
     v = safe_float(valor)
@@ -326,7 +362,6 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # Valor com 2 casas, ponto decimal (estável)
     ws.append_row([new_id, data_str, tipo, categoria, descricao, f"{v:.2f}", created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
@@ -339,6 +374,8 @@ def ultimos():
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str)
     tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
 
     limit = request.args.get("limit", default=10, type=int)
     page = request.args.get("page", default=1, type=int)
@@ -346,21 +383,20 @@ def ultimos():
     if limit > 200: limit = 200
     if page < 1: page = 1
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+    ordered = sort_rows(filtered, order)
 
-    # ordena do mais recente pro mais antigo
-    filtered.sort(key=sort_key_desc, reverse=True)
-
-    total = len(filtered)
+    total = len(ordered)
     start = (page - 1) * limit
     end = start + limit
-    items = filtered[start:end]
+    items = ordered[start:end]
 
     return jsonify({
         "items": items,
         "total": total,
         "page": page,
-        "limit": limit
+        "limit": limit,
+        "order": order
     })
 
 
@@ -372,13 +408,17 @@ def resumo():
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str)
     tipo_filter = get_tipo_filter()
+    dfrom, dto = get_date_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+
+    # Se estiver em intervalo (date_from/date_to), o gráfico de dias continua sendo do mês/ano selecionado,
+    # porém o filtro pode cortar parte do mês. Isso é OK.
+    last_day = monthrange(year, month)[1]
+    dias = [str(i + 1).zfill(2) for i in range(last_day)]
 
     entradas = 0.0
     saidas = 0.0
-
-    last_day = monthrange(year, month)[1]
     serie_receita = [0.0] * last_day
     serie_gasto = [0.0] * last_day
 
@@ -390,25 +430,27 @@ def resumo():
         cat = (r.get("Categoria") or "Sem categoria").strip() or "Sem categoria"
         val = safe_float(r.get("Valor"))
 
-        try:
-            d = parse_br_date(r.get("Data", ""))
-        except:
+        d = parse_any_date(r.get("Data", ""))
+        if not d:
             continue
 
-        di = d.day - 1
+        # só joga nas séries se bater com month/year selecionado
+        if d.month == month and d.year == year:
+            di = d.day - 1
+            if 0 <= di < last_day:
+                if tipo == "Receita":
+                    serie_receita[di] += val
+                else:
+                    serie_gasto[di] += val
+
         if tipo == "Receita":
             entradas += val
-            if 0 <= di < last_day:
-                serie_receita[di] += val
             pizza_receitas[cat] = pizza_receitas.get(cat, 0.0) + val
         else:
             saidas += val
-            if 0 <= di < last_day:
-                serie_gasto[di] += val
             pizza_gastos[cat] = pizza_gastos.get(cat, 0.0) + val
 
     saldo = entradas - saidas
-    dias = [str(i + 1).zfill(2) for i in range(last_day)]
 
     def collapse_top(d: Dict[str, float], top_n=12):
         items = sorted(d.items(), key=lambda x: x[1], reverse=True)
@@ -423,10 +465,16 @@ def resumo():
     pg_l, pg_v = collapse_top(pizza_gastos)
     pr_l, pr_v = collapse_top(pizza_receitas)
 
+    # tabelas (todas as categorias, ordenadas)
+    gastos_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_gastos.items(), key=lambda x: x[1], reverse=True)]
+    receitas_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_receitas.items(), key=lambda x: x[1], reverse=True)]
+
     return jsonify({
         "month": month,
         "year": year,
         "tipo": tipo_filter,
+        "date_from": request.args.get("date_from", ""),
+        "date_to": request.args.get("date_to", ""),
         "entradas": round(entradas, 2),
         "saidas": round(saidas, 2),
         "saldo": round(saldo, 2),
@@ -436,7 +484,9 @@ def resumo():
         "pizza_gastos_labels": pg_l,
         "pizza_gastos_values": pg_v,
         "pizza_receitas_labels": pr_l,
-        "pizza_receitas_values": pr_v
+        "pizza_receitas_values": pr_v,
+        "gastos_categorias": gastos_table,
+        "receitas_categorias": receitas_table
     })
 
 
@@ -459,9 +509,7 @@ def editar(row: int):
     if not categoria or not descricao or not data_str:
         return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
 
-    try:
-        parse_br_date(data_str)
-    except:
+    if not parse_any_date(data_str):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
 
     v = safe_float(valor)
@@ -493,10 +541,12 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str)
     tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter)
-    filtered.sort(key=sort_key_desc, reverse=True)
-    return filtered
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+    ordered = sort_rows(filtered, order)
+    return ordered
 
 
 @app.get("/export.csv")
@@ -530,6 +580,8 @@ def export_pdf():
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str).strip()
     tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
 
     buf = io.BytesIO()
     c = pdf_canvas.Canvas(buf, pagesize=A4)
@@ -541,9 +593,14 @@ def export_pdf():
     y -= 18
 
     c.setFont("Helvetica", 10)
+    if dfrom or dto:
+        c.drawString(40, y, f"Intervalo: {request.args.get('date_from','')} até {request.args.get('date_to','')}")
+        y -= 16
     if q:
         c.drawString(40, y, f"Busca: {q}")
         y -= 16
+    c.drawString(40, y, f"Ordenação: {order}")
+    y -= 18
 
     entradas = 0.0
     saidas = 0.0
