@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Tuple, Optional
 from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
 from google.oauth2.service_account import Credentials
-
 from werkzeug.security import check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -27,7 +26,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,  # Render é https
+    SESSION_COOKIE_SECURE=True,  # no Render é https
 )
 
 SCOPES = [
@@ -43,7 +42,7 @@ _client_cached: Optional[gspread.Client] = None
 # =========================
 # AUTH (EMAIL/SENHA via sessão)
 # =========================
-def _auth_enabled() -> bool:
+def _email_password_auth_enabled() -> bool:
     email = os.getenv("APP_EMAIL", "").strip()
     pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
     return bool(email and pwd_hash)
@@ -58,15 +57,16 @@ def require_auth():
     Se não estiverem:
     - sem auth (modo aberto)
     """
-    if _auth_enabled():
+    if _email_password_auth_enabled():
         if not is_logged():
             abort(401)
         return
     return
 
+
 @app.before_request
 def _auth_middleware():
-    public_paths = {"/", "/login", "/me", "/logout"}
+    public_paths = {"/", "/login", "/me"}
     if request.path in public_paths:
         return
     if request.path.startswith("/static"):
@@ -352,7 +352,7 @@ def home():
 
 @app.get("/me")
 def me():
-    if not _auth_enabled():
+    if not _email_password_auth_enabled():
         return jsonify({"ok": True, "email": ""})
     if not is_logged():
         return jsonify({"ok": False}), 401
@@ -360,8 +360,8 @@ def me():
 
 @app.post("/login")
 def login():
-    if not _auth_enabled():
-        return jsonify({"ok": True})  # modo aberto
+    if not _email_password_auth_enabled():
+        return jsonify({"ok": True})
 
     body = request.get_json(force=True, silent=True) or {}
     email = str(body.get("email", "")).strip().lower()
@@ -406,7 +406,6 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # salva como número no Sheets
     ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
@@ -545,6 +544,7 @@ def editar(row: int):
 
     if row <= 1:
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
+
     if tipo not in ("Gasto", "Receita"):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
     if not categoria or not descricao or not data_str:
