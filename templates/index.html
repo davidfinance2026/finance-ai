@@ -154,6 +154,40 @@
       .filters{grid-template-columns:1fr;}
     }
 
+    .pager{
+      margin-top:12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      padding:12px;
+      border-radius:16px;
+      border:1px solid var(--border);
+      background: rgba(15,23,48,.45);
+    }
+    .pager .info{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:800;
+    }
+    .pager .controls{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .pillSmall{
+      padding:8px 10px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      border-radius:999px;
+      color:var(--muted);
+      font-size:12px;
+      font-weight:900;
+      user-select:none;
+    }
+
     .list{margin-top:14px; display:flex; flex-direction:column; gap:10px;}
     .item{
       background: rgba(15,23,48,.65); border:1px solid var(--border);
@@ -291,8 +325,27 @@
         </div>
 
         <div class="full">
+          <label>Tipo</label>
+          <select id="fTipo">
+            <option value="Todos">Todos</option>
+            <option value="Gasto">Gastos</option>
+            <option value="Receita">Receitas</option>
+          </select>
+        </div>
+
+        <div class="full">
           <label>Buscar</label>
           <input id="fSearch" placeholder="Ex: mercado, lazer, alimentação..." />
+        </div>
+
+        <div class="full">
+          <label>Itens por página</label>
+          <select id="fLimit">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
         </div>
 
         <div class="full actions">
@@ -324,13 +377,23 @@
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
       </div>
 
+      <!-- PAGINAÇÃO -->
+      <div class="pager">
+        <div class="info" id="pagerInfo">Carregando…</div>
+        <div class="controls">
+          <button class="btn secondary small" onclick="prevPage()">◀</button>
+          <span class="pillSmall" id="pagerPage">Página 1</span>
+          <button class="btn secondary small" onclick="nextPage()">▶</button>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="btn secondary" onclick="carregarTudo()">Atualizar</button>
         <button class="btn" onclick="showTab('lancar')">Novo lançamento</button>
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Mostrando até 10 lançamentos mais recentes (com filtros aplicados).</div>
+      <div class="hint">Dica: use os filtros acima e a paginação para navegar pelos lançamentos.</div>
     </div>
   </div>
 
@@ -403,7 +466,7 @@
 
   <script>
     // =========================
-    // AUTH TOKEN (X-APP-TOKEN)
+    // AUTH TOKEN
     // =========================
     const TOKEN_KEY = "finance_ai_token";
 
@@ -417,7 +480,10 @@
       pill.style.opacity = has ? "1" : "0.9";
     }
 
-    function openLogin(){ document.getElementById("loginBack").style.display = "flex"; }
+    function openLogin(){
+      document.getElementById("loginBack").style.display = "flex";
+      setLoginMsg("", "");
+    }
     function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
 
     function setLoginMsg(kind, text){
@@ -469,18 +535,21 @@
     }
 
     // =========================
-    // ESTADO GLOBAL
+    // ESTADO
     // =========================
     let tipoAtual = "Gasto";
     let chartMov = null;
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
 
-    // filtros (estado)
     const filtros = {
       month: null,
       year: null,
-      q: ""
+      tipo: "Todos",
+      q: "",
+      limit: 10,
+      page: 1,
+      total: 0
     };
 
     // =========================
@@ -497,6 +566,7 @@
       return `${d}/${m}/${y}`;
     }
 
+    // Corrige 360,00 / 1.234,56 / 360.00 etc
     function parseMoneyBR(str){
       if(str == null) return NaN;
       let s = String(str).trim();
@@ -586,7 +656,7 @@
     }
 
     // =========================
-    // FILTROS / BUSCA
+    // FILTROS
     // =========================
     function fillMonthYear(){
       const mSel = document.getElementById("fMonth");
@@ -601,14 +671,19 @@
       for(let i=y-5;i<=y+2;i++) years.push(i);
       ySel.innerHTML = years.map(v=> `<option value="${v}">${v}</option>`).join("");
 
-      // defaults: mês/ano atual
       filtros.month = now.getMonth()+1;
       filtros.year = now.getFullYear();
+      filtros.tipo = "Todos";
       filtros.q = "";
+      filtros.limit = 10;
+      filtros.page = 1;
 
       mSel.value = String(filtros.month);
       ySel.value = String(filtros.year);
+      document.getElementById("fTipo").value = filtros.tipo;
       document.getElementById("fSearch").value = "";
+      document.getElementById("fLimit").value = String(filtros.limit);
+
       setTitleMov();
     }
 
@@ -616,27 +691,50 @@
       const m = filtros.month;
       const y = filtros.year;
       const title = document.getElementById("titleMov");
-      title.textContent = `Movimento do mês (${String(m).padStart(2,"0")}/${y}) — barras + saldo acumulado`;
+      const t = filtros.tipo === "Todos" ? "Todos" : (filtros.tipo === "Gasto" ? "Gastos" : "Receitas");
+      title.textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}`;
     }
 
     function aplicarFiltros(){
       filtros.month = Number(document.getElementById("fMonth").value);
       filtros.year = Number(document.getElementById("fYear").value);
+      filtros.tipo = document.getElementById("fTipo").value;
       filtros.q = (document.getElementById("fSearch").value || "").trim();
+      filtros.limit = Number(document.getElementById("fLimit").value) || 10;
+      filtros.page = 1; // reset pagina
       setTitleMov();
       carregarTudo();
     }
 
     function limparFiltros(){
-      const now = new Date();
-      filtros.month = now.getMonth()+1;
-      filtros.year = now.getFullYear();
-      filtros.q = "";
-      document.getElementById("fMonth").value = String(filtros.month);
-      document.getElementById("fYear").value = String(filtros.year);
-      document.getElementById("fSearch").value = "";
-      setTitleMov();
+      fillMonthYear();
       carregarTudo();
+    }
+
+    // =========================
+    // PAGINAÇÃO
+    // =========================
+    function updatePager(){
+      const page = filtros.page;
+      const limit = filtros.limit;
+      const total = filtros.total;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+
+      document.getElementById("pagerPage").textContent = `Página ${page} / ${totalPages}`;
+      document.getElementById("pagerInfo").textContent = `Total: ${total} • Mostrando ${limit} por página`;
+    }
+
+    function prevPage(){
+      if(filtros.page <= 1) return;
+      filtros.page -= 1;
+      carregarUltimos();
+    }
+
+    function nextPage(){
+      const totalPages = Math.max(1, Math.ceil((filtros.total || 0) / (filtros.limit || 10)));
+      if(filtros.page >= totalPages) return;
+      filtros.page += 1;
+      carregarUltimos();
     }
 
     // =========================
@@ -757,7 +855,7 @@
     }
 
     // =========================
-    // PIZZAS
+    // PIZZAS (gastos vermelho / receitas azul)
     // =========================
     const PIE_REDS = [
       "rgba(255,90,106,0.95)","rgba(255,90,106,0.80)","rgba(255,90,106,0.65)",
@@ -827,15 +925,21 @@
     }
 
     // =========================
-    // API: RESUMO + LISTA
+    // RESUMO + LISTA
     // =========================
     async function carregarResumo(){
-      const params = { month: filtros.month, year: filtros.year, q: filtros.q };
+      const params = {
+        month: filtros.month,
+        year: filtros.year,
+        tipo: filtros.tipo,
+        q: filtros.q
+      };
+
       const r = await apiFetch("/resumo" + qs(params));
       if(r.status === 401){ mustLogin(); throw new Error("401"); }
       if(!r.ok) throw new Error("Falha em /resumo");
-      const j = await r.json();
 
+      const j = await r.json();
       document.getElementById("entradas").innerText = brl(j.entradas);
       document.getElementById("saidas").innerText   = brl(j.saidas);
       document.getElementById("saldo").innerText    = brl(j.saldo);
@@ -854,14 +958,26 @@
           </div>
         </div>`;
 
-      const params = { month: filtros.month, year: filtros.year, q: filtros.q, limit: 10 };
+      const params = {
+        month: filtros.month,
+        year: filtros.year,
+        tipo: filtros.tipo,
+        q: filtros.q,
+        page: filtros.page,
+        limit: filtros.limit
+      };
+
       const r = await apiFetch("/ultimos" + qs(params));
       if(r.status === 401){ mustLogin(); throw new Error("401"); }
       if(!r.ok) throw new Error("Falha em /ultimos");
 
-      const arr = await r.json().catch(()=> ([]));
-      lista.innerHTML = "";
+      const payload = await r.json().catch(()=> ({}));
+      const arr = payload.items || [];
+      filtros.total = Number(payload.total || 0);
 
+      updatePager();
+
+      lista.innerHTML = "";
       if(!Array.isArray(arr) || arr.length === 0){
         lista.innerHTML = `
           <div class="item">
@@ -873,8 +989,7 @@
         return;
       }
 
-      // mais recente por último -> render invertido
-      arr.slice().reverse().forEach(item => {
+      arr.forEach(item => {
         const tipo = getField(item, ["Tipo"]);
         const categoria = getField(item, ["Categoria"]);
         const descricao = getField(item, ["Descrição"]);
@@ -884,6 +999,9 @@
 
         const encoded = encodeURIComponent(JSON.stringify(item));
 
+        const vnum = parseMoneyBR(valor);
+        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
+
         lista.innerHTML += `
           <div class="item">
             <div class="left">
@@ -891,14 +1009,13 @@
               <div class="meta">
                 <b>${tipo} • ${categoria}</b>
                 <span>${descricao} • ${data}</span>
-
                 <div class="inlineBtns">
                   <button class="btn secondary small" onclick='openEdit("${encoded}")'>Editar</button>
                   <button class="btn danger small" onclick="excluirLancamento(${row})">Excluir</button>
                 </div>
               </div>
             </div>
-            <div class="value ${valueClass(item)}">${brl(parseMoneyBR(valor) || valor)}</div>
+            <div class="value ${valueClass(item)}">${showVal}</div>
           </div>
         `;
       });
@@ -1015,7 +1132,12 @@
     // =========================
     async function exportar(tipo){
       try{
-        const params = { month: filtros.month, year: filtros.year, q: filtros.q };
+        const params = {
+          month: filtros.month,
+          year: filtros.year,
+          tipo: filtros.tipo,
+          q: filtros.q
+        };
         const url = (tipo === "pdf" ? "/export.pdf" : "/export.csv") + qs(params);
 
         const r = await apiFetch(url, { method:"GET" });
@@ -1050,17 +1172,14 @@
       setPill();
       fillMonthYear();
 
-      // data hoje no lançar
       const d = new Date();
       const iso = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
       document.getElementById("data").value = iso;
 
-      // ENTER na busca aplica filtros
       document.getElementById("fSearch").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
 
-      // tenta carregar (se 401, vai pedir login)
       (async ()=>{
         try{
           await carregarTudo();
