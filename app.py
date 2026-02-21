@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Tuple, Optional
 from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
 from google.oauth2.service_account import Credentials
-from werkzeug.security import check_password_hash
+
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # PDF (reportlab)
@@ -26,7 +27,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,  # no Render é https
+    SESSION_COOKIE_SECURE=True,   # Render = https
 )
 
 SCOPES = [
@@ -34,34 +35,41 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
+# ====== HEADERS ======
+# Agora com UserEmail no final
+HEADERS_LANC = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt", "UserEmail"]
+HEADERS_USERS = ["Email", "PasswordHash", "Ativo", "CreatedAt"]
 
 _client_cached: Optional[gspread.Client] = None
 
 
 # =========================
-# AUTH (EMAIL/SENHA via sessão)
+# AUTH / SESSÃO
 # =========================
-def _email_password_auth_enabled() -> bool:
+def is_logged() -> bool:
+    return bool(session.get("user_email"))
+
+def current_user_email() -> str:
+    return (session.get("user_email") or "").strip().lower()
+
+def _legacy_admin_enabled() -> bool:
+    # fallback opcional (se quiser manter)
     email = os.getenv("APP_EMAIL", "").strip()
     pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
     return bool(email and pwd_hash)
 
-def is_logged() -> bool:
-    return bool(session.get("user_email"))
-
 def require_auth():
+    if not is_logged():
+        abort(401)
+
+def require_admin():
     """
-    Se APP_EMAIL + APP_PASSWORD_HASH estiverem configurados:
-    - exige sessão (cookie)
-    Se não estiverem:
-    - sem auth (modo aberto)
+    Admin por token (header) para criar usuários.
     """
-    if _email_password_auth_enabled():
-        if not is_logged():
-            abort(401)
-        return
-    return
+    token = (request.headers.get("X-ADMIN-TOKEN", "") or "").strip()
+    expected = (os.getenv("ADMIN_TOKEN", "") or "").strip()
+    if not expected or token != expected:
+        abort(403)
 
 
 @app.before_request
@@ -71,6 +79,12 @@ def _auth_middleware():
         return
     if request.path.startswith("/static"):
         return
+    # rotas admin exigem login + token
+    if request.path.startswith("/admin/"):
+        require_auth()
+        require_admin()
+        return
+    # demais exigem login
     require_auth()
 
 
@@ -112,27 +126,76 @@ def get_client() -> gspread.Client:
         "Defina SERVICE_ACCOUNT_JSON ou envie Secret File google_creds.json no Render."
     )
 
-def ensure_headers(ws: gspread.Worksheet):
-    values = ws.get_all_values()
-    if not values:
-        ws.append_row(HEADERS)
-        return
-    first = [c.strip() for c in (values[0] or [])]
-    if first != HEADERS:
-        ws.update("A1", [HEADERS])
 
-def get_sheet() -> gspread.Worksheet:
+def _open_sheet() -> gspread.Spreadsheet:
     sheet_id = os.getenv("SHEET_ID", "").strip()
     if not sheet_id:
         raise RuntimeError("Missing env var SHEET_ID")
-
     client = get_client()
-    sh = client.open_by_key(sheet_id)
+    return client.open_by_key(sheet_id)
 
-    ws_name = os.getenv("SHEET_TAB", "").strip()
-    ws = sh.worksheet(ws_name) if ws_name else sh.get_worksheet(0)
 
-    ensure_headers(ws)
+def _get_or_create_ws(sh: gspread.Spreadsheet, title: str) -> gspread.Worksheet:
+    try:
+        return sh.worksheet(title)
+    except:
+        return sh.add_worksheet(title=title, rows=2000, cols=20)
+
+
+def ensure_headers_exact(ws: gspread.Worksheet, headers: List[str]):
+    values = ws.get_all_values()
+    if not values:
+        ws.append_row(headers)
+        return
+    first = [c.strip() for c in (values[0] or [])]
+    if first != headers:
+        ws.update("A1", [headers])
+
+
+def ensure_headers_lanc(ws: gspread.Worksheet):
+    """
+    Migração automática:
+    - se planilha estiver vazia -> cria HEADERS_LANC
+    - se estiver com header antigo (sem UserEmail) -> adiciona coluna no header
+      e completa vazio nas linhas antigas.
+    """
+    values = ws.get_all_values()
+    if not values:
+        ws.append_row(HEADERS_LANC)
+        return
+
+    first = [c.strip() for c in (values[0] or [])]
+
+    # Caso já esteja correto
+    if first == HEADERS_LANC:
+        return
+
+    # Caso seja header antigo sem UserEmail
+    if first == ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]:
+        # Atualiza header
+        ws.update("A1", [HEADERS_LANC])
+
+        # Preenche coluna UserEmail vazia para linhas existentes (opcional)
+        # Não tentamos reescrever tudo, apenas garantimos que a coluna exista.
+        return
+
+    # Outro caso: força header exato (pode sobrescrever headers estranhos)
+    ws.update("A1", [HEADERS_LANC])
+
+
+def get_lanc_ws() -> gspread.Worksheet:
+    sh = _open_sheet()
+    ws_name = os.getenv("SHEET_TAB", "").strip() or "Lancamentos"
+    ws = _get_or_create_ws(sh, ws_name)
+    ensure_headers_lanc(ws)
+    return ws
+
+
+def get_users_ws() -> gspread.Worksheet:
+    sh = _open_sheet()
+    users_tab = os.getenv("USERS_TAB", "").strip() or "Usuarios"
+    ws = _get_or_create_ws(sh, users_tab)
+    ensure_headers_exact(ws, HEADERS_USERS)
     return ws
 
 
@@ -198,12 +261,60 @@ def safe_float(v: Any) -> float:
 
 
 # =========================
+# USERS: BUSCA/VALIDAÇÃO
+# =========================
+def find_user(email: str) -> Optional[Dict[str, str]]:
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+
+    ws = get_users_ws()
+    values = ws.get_all_values()
+    if len(values) < 2:
+        return None
+
+    headers = values[0]
+    rows = values[1:]
+
+    idx_email = headers.index("Email")
+    idx_hash = headers.index("PasswordHash")
+    idx_ativo = headers.index("Ativo")
+
+    for r in rows:
+        e = (r[idx_email] if idx_email < len(r) else "").strip().lower()
+        if e == email:
+            h = (r[idx_hash] if idx_hash < len(r) else "").strip()
+            ativo = (r[idx_ativo] if idx_ativo < len(r) else "1").strip()
+            return {"email": e, "hash": h, "ativo": ativo}
+    return None
+
+
+def validate_login(email: str, password: str) -> bool:
+    email = (email or "").strip().lower()
+    password = (password or "").strip()
+
+    # 1) tenta validar pelo Usuarios
+    u = find_user(email)
+    if u and u.get("ativo") == "1" and u.get("hash"):
+        return check_password_hash(u["hash"], password)
+
+    # 2) fallback admin legacy (opcional)
+    if _legacy_admin_enabled():
+        app_email = os.getenv("APP_EMAIL", "").strip().lower()
+        pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+        if email == app_email and check_password_hash(pwd_hash, password):
+            return True
+
+    return False
+
+
+# =========================
 # ROWS
 # =========================
 def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[str, Any]]]:
     values = ws.get_all_values()
     if not values or len(values) < 2:
-        return HEADERS, []
+        return HEADERS_LANC, []
 
     headers = values[0]
     data_rows = values[1:]
@@ -266,6 +377,7 @@ def get_value_range() -> Tuple[Optional[float], Optional[float]]:
 
     return vmin, vmax
 
+
 def filter_rows(
     rows: List[Dict[str, Any]],
     month: int,
@@ -276,11 +388,24 @@ def filter_rows(
     dto: Optional[date],
     vmin: Optional[float],
     vmax: Optional[float],
+    user_email: str,
 ) -> List[Dict[str, Any]]:
     q = (q or "").strip().lower()
+    user_email = (user_email or "").strip().lower()
 
     filtered: List[Dict[str, Any]] = []
     for r in rows:
+        # >>> multi-usuário: só do dono
+        owner = (r.get("UserEmail") or "").strip().lower()
+        if owner and user_email and owner != user_email:
+            continue
+        # se owner estiver vazio (dados antigos), você pode:
+        # - ignorar (não mostrar)
+        # - OU mostrar somente para admin legacy
+        # Aqui: se vazio, não mostra (segurança)
+        if not owner:
+            continue
+
         d_str = (r.get("Data") or "").strip()
         d = parse_any_date(d_str)
         if not d:
@@ -320,6 +445,7 @@ def filter_rows(
 
     return filtered
 
+
 def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
     def dkey(r: Dict[str, Any]) -> date:
         d = parse_any_date(r.get("Data", ""))
@@ -350,40 +476,66 @@ def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
 def home():
     return render_template("index.html")
 
+
 @app.get("/me")
 def me():
-    if not _email_password_auth_enabled():
-        return jsonify({"ok": True, "email": ""})
     if not is_logged():
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": True, "email": session.get("user_email")})
+    return jsonify({"ok": True, "email": current_user_email()})
+
 
 @app.post("/login")
 def login():
-    if not _email_password_auth_enabled():
-        return jsonify({"ok": True})
-
     body = request.get_json(force=True, silent=True) or {}
     email = str(body.get("email", "")).strip().lower()
     password = str(body.get("password", "")).strip()
 
-    app_email = os.getenv("APP_EMAIL", "").strip().lower()
-    pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+    if not email or not password:
+        return jsonify({"ok": False, "msg": "Informe e-mail e senha"}), 400
 
-    if email != app_email or not check_password_hash(pwd_hash, password):
+    if not validate_login(email, password):
         return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     session["user_email"] = email
     return jsonify({"ok": True})
+
 
 @app.post("/logout")
 def logout():
     session.pop("user_email", None)
     return jsonify({"ok": True})
 
+
+# ===== ADMIN: criar usuário =====
+@app.post("/admin/create_user")
+def admin_create_user():
+    """
+    Cria usuário na aba Usuarios.
+    Protegido por:
+    - estar logado
+    - header X-ADMIN-TOKEN == ADMIN_TOKEN
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    email = str(body.get("email", "")).strip().lower()
+    password = str(body.get("password", "")).strip()
+
+    if not email or not password:
+        return jsonify({"ok": False, "msg": "Informe email e password"}), 400
+
+    if find_user(email):
+        return jsonify({"ok": False, "msg": "Usuário já existe"}), 409
+
+    ws = get_users_ws()
+    pwd_hash = generate_password_hash(password)  # pbkdf2:sha256...
+    created_at = datetime.utcnow().isoformat()
+
+    ws.append_row([email, pwd_hash, "1", created_at])
+    return jsonify({"ok": True, "msg": "Usuário criado"})
+
+
 @app.post("/lancar")
 def lancar():
-    ws = get_sheet()
+    ws = get_lanc_ws()
     body = request.get_json(force=True, silent=True) or {}
 
     tipo = str(body.get("tipo", "")).strip()
@@ -405,13 +557,17 @@ def lancar():
 
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
+    owner = current_user_email()
 
-    ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
+    # salva como número no Sheets + dono
+    ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at, owner])
+
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
+
 
 @app.get("/ultimos")
 def ultimos():
-    ws = get_sheet()
+    ws = get_lanc_ws()
     _, rows = get_rows_with_rownum(ws)
 
     month, year = get_month_year_from_request()
@@ -427,7 +583,7 @@ def ultimos():
     if limit > 200: limit = 200
     if page < 1: page = 1
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax, current_user_email())
     ordered = sort_rows(filtered, order)
 
     total = len(ordered)
@@ -443,9 +599,10 @@ def ultimos():
         "order": order
     })
 
+
 @app.get("/resumo")
 def resumo():
-    ws = get_sheet()
+    ws = get_lanc_ws()
     _, rows = get_rows_with_rownum(ws)
 
     month, year = get_month_year_from_request()
@@ -454,7 +611,7 @@ def resumo():
     dfrom, dto = get_date_range()
     vmin, vmax = get_value_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax, current_user_email())
 
     last_day = monthrange(year, month)[1]
     dias = [str(i + 1).zfill(2) for i in range(last_day)]
@@ -531,19 +688,32 @@ def resumo():
         "receitas_categorias": receitas_table
     })
 
+
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
-    ws = get_sheet()
+    ws = get_lanc_ws()
     body = request.get_json(force=True, silent=True) or {}
+
+    if row <= 1:
+        return jsonify({"ok": False, "msg": "Linha inválida."}), 400
+
+    # pega linha atual pra validar dono
+    values = ws.row_values(row)
+    headers = ws.row_values(1)
+    try:
+        idx_owner = headers.index("UserEmail")
+        owner = (values[idx_owner] if idx_owner < len(values) else "").strip().lower()
+    except:
+        owner = ""
+
+    if not owner or owner != current_user_email():
+        return jsonify({"ok": False, "msg": "Sem permissão."}), 403
 
     tipo = str(body.get("tipo", "")).strip()
     categoria = str(body.get("categoria", "")).strip()
     descricao = str(body.get("descricao", "")).strip()
     valor = body.get("valor", None)
     data_str = str(body.get("data", "")).strip()
-
-    if row <= 1:
-        return jsonify({"ok": False, "msg": "Linha inválida."}), 400
 
     if tipo not in ("Gasto", "Receita"):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
@@ -564,16 +734,30 @@ def editar(row: int):
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
+
 @app.delete("/lancamento/<int:row>")
 def deletar(row: int):
-    ws = get_sheet()
+    ws = get_lanc_ws()
     if row <= 1:
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
+
+    values = ws.row_values(row)
+    headers = ws.row_values(1)
+    try:
+        idx_owner = headers.index("UserEmail")
+        owner = (values[idx_owner] if idx_owner < len(values) else "").strip().lower()
+    except:
+        owner = ""
+
+    if not owner or owner != current_user_email():
+        return jsonify({"ok": False, "msg": "Sem permissão."}), 403
+
     ws.delete_rows(row)
     return jsonify({"ok": True, "msg": "Excluído com sucesso!"})
 
+
 def build_filtered_for_export() -> List[Dict[str, Any]]:
-    ws = get_sheet()
+    ws = get_lanc_ws()
     _, rows = get_rows_with_rownum(ws)
 
     month, year = get_month_year_from_request()
@@ -583,9 +767,10 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     dfrom, dto = get_date_range()
     vmin, vmax = get_value_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax, current_user_email())
     ordered = sort_rows(filtered, order)
     return ordered
+
 
 @app.get("/export.csv")
 def export_csv():
@@ -609,6 +794,7 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=finance-ai.csv"}
     )
+
 
 @app.get("/export.pdf")
 def export_pdf():
@@ -708,6 +894,7 @@ def export_pdf():
         mimetype="application/pdf",
         headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
     )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
