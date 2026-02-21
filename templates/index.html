@@ -50,6 +50,7 @@
       color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px;
       user-select:none;
       cursor:pointer;
+      white-space:nowrap;
     }
 
     .tabs{display:flex; gap:10px; margin:14px 0;}
@@ -311,7 +312,13 @@
         <h1>Finance AI</h1>
         <span>Controle financeiro • simples e rápido</span>
       </div>
-      <div class="pill" id="statusPill" onclick="openLogin()">🔒 Login</div>
+
+      <!-- ✅ Pills (Admin + Login) -->
+      <div style="display:flex; gap:10px; align-items:center;">
+        <div class="pill" id="adminPill" onclick="openCreateUser()" style="display:none;">➕ Usuário</div>
+        <div class="pill" id="statusPill" onclick="openLogin()">🔒 Login</div>
+      </div>
+      <!-- ✅ /Pills -->
     </div>
 
     <div class="tabs">
@@ -529,6 +536,34 @@
     </div>
   </div>
 
+  <!-- ✅ CREATE USER MODAL (ADMIN) -->
+  <div class="modalBack" id="createUserBack">
+    <div class="modal">
+      <div class="closeRow">
+        <div>
+          <h2>➕ Criar usuário</h2>
+          <p>Cria um novo usuário e o sistema gera uma planilha exclusiva automaticamente.</p>
+        </div>
+        <button class="xBtn" onclick="closeCreateUser()">✕</button>
+      </div>
+
+      <label>E-mail do usuário</label>
+      <input id="cuEmail" type="email" placeholder="cliente@dominio.com" />
+
+      <label>Senha do usuário</label>
+      <input id="cuPwd" type="password" placeholder="Senha do usuário" />
+
+      <div class="actions" style="margin-top:12px;">
+        <button class="btn" onclick="doCreateUser()">Criar</button>
+        <button class="btn secondary" onclick="closeCreateUser()">Cancelar</button>
+      </div>
+
+      <div id="createUserMsg" class="msg"></div>
+      <div class="hint">Obs: você precisa estar logado como admin para ver este botão.</div>
+    </div>
+  </div>
+  <!-- ✅ /CREATE USER MODAL -->
+
   <!-- EDIT MODAL -->
   <div class="modalBack" id="editBack">
     <div class="modal">
@@ -580,6 +615,8 @@
     // =========================
     // AUTH (cookie session)
     // =========================
+    const ADMIN_EMAIL = "admin@financeai.com";
+
     function setPillText(isOn){
       const pill = document.getElementById("statusPill");
       pill.textContent = isOn ? "🔓 Conectado" : "🔒 Login";
@@ -607,16 +644,24 @@
     }
 
     async function refreshAuthUI(){
+      const adminBtn = document.getElementById("adminPill");
       try{
         const r = await apiFetch("/me");
         if(r.ok){
           const j = await r.json().catch(()=>({}));
-          setPillText(!!j.ok);
+          const logged = !!j.ok;
+          setPillText(logged);
+
+          const email = String(j.email || "").trim().toLowerCase();
+          const isAdmin = logged && email === ADMIN_EMAIL.toLowerCase();
+          if(adminBtn) adminBtn.style.display = isAdmin ? "flex" : "none";
         }else{
           setPillText(false);
+          if(adminBtn) adminBtn.style.display = "none";
         }
       }catch(e){
         setPillText(false);
+        if(adminBtn) adminBtn.style.display = "none";
       }
     }
 
@@ -660,6 +705,56 @@
       await refreshAuthUI();
       openLogin();
       setLoginMsg("ok", "✅ Você saiu.");
+    }
+
+    // =========================
+    // CREATE USER (ADMIN)
+    // =========================
+    function openCreateUser(){
+      document.getElementById("createUserBack").style.display = "flex";
+      setCreateUserMsg("", "");
+    }
+    function closeCreateUser(){
+      document.getElementById("createUserBack").style.display = "none";
+    }
+
+    function setCreateUserMsg(kind, text){
+      const el = document.getElementById("createUserMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    async function doCreateUser(){
+      const email = (document.getElementById("cuEmail").value || "").trim().toLowerCase();
+      const password = (document.getElementById("cuPwd").value || "").trim();
+
+      if(!email || !password){
+        setCreateUserMsg("err", "❌ Informe e-mail e senha do usuário.");
+        return;
+      }
+
+      try{
+        const r = await apiFetch("/create_user", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ email, password })
+        });
+
+        if(r.status === 401){ mustLogin(); return; }
+
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao criar usuário");
+
+        setCreateUserMsg("ok", "✅ " + (j.msg || "Usuário criado!"));
+        document.getElementById("cuEmail").value = "";
+        document.getElementById("cuPwd").value = "";
+      }catch(e){
+        setCreateUserMsg("err", "❌ " + e.message);
+      }
     }
 
     // =========================
