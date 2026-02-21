@@ -209,6 +209,38 @@
     .value.red{color:#ff9aa5}
     .hint{margin-top:10px; color:var(--muted); font-size:12px; opacity:.9;}
 
+    /* TABELA CATEGORIAS */
+    .tableWrap{
+      margin-top:10px;
+      border:1px solid var(--border);
+      border-radius:16px;
+      overflow:hidden;
+      background: rgba(15,23,48,.45);
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+    th, td{
+      padding:10px 12px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      text-align:left;
+    }
+    th{
+      color:var(--muted);
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.3px;
+      font-size:11px;
+    }
+    td:last-child, th:last-child{
+      text-align:right;
+      white-space:nowrap;
+      font-weight:900;
+    }
+    tr:last-child td{border-bottom:none;}
+
     /* MODAIS */
     .modalBack{
       position:fixed; inset:0;
@@ -300,15 +332,15 @@
     <div class="card" id="screen-ultimos" style="display:none;">
       <div class="cards">
         <div class="mini-card">
-          <div class="label">Entradas (mês)</div>
+          <div class="label">Entradas</div>
           <div class="value" id="entradas">R$ 0,00</div>
         </div>
         <div class="mini-card">
-          <div class="label">Saídas (mês)</div>
+          <div class="label">Saídas</div>
           <div class="value" id="saidas">R$ 0,00</div>
         </div>
         <div class="mini-card">
-          <div class="label">Saldo (mês)</div>
+          <div class="label">Saldo</div>
           <div class="value" id="saldo">R$ 0,00</div>
         </div>
       </div>
@@ -331,6 +363,25 @@
             <option value="Gasto">Gastos</option>
             <option value="Receita">Receitas</option>
           </select>
+        </div>
+
+        <div class="full">
+          <label>Ordenar</label>
+          <select id="fOrder">
+            <option value="recent">Mais recente</option>
+            <option value="oldest">Mais antigo</option>
+            <option value="value_desc">Maior valor</option>
+            <option value="value_asc">Menor valor</option>
+          </select>
+        </div>
+
+        <div>
+          <label>De</label>
+          <input id="fFrom" type="date" />
+        </div>
+        <div>
+          <label>Até</label>
+          <input id="fTo" type="date" />
         </div>
 
         <div class="full">
@@ -361,20 +412,36 @@
 
       <!-- movimento -->
       <div class="card chart-card">
-        <div class="title" id="titleMov">Movimento do mês</div>
+        <div class="title" id="titleMov">Movimento</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
       <!-- pizza gastos -->
       <div class="card chart-card">
-        <div class="title">Gastos por categoria (mês)</div>
+        <div class="title">Gastos por categoria</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
+        <div class="tableWrap" id="tblGastosWrap" style="display:none;">
+          <table>
+            <thead>
+              <tr><th>Categoria</th><th>Total</th></tr>
+            </thead>
+            <tbody id="tblGastos"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- pizza receitas -->
       <div class="card chart-card">
-        <div class="title">Receitas por categoria (mês)</div>
+        <div class="title">Receitas por categoria</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
+        <div class="tableWrap" id="tblReceitasWrap" style="display:none;">
+          <table>
+            <thead>
+              <tr><th>Categoria</th><th>Total</th></tr>
+            </thead>
+            <tbody id="tblReceitas"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- PAGINAÇÃO -->
@@ -393,7 +460,7 @@
       </div>
 
       <div class="list" id="lista"></div>
-      <div class="hint">Dica: use os filtros acima e a paginação para navegar pelos lançamentos.</div>
+      <div class="hint">Use os filtros e a paginação para navegar pelos lançamentos.</div>
     </div>
   </div>
 
@@ -477,7 +544,6 @@
       const pill = document.getElementById("statusPill");
       const has = !!getToken();
       pill.textContent = has ? "🔓 Conectado" : "🔒 Login";
-      pill.style.opacity = has ? "1" : "0.9";
     }
 
     function openLogin(){
@@ -547,6 +613,9 @@
       year: null,
       tipo: "Todos",
       q: "",
+      order: "recent",
+      date_from: "",
+      date_to: "",
       limit: 10,
       page: 1,
       total: 0
@@ -675,13 +744,19 @@
       filtros.year = now.getFullYear();
       filtros.tipo = "Todos";
       filtros.q = "";
+      filtros.order = "recent";
+      filtros.date_from = "";
+      filtros.date_to = "";
       filtros.limit = 10;
       filtros.page = 1;
 
       mSel.value = String(filtros.month);
       ySel.value = String(filtros.year);
       document.getElementById("fTipo").value = filtros.tipo;
+      document.getElementById("fOrder").value = filtros.order;
       document.getElementById("fSearch").value = "";
+      document.getElementById("fFrom").value = "";
+      document.getElementById("fTo").value = "";
       document.getElementById("fLimit").value = String(filtros.limit);
 
       setTitleMov();
@@ -690,18 +765,25 @@
     function setTitleMov(){
       const m = filtros.month;
       const y = filtros.year;
-      const title = document.getElementById("titleMov");
       const t = filtros.tipo === "Todos" ? "Todos" : (filtros.tipo === "Gasto" ? "Gastos" : "Receitas");
-      title.textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}`;
+      const df = filtros.date_from ? ` • De ${filtros.date_from}` : "";
+      const dt = filtros.date_to ? ` até ${filtros.date_to}` : "";
+      document.getElementById("titleMov").textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}${df}${dt}`;
     }
 
     function aplicarFiltros(){
       filtros.month = Number(document.getElementById("fMonth").value);
       filtros.year = Number(document.getElementById("fYear").value);
       filtros.tipo = document.getElementById("fTipo").value;
+      filtros.order = document.getElementById("fOrder").value;
       filtros.q = (document.getElementById("fSearch").value || "").trim();
       filtros.limit = Number(document.getElementById("fLimit").value) || 10;
-      filtros.page = 1; // reset pagina
+
+      // Intervalo vai em ISO yyyy-mm-dd (o backend aceita)
+      filtros.date_from = (document.getElementById("fFrom").value || "").trim();
+      filtros.date_to = (document.getElementById("fTo").value || "").trim();
+
+      filtros.page = 1;
       setTitleMov();
       carregarTudo();
     }
@@ -855,7 +937,7 @@
     }
 
     // =========================
-    // PIZZAS (gastos vermelho / receitas azul)
+    // PIZZAS
     // =========================
     const PIE_REDS = [
       "rgba(255,90,106,0.95)","rgba(255,90,106,0.80)","rgba(255,90,106,0.65)",
@@ -924,6 +1006,22 @@
       }
     }
 
+    function renderTabelaCategorias(idWrap, idBody, arr){
+      const wrap = document.getElementById(idWrap);
+      const tbody = document.getElementById(idBody);
+      if(!Array.isArray(arr) || arr.length === 0){
+        wrap.style.display = "none";
+        tbody.innerHTML = "";
+        return;
+      }
+      wrap.style.display = "block";
+      tbody.innerHTML = arr.slice(0, 20).map(x => {
+        const cat = (x.categoria || "Sem categoria");
+        const tot = brl(x.total || 0);
+        return `<tr><td>${cat}</td><td>${tot}</td></tr>`;
+      }).join("");
+    }
+
     // =========================
     // RESUMO + LISTA
     // =========================
@@ -932,7 +1030,9 @@
         month: filtros.month,
         year: filtros.year,
         tipo: filtros.tipo,
-        q: filtros.q
+        q: filtros.q,
+        date_from: filtros.date_from,
+        date_to: filtros.date_to
       };
 
       const r = await apiFetch("/resumo" + qs(params));
@@ -946,6 +1046,9 @@
 
       atualizarMovimento(j);
       atualizarPizzas(j);
+
+      renderTabelaCategorias("tblGastosWrap","tblGastos", j.gastos_categorias || []);
+      renderTabelaCategorias("tblReceitasWrap","tblReceitas", j.receitas_categorias || []);
     }
 
     async function carregarUltimos(){
@@ -963,6 +1066,9 @@
         year: filtros.year,
         tipo: filtros.tipo,
         q: filtros.q,
+        order: filtros.order,
+        date_from: filtros.date_from,
+        date_to: filtros.date_to,
         page: filtros.page,
         limit: filtros.limit
       };
@@ -1083,13 +1189,7 @@
         return;
       }
 
-      const payload = {
-        tipo,
-        categoria,
-        descricao,
-        valor: valorNum,
-        data: dataStr
-      };
+      const payload = { tipo, categoria, descricao, valor: valorNum, data: dataStr };
 
       const r = await apiFetch(`/lancamento/${row}`, {
         method:"PATCH",
@@ -1128,7 +1228,7 @@
     }
 
     // =========================
-    // EXPORT (CSV/PDF) com AUTH
+    // EXPORT
     // =========================
     async function exportar(tipo){
       try{
@@ -1136,7 +1236,10 @@
           month: filtros.month,
           year: filtros.year,
           tipo: filtros.tipo,
-          q: filtros.q
+          q: filtros.q,
+          order: filtros.order,
+          date_from: filtros.date_from,
+          date_to: filtros.date_to
         };
         const url = (tipo === "pdf" ? "/export.pdf" : "/export.csv") + qs(params);
 
@@ -1181,9 +1284,7 @@
       });
 
       (async ()=>{
-        try{
-          await carregarTudo();
-        }catch(e){}
+        try{ await carregarTudo(); }catch(e){}
       })();
     })();
   </script>
