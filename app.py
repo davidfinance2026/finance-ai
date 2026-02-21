@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Tuple, Optional
 from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
 from google.oauth2.service_account import Credentials
-from werkzeug.security import generate_password_hash
-from werkzeug.security import check_password_hash
+
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # PDF (reportlab)
@@ -19,20 +19,15 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
-@app.get("/_genhash")
-def genhash():
-    pwd = request.args.get("pwd", "")
-    if not pwd:
-        return "Passe ?pwd=SUASENHA", 400
-    return generate_password_hash(pwd)
-# Render/Proxy: garante que Flask "enxerga" https corretamente
+
+# Render/Proxy: garante que Flask "enxerga" https corretamente (cookies)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Sessão (cookie)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,   # no Render é https
+    SESSION_COOKIE_SECURE=True,  # Render é https
 )
 
 SCOPES = [
@@ -46,6 +41,22 @@ _client_cached: Optional[gspread.Client] = None
 
 
 # =========================
+# HASH GEN (TEMPORÁRIO!)
+# =========================
+@app.get("/_genhash")
+def genhash():
+    """
+    ROTA TEMPORÁRIA para você gerar um hash pelo celular.
+    Use: /_genhash?pwd=1234
+    Depois de gerar e configurar o Render, REMOVA essa rota.
+    """
+    pwd = request.args.get("pwd", "")
+    if not pwd:
+        return "Passe ?pwd=SUASENHA", 400
+    return generate_password_hash(pwd)
+
+
+# =========================
 # AUTH (EMAIL/SENHA via sessão)
 # =========================
 def _email_password_auth_enabled() -> bool:
@@ -53,8 +64,10 @@ def _email_password_auth_enabled() -> bool:
     pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
     return bool(email and pwd_hash)
 
+
 def is_logged() -> bool:
     return bool(session.get("user_email"))
+
 
 def require_auth():
     """
@@ -72,7 +85,8 @@ def require_auth():
 
 @app.before_request
 def _auth_middleware():
-    public_paths = {"/", "/login", "/me"}
+    # libera páginas públicas + rota temporária do hash
+    public_paths = {"/", "/login", "/me", "/_genhash"}
     if request.path in public_paths:
         return
     if request.path.startswith("/static"):
@@ -150,8 +164,10 @@ def get_sheet() -> gspread.Worksheet:
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
+
 def parse_iso_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+
 
 def parse_any_date(s: str) -> Optional[date]:
     if not s:
@@ -165,6 +181,7 @@ def parse_any_date(s: str) -> Optional[date]:
         return parse_br_date(s)
     except:
         return None
+
 
 def safe_float(v: Any) -> float:
     """
@@ -240,11 +257,13 @@ def get_month_year_from_request() -> Tuple[int, int]:
         year = today.year
     return month, year
 
+
 def get_tipo_filter() -> str:
     t = (request.args.get("tipo", default="Todos", type=str) or "Todos").strip()
     if t not in ("Todos", "Gasto", "Receita"):
         t = "Todos"
     return t
+
 
 def get_order() -> str:
     o = (request.args.get("order", default="recent", type=str) or "recent").strip()
@@ -252,10 +271,12 @@ def get_order() -> str:
         o = "recent"
     return o
 
+
 def get_date_range() -> Tuple[Optional[date], Optional[date]]:
     dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
     dto = parse_any_date(request.args.get("date_to", default="", type=str))
     return dfrom, dto
+
 
 def get_value_range() -> Tuple[Optional[float], Optional[float]]:
     vmin_raw = request.args.get("value_min", default="", type=str)
@@ -273,6 +294,7 @@ def get_value_range() -> Tuple[Optional[float], Optional[float]]:
         vmin, vmax = vmax, vmin
 
     return vmin, vmax
+
 
 def filter_rows(
     rows: List[Dict[str, Any]],
@@ -328,6 +350,7 @@ def filter_rows(
 
     return filtered
 
+
 def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
     def dkey(r: Dict[str, Any]) -> date:
         d = parse_any_date(r.get("Data", ""))
@@ -361,7 +384,6 @@ def home():
 
 @app.get("/me")
 def me():
-    # útil para testar se a sessão está ativa
     if not _email_password_auth_enabled():
         return jsonify({"ok": True, "email": ""})
     if not is_logged():
@@ -371,8 +393,8 @@ def me():
 
 @app.post("/login")
 def login():
-    # Se não configurou login, deixa aberto (ou você pode forçar erro)
     if not _email_password_auth_enabled():
+        # se não configurou APP_EMAIL/APP_PASSWORD_HASH, deixa aberto
         return jsonify({"ok": True})
 
     body = request.get_json(force=True, silent=True) or {}
@@ -420,7 +442,7 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # salva como número (não string) no Sheets
+    # salva como número no Sheets
     ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
@@ -439,9 +461,12 @@ def ultimos():
 
     limit = request.args.get("limit", default=10, type=int)
     page = request.args.get("page", default=1, type=int)
-    if limit < 1: limit = 10
-    if limit > 200: limit = 200
-    if page < 1: page = 1
+    if limit < 1:
+        limit = 10
+    if limit > 200:
+        limit = 200
+    if page < 1:
+        page = 1
 
     filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
     ordered = sort_rows(filtered, order)
@@ -660,78 +685,4 @@ def export_pdf():
         c.drawString(40, y, f"Valor: min {request.args.get('value_min','')} / max {request.args.get('value_max','')}")
         y -= 16
     if q:
-        c.drawString(40, y, f"Busca: {q}")
-        y -= 16
-    c.drawString(40, y, f"Ordenação: {order}")
-    y -= 18
-
-    entradas = 0.0
-    saidas = 0.0
-    for r in filtered:
-        t = (r.get("Tipo") or "").strip()
-        v = safe_float(r.get("Valor"))
-        if t == "Receita":
-            entradas += v
-        else:
-            saidas += v
-    saldo = entradas - saidas
-
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(40, y, f"Entradas: R$ {entradas:.2f}   Saídas: R$ {saidas:.2f}   Saldo: R$ {saldo:.2f}")
-    y -= 18
-
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(40, y, "Data")
-    c.drawString(95, y, "Tipo")
-    c.drawString(155, y, "Categoria")
-    c.drawString(300, y, "Descrição")
-    c.drawRightString(555, y, "Valor")
-    y -= 10
-
-    c.setLineWidth(0.5)
-    c.line(40, y, 555, y)
-    y -= 12
-
-    c.setFont("Helvetica", 9)
-    for r in filtered:
-        if y < 60:
-            c.showPage()
-            y = h - 40
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(40, y, "Data")
-            c.drawString(95, y, "Tipo")
-            c.drawString(155, y, "Categoria")
-            c.drawString(300, y, "Descrição")
-            c.drawRightString(555, y, "Valor")
-            y -= 10
-            c.line(40, y, 555, y)
-            y -= 12
-            c.setFont("Helvetica", 9)
-
-        data_str = (r.get("Data") or "")[:10]
-        tipo = (r.get("Tipo") or "")[:10]
-        cat = (r.get("Categoria") or "")[:22]
-        desc = (r.get("Descrição") or "")[:38]
-        val = safe_float(r.get("Valor"))
-
-        c.drawString(40, y, data_str)
-        c.drawString(95, y, tipo)
-        c.drawString(155, y, cat)
-        c.drawString(300, y, desc)
-        c.drawRightString(555, y, f"R$ {val:.2f}")
-        y -= 12
-
-    c.showPage()
-    c.save()
-
-    buf.seek(0)
-    return Response(
-        buf.getvalue(),
-        mimetype="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
-    )
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
-
+        c.drawStri
