@@ -1,162 +1,99 @@
 import os
-import io
-import csv
 import json
-import datetime as dt
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+import uuid
+import csv
+import io
+from datetime import datetime, date
+from calendar import monthrange
+from typing import Any, Dict, List, Tuple, Optional
 
+from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
-from flask import Flask, jsonify, request, session, send_file, render_template
 from google.oauth2.service_account import Credentials
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import check_password_hash
 
-# PDF (export)
+# PDF (reportlab)
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
+from reportlab.pdfgen import canvas as pdf_canvas
 
+app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# =========================
-# Config
-# =========================
+# Sessão (cookie)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,   # Render é https
+)
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-# Planilha "master" (onde fica a aba Usuarios, e pode servir como fallback)
-MASTER_SHEET_ID = os.getenv("USERS_SHEET_ID") or os.getenv("SHEET_ID")
-USERS_TAB = os.getenv("USERS_TAB", "Usuarios")
+# Cabeçalho da aba de lançamentos
+HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
 
-# Fallback (se quiser manter um default)
-DEFAULT_SHEET_ID = os.getenv("SHEET_ID")
-DEFAULT_SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos")
+# Cabeçalho da aba de usuários
+USERS_HEADERS = ["Email", "PasswordHash", "Active", "CreatedAt", "SheetId", "SheetTab"]
 
-FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev_secret_change_me")
-
-# Se você quiser forçar cookie seguro em produção:
-FORCE_SECURE_COOKIE = os.getenv("FORCE_SECURE_COOKIE", "1") == "1"
-
-
-# =========================
-# App
-# =========================
-app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = FLASK_SECRET_KEY
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
-
-app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-)
-
-if FORCE_SECURE_COOKIE:
-    # Render usa HTTPS no domínio final. ProxyFix ajuda a detectar.
-    app.config["SESSION_COOKIE_SECURE"] = True
-
-
-# =========================
-# Google Sheets client
-# =========================
 _client_cached: Optional[gspread.Client] = None
 
 
-def get_client() -> gspread.Client:
-    """
-    Prioridade:
-    1) SERVICE_ACCOUNT_JSON (env com JSON inteiro)
-    2) Secret File do Render em /etc/secrets/google_creds.json
-    3) arquivo local google_creds.json (caso rode local)
-    """
-    global _client_cached
-    if _client_cached is not None:
-        return _client_cached
-
-    creds_info = None
-
-    env_json = os.getenv("SERVICE_ACCOUNT_JSON")
-    if env_json:
-        creds_info = json.loads(env_json)
-    else:
-        for path in ("/etc/secrets/google_creds.json", "google_creds.json"):
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    creds_info = json.load(f)
-                break
-
-    if not creds_info:
-        raise RuntimeError(
-            "Credenciais do Google não encontradas. Configure SERVICE_ACCOUNT_JSON "
-            "ou /etc/secrets/google_creds.json"
-        )
-
-    creds = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
-    _client_cached = gspread.authorize(creds)
-    return _client_cached
-
-
 # =========================
-# Helpers: auth/session
+# HELPERS GERAIS
 # =========================
-def require_login() -> Tuple[bool, Optional[Any]]:
-    if not session.get("user_email") or not session.get("sheet_id") or not session.get("sheet_tab"):
-        return False, (jsonify({"ok": False, "msg": "Não autenticado"}), 401)
-    return True, None
-
-
-def get_user_sheet_ctx() -> Tuple[str, str]:
-    """
-    Retorna (sheet_id, sheet_tab) do usuário logado.
-    """
-    sid = session.get("sheet_id")
-    stab = session.get("sheet_tab")
-    if not sid or not stab:
-        # fallback (opcional)
-        sid = DEFAULT_SHEET_ID
-        stab = DEFAULT_SHEET_TAB
-    return sid, stab
-
-
 def now_iso() -> str:
-    return dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.utcnow().isoformat()
 
 
-def parse_iso_date(s: str) -> Optional[dt.date]:
-    # Aceita "YYYY-MM-DD"
-    try:
-        y, m, d = [int(x) for x in s.split("-")]
-        return dt.date(y, m, d)
-    except Exception:
-        return None
+def parse_br_date(s: str) -> date:
+    return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
 
-def parse_br_date(s: str) -> Optional[dt.date]:
-    # Aceita "dd/mm/yyyy"
-    try:
-        d, m, y = [int(x) for x in s.split("/")]
-        return dt.date(y, m, d)
-    except Exception:
-        return None
+def parse_iso_date(s: str) -> date:
+    return datetime.strptime(s.strip(), "%Y-%m-%d").date()
 
 
-def money_to_float(v: Any) -> Optional[float]:
-    # Lê valores vindos do Sheets (pode vir float, "360", "360,00", "R$ 360,00"...)
-    if v is None:
-        return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    s = str(v).strip()
+def parse_any_date(s: str) -> Optional[date]:
     if not s:
         return None
+    s = str(s).strip()
+    if not s:
+        return None
+    try:
+        if "-" in s:
+            return parse_iso_date(s)
+        return parse_br_date(s)
+    except:
+        return None
+
+
+def safe_float(v: Any) -> float:
+    """
+    Aceita:
+    - número (int/float)
+    - "360,00"
+    - "360.00"
+    - "1.234,56"
+    - "1,234.56"
+    """
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+
+    s = str(v).strip()
+    if not s:
+        return 0.0
+
     s = s.replace("R$", "").strip()
 
     has_comma = "," in s
     has_dot = "." in s
 
     if has_comma and has_dot:
-        # decide pelo último separador
         if s.rfind(",") > s.rfind("."):
             s = s.replace(".", "").replace(",", ".")
         else:
@@ -168,561 +105,812 @@ def money_to_float(v: Any) -> Optional[float]:
 
     try:
         return float(s)
-    except Exception:
-        return None
+    except:
+        return 0.0
 
 
-def ensure_lancamentos_headers(ws: gspread.Worksheet) -> None:
+def ensure_headers(ws: gspread.Worksheet, headers: List[str]):
+    values = ws.get_all_values()
+    if not values:
+        ws.append_row(headers)
+        return
+    first = [c.strip() for c in (values[0] or [])]
+    if first != headers:
+        ws.update("A1", [headers])
+
+
+def get_client() -> gspread.Client:
     """
-    Garante que a linha 1 tem cabeçalho padrão.
+    Prioridade:
+    1) SERVICE_ACCOUNT_JSON (env com JSON inteiro)
+    2) Secret File no Render em /etc/secrets/google_creds.json
+    3) arquivo local google_creds.json
     """
-    wanted = ["Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
-    first = ws.row_values(1)
-    if [c.strip() for c in first[: len(wanted)]] != wanted:
-        ws.update("A1:F1", [wanted])
+    global _client_cached
+    if _client_cached is not None:
+        return _client_cached
+
+    raw = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
+    if raw:
+        info = json.loads(raw)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    secret_path = "/etc/secrets/google_creds.json"
+    if os.path.exists(secret_path):
+        creds = Credentials.from_service_account_file(secret_path, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    local_path = "google_creds.json"
+    if os.path.exists(local_path):
+        creds = Credentials.from_service_account_file(local_path, scopes=SCOPES)
+        _client_cached = gspread.authorize(creds)
+        return _client_cached
+
+    raise RuntimeError(
+        "Credenciais não encontradas. "
+        "Defina SERVICE_ACCOUNT_JSON ou envie Secret File google_creds.json no Render."
+    )
 
 
-def open_users_ws() -> gspread.Worksheet:
-    if not MASTER_SHEET_ID:
-        raise RuntimeError("MASTER_SHEET_ID/USERS_SHEET_ID não configurado.")
-    sh = get_client().open_by_key(MASTER_SHEET_ID)
-    return sh.worksheet(USERS_TAB)
+# =========================
+# AUTH (ADMIN + USUÁRIOS)
+# =========================
+def _admin_auth_enabled() -> bool:
+    email = os.getenv("APP_EMAIL", "").strip()
+    pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+    return bool(email and pwd_hash)
 
 
-def open_user_lancamentos_ws(sheet_id: str, sheet_tab: str) -> gspread.Worksheet:
-    sh = get_client().open_by_key(sheet_id)
-    ws = sh.worksheet(sheet_tab)
-    ensure_lancamentos_headers(ws)
+def _users_system_enabled() -> bool:
+    return bool(os.getenv("USERS_SHEET_ID", "").strip())
+
+
+def is_logged() -> bool:
+    return bool(session.get("user_email"))
+
+
+def require_auth():
+    """
+    Se APP_EMAIL + APP_PASSWORD_HASH estiverem configurados:
+      - exige sessão logada (admin OU usuário)
+    Se não estiverem:
+      - app fica aberto (não recomendado)
+    """
+    if _admin_auth_enabled():
+        if not is_logged():
+            abort(401)
+        return
+    return
+
+
+@app.before_request
+def _auth_middleware():
+    public_paths = {"/", "/login", "/me"}
+    if request.path in public_paths:
+        return
+    if request.path.startswith("/static"):
+        return
+    require_auth()
+
+
+def admin_email() -> str:
+    return os.getenv("APP_EMAIL", "").strip().lower()
+
+
+def is_admin_logged() -> bool:
+    return (session.get("user_email") or "").strip().lower() == admin_email()
+
+
+# =========================
+# USERS SHEET (cadastro de usuários)
+# =========================
+def get_users_ws() -> gspread.Worksheet:
+    users_sheet_id = os.getenv("USERS_SHEET_ID", "").strip()
+    if not users_sheet_id:
+        raise RuntimeError("Missing env var USERS_SHEET_ID")
+
+    client = get_client()
+    sh = client.open_by_key(users_sheet_id)
+
+    ws_name = os.getenv("USERS_TAB", "").strip() or "Usuarios"
+    try:
+        ws = sh.worksheet(ws_name)
+    except:
+        ws = sh.add_worksheet(title=ws_name, rows=2000, cols=20)
+
+    ensure_headers(ws, USERS_HEADERS)
     return ws
 
 
-def read_users() -> List[Dict[str, Any]]:
-    """
-    Lê aba Usuarios da planilha master.
-    Colunas esperadas:
-      Email | PasswordHash | Ativo | CreatedAt | SheetId | SheetTab
-    """
-    ws = open_users_ws()
-    rows = ws.get_all_records()  # lista de dicts
-    # Normaliza chaves possíveis
-    out = []
-    for r in rows:
-        email = (r.get("Email") or r.get("email") or "").strip().lower()
-        ph = (r.get("PasswordHash") or r.get("passwordhash") or r.get("Password") or "").strip()
-        ativo = r.get("Ativo")
-        created = r.get("CreatedAt") or r.get("createdat")
-        sheet_id = (r.get("SheetId") or r.get("SheetID") or r.get("sheet_id") or "").strip()
-        sheet_tab = (r.get("SheetTab") or r.get("sheet_tab") or "").strip() or DEFAULT_SHEET_TAB
-
-        # Ativo pode vir como TRUE/FALSE string
-        ativo_bool = True
-        if isinstance(ativo, bool):
-            ativo_bool = ativo
-        elif ativo is None or str(ativo).strip() == "":
-            ativo_bool = True
-        else:
-            ativo_bool = str(ativo).strip().lower() in ("true", "1", "yes", "sim")
-
-        out.append(
-            {
-                "Email": email,
-                "PasswordHash": ph,
-                "Ativo": ativo_bool,
-                "CreatedAt": created,
-                "SheetId": sheet_id,
-                "SheetTab": sheet_tab,
-            }
-        )
-    return out
-
-
 def find_user(email: str) -> Optional[Dict[str, Any]]:
+    """
+    Retorna dict com dados do usuário:
+    Email, PasswordHash, Active, CreatedAt, SheetId, SheetTab, _row
+    """
+    ws = get_users_ws()
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return None
+
+    headers = values[0]
+    rows = values[1:]
     email = (email or "").strip().lower()
-    for u in read_users():
-        if u["Email"] == email:
-            return u
+
+    for i, row in enumerate(rows, start=2):
+        obj: Dict[str, Any] = {}
+        for h_i, h in enumerate(headers):
+            obj[h] = row[h_i] if h_i < len(row) else ""
+        if (obj.get("Email") or "").strip().lower() == email:
+            obj["_row"] = i
+            return obj
     return None
 
 
+def create_user_sheet(user_email: str) -> Tuple[str, str]:
+    """
+    Cria planilha do usuário e retorna (sheet_id, tab_name)
+    """
+    client = get_client()
+
+    sh = client.create(f"FinanceAI - {user_email}")
+    ws = sh.sheet1
+    ws.update_title("Lancamentos")
+    ensure_headers(ws, HEADERS)
+
+    # Compartilha com o admin (pra você enxergar no seu Drive)
+    owner_email = os.getenv("OWNER_EMAIL", "").strip()
+    if owner_email:
+        try:
+            sh.share(owner_email, perm_type="user", role="writer")
+        except:
+            pass  # não quebra o app se falhar
+
+    return sh.id, "Lancamentos"
+
+
 # =========================
-# Routes: pages
+# PLANILHA DO USUÁRIO (por sessão)
+# =========================
+def get_current_user_sheet() -> gspread.Worksheet:
+    """
+    Se for admin:
+      - usa SHEET_ID (modo antigo) se existir,
+        ou falha pedindo USERS_SHEET_ID (recomendado usar sempre usuários)
+    Se for usuário:
+      - usa SheetId/Tab do cadastro
+    """
+    email = (session.get("user_email") or "").strip().lower()
+    if not email:
+        abort(401)
+
+    # Usuário normal (recomendado)
+    if _users_system_enabled() and not is_admin_logged():
+        u = find_user(email)
+        if not u or (u.get("Active") or "").strip().upper() != "TRUE":
+            abort(401)
+
+        sheet_id = (u.get("SheetId") or "").strip()
+        tab = (u.get("SheetTab") or "Lancamentos").strip() or "Lancamentos"
+        if not sheet_id:
+            raise RuntimeError("Usuário sem SheetId (cadastro incompleto)")
+
+        client = get_client()
+        sh = client.open_by_key(sheet_id)
+        try:
+            ws = sh.worksheet(tab)
+        except:
+            ws = sh.add_worksheet(title=tab, rows=2000, cols=20)
+        ensure_headers(ws, HEADERS)
+        return ws
+
+    # Admin (fallback opcional): usa uma planilha padrão (modo antigo)
+    sheet_id = os.getenv("SHEET_ID", "").strip()
+    if not sheet_id:
+        raise RuntimeError("Admin sem SHEET_ID. Defina SHEET_ID ou use USERS_SHEET_ID + crie usuários.")
+    client = get_client()
+    sh = client.open_by_key(sheet_id)
+    ws_name = os.getenv("SHEET_TAB", "").strip()
+    ws = sh.worksheet(ws_name) if ws_name else sh.get_worksheet(0)
+    ensure_headers(ws, HEADERS)
+    return ws
+
+
+# =========================
+# ROWS
+# =========================
+def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[str, Any]]]:
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return HEADERS, []
+
+    headers = values[0]
+    data_rows = values[1:]
+
+    out: List[Dict[str, Any]] = []
+    for idx, row in enumerate(data_rows, start=2):
+        obj: Dict[str, Any] = {}
+        for h_i, h in enumerate(headers):
+            obj[h] = row[h_i] if h_i < len(row) else ""
+        obj["_row"] = idx
+        out.append(obj)
+
+    return headers, out
+
+
+# =========================
+# FILTERS
+# =========================
+def get_month_year_from_request() -> Tuple[int, int]:
+    today = datetime.now().date()
+    month = request.args.get("month", default=today.month, type=int)
+    year = request.args.get("year", default=today.year, type=int)
+    if month < 1 or month > 12:
+        month = today.month
+    if year < 1900:
+        year = today.year
+    return month, year
+
+
+def get_tipo_filter() -> str:
+    t = (request.args.get("tipo", default="Todos", type=str) or "Todos").strip()
+    if t not in ("Todos", "Gasto", "Receita"):
+        t = "Todos"
+    return t
+
+
+def get_order() -> str:
+    o = (request.args.get("order", default="recent", type=str) or "recent").strip()
+    if o not in ("recent", "oldest", "value_desc", "value_asc"):
+        o = "recent"
+    return o
+
+
+def get_date_range() -> Tuple[Optional[date], Optional[date]]:
+    dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
+    dto = parse_any_date(request.args.get("date_to", default="", type=str))
+    return dfrom, dto
+
+
+def get_value_range() -> Tuple[Optional[float], Optional[float]]:
+    vmin_raw = request.args.get("value_min", default="", type=str)
+    vmax_raw = request.args.get("value_max", default="", type=str)
+
+    vmin = safe_float(vmin_raw) if str(vmin_raw).strip() else None
+    vmax = safe_float(vmax_raw) if str(vmax_raw).strip() else None
+
+    if vmin is not None and vmin < 0:
+        vmin = None
+    if vmax is not None and vmax < 0:
+        vmax = None
+
+    if vmin is not None and vmax is not None and vmin > vmax:
+        vmin, vmax = vmax, vmin
+
+    return vmin, vmax
+
+
+def filter_rows(
+    rows: List[Dict[str, Any]],
+    month: int,
+    year: int,
+    q: str,
+    tipo_filter: str,
+    dfrom: Optional[date],
+    dto: Optional[date],
+    vmin: Optional[float],
+    vmax: Optional[float],
+) -> List[Dict[str, Any]]:
+    q = (q or "").strip().lower()
+
+    filtered: List[Dict[str, Any]] = []
+    for r in rows:
+        d_str = (r.get("Data") or "").strip()
+        d = parse_any_date(d_str)
+        if not d:
+            continue
+
+        if dfrom or dto:
+            if dfrom and d < dfrom:
+                continue
+            if dto and d > dto:
+                continue
+        else:
+            if d.month != month or d.year != year:
+                continue
+
+        tipo = (r.get("Tipo") or "").strip()
+        if tipo_filter != "Todos" and tipo != tipo_filter:
+            continue
+
+        val = safe_float(r.get("Valor"))
+        if vmin is not None and val < vmin:
+            continue
+        if vmax is not None and val > vmax:
+            continue
+
+        if q:
+            hay = " ".join([
+                str(r.get("Tipo", "")),
+                str(r.get("Categoria", "")),
+                str(r.get("Descrição", "")),
+                str(r.get("Valor", "")),
+                str(r.get("Data", "")),
+            ]).lower()
+            if q not in hay:
+                continue
+
+        filtered.append(r)
+
+    return filtered
+
+
+def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
+    def dkey(r: Dict[str, Any]) -> date:
+        d = parse_any_date(r.get("Data", ""))
+        return d or date(1900, 1, 1)
+
+    def vkey(r: Dict[str, Any]) -> float:
+        return safe_float(r.get("Valor"))
+
+    def rownum(r: Dict[str, Any]) -> int:
+        try:
+            return int(r.get("_row", 0) or 0)
+        except:
+            return 0
+
+    if order == "oldest":
+        return sorted(rows, key=lambda r: (dkey(r), rownum(r)))
+    if order == "value_asc":
+        return sorted(rows, key=lambda r: (vkey(r), dkey(r), rownum(r)))
+    if order == "value_desc":
+        return sorted(rows, key=lambda r: (-vkey(r), dkey(r), rownum(r)))
+    return sorted(rows, key=lambda r: (dkey(r), rownum(r)), reverse=True)
+
+
+def build_filtered_for_export(ws: gspread.Worksheet) -> List[Dict[str, Any]]:
+    _, rows = get_rows_with_rownum(ws)
+
+    month, year = get_month_year_from_request()
+    q = request.args.get("q", default="", type=str)
+    tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
+
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+    ordered = sort_rows(filtered, order)
+    return ordered
+
+
+# =========================
+# ROUTES
 # =========================
 @app.get("/")
 def home():
-    # Seu HTML geralmente está em templates/index.html
-    # Se você usa outro nome, ajuste aqui.
     return render_template("index.html")
 
 
-# =========================
-# Routes: auth
-# =========================
 @app.get("/me")
 def me():
-    if session.get("user_email"):
-        return jsonify({"ok": True, "email": session.get("user_email")})
-    return jsonify({"ok": False}), 401
+    if not _admin_auth_enabled():
+        return jsonify({"ok": True, "email": ""})
+    if not is_logged():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "email": session.get("user_email")})
 
 
 @app.post("/login")
 def login():
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    password = (data.get("password") or "").strip()
+    """
+    Login:
+    - Se email == APP_EMAIL: valida APP_PASSWORD_HASH (admin)
+    - Senão: valida na planilha USERS_SHEET_ID (usuários)
+    """
+    if not _admin_auth_enabled():
+        return jsonify({"ok": True})
+
+    body = request.get_json(force=True, silent=True) or {}
+    email = str(body.get("email", "")).strip().lower()
+    password = str(body.get("password", "")).strip()
 
     if not email or not password:
         return jsonify({"ok": False, "msg": "Informe e-mail e senha."}), 400
 
+    # Admin
+    if email == admin_email():
+        pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
+        if not check_password_hash(pwd_hash, password):
+            return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
+        session["user_email"] = email
+        return jsonify({"ok": True})
+
+    # Usuário normal
+    if not _users_system_enabled():
+        return jsonify({"ok": False, "msg": "Sistema de usuários não configurado (USERS_SHEET_ID)."}), 500
+
     u = find_user(email)
     if not u:
-        return jsonify({"ok": False, "msg": "Usuário não encontrado."}), 401
-    if not u.get("Ativo", True):
-        return jsonify({"ok": False, "msg": "Usuário desativado."}), 403
+        return jsonify({"ok": False, "msg": "Usuário não encontrado"}), 401
+    if (u.get("Active") or "").strip().upper() != "TRUE":
+        return jsonify({"ok": False, "msg": "Usuário inativo"}), 401
 
-    ph = u.get("PasswordHash") or ""
+    ph = (u.get("PasswordHash") or "").strip()
     if not ph or not check_password_hash(ph, password):
-        return jsonify({"ok": False, "msg": "Credenciais inválidas."}), 401
-
-    # SheetId/SheetTab obrigatórios na opção 3 (mas deixo fallback)
-    sheet_id = u.get("SheetId") or DEFAULT_SHEET_ID
-    sheet_tab = u.get("SheetTab") or DEFAULT_SHEET_TAB
-
-    if not sheet_id:
-        return jsonify({"ok": False, "msg": "Usuário sem SheetId configurado."}), 500
+        return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     session["user_email"] = email
-    session["sheet_id"] = sheet_id
-    session["sheet_tab"] = sheet_tab
-
     return jsonify({"ok": True})
 
 
 @app.post("/logout")
 def logout():
-    session.clear()
+    session.pop("user_email", None)
     return jsonify({"ok": True})
 
 
-# =========================
-# Core: read/filter sheet rows
-# =========================
-def get_all_lancamentos(sheet_id: str, sheet_tab: str) -> List[Dict[str, Any]]:
-    ws = open_user_lancamentos_ws(sheet_id, sheet_tab)
-    rows = ws.get_all_records()  # dicts com as colunas
-    # Precisamos do número da linha (_row)
-    # get_all_records ignora header e começa na linha 2
-    # então linha real = index + 2
-    out = []
-    for i, r in enumerate(rows, start=2):
-        item = dict(r)
-        item["_row"] = i
-        out.append(item)
-    return out
+@app.post("/create_user")
+def create_user():
+    """
+    Apenas admin cria usuários:
+    body: { "email": "...", "password": "..." }
+    """
+    if not is_admin_logged():
+        return jsonify({"ok": False, "msg": "Apenas admin pode criar usuários"}), 403
+    if not _users_system_enabled():
+        return jsonify({"ok": False, "msg": "Defina USERS_SHEET_ID para habilitar usuários."}), 500
+
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not email or not password:
+        return jsonify({"ok": False, "msg": "Informe email e senha"}), 400
+
+    if email == admin_email():
+        return jsonify({"ok": False, "msg": "Use o login admin já configurado nas variáveis."}), 400
+
+    if find_user(email):
+        return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
+
+    # cria planilha automaticamente
+    sheet_id, tab_name = create_user_sheet(email)
+
+    password_hash = generate_password_hash(password)
+    ws = get_users_ws()
+    ws.append_row([email, password_hash, "TRUE", now_iso(), sheet_id, tab_name])
+
+    return jsonify({"ok": True, "msg": "Usuário criado e planilha gerada."})
 
 
-def apply_filters(items: List[Dict[str, Any]], args: Dict[str, str]) -> List[Dict[str, Any]]:
-    # month/year (default obrigatório no front)
-    month = int(args.get("month") or 0) or None
-    year = int(args.get("year") or 0) or None
-
-    tipo = (args.get("tipo") or "Todos").strip()
-    q = (args.get("q") or "").strip().lower()
-    order = (args.get("order") or "recent").strip()
-
-    date_from = (args.get("date_from") or "").strip()
-    date_to = (args.get("date_to") or "").strip()
-    value_min = (args.get("value_min") or "").strip()
-    value_max = (args.get("value_max") or "").strip()
-
-    df = parse_iso_date(date_from) if date_from else None
-    dt_ = parse_iso_date(date_to) if date_to else None
-    vmin = money_to_float(value_min) if value_min else None
-    vmax = money_to_float(value_max) if value_max else None
-
-    def item_date(it: Dict[str, Any]) -> Optional[dt.date]:
-        # Data vem "dd/mm/yyyy"
-        return parse_br_date(str(it.get("Data") or "").strip())
-
-    def item_value(it: Dict[str, Any]) -> Optional[float]:
-        return money_to_float(it.get("Valor"))
-
-    filtered = []
-    for it in items:
-        t = str(it.get("Tipo") or "").strip()
-        cat = str(it.get("Categoria") or "").strip()
-        desc = str(it.get("Descrição") or "").strip()
-        dbr = str(it.get("Data") or "").strip()
-
-        d = item_date(it)
-        v = item_value(it) or 0.0
-
-        # month/year (se não houver data válida, ignora)
-        if month and year and d:
-            if d.month != month or d.year != year:
-                continue
-
-        # tipo
-        if tipo != "Todos":
-            if t.lower() != tipo.lower():
-                continue
-
-        # busca
-        if q:
-            hay = f"{t} {cat} {desc} {dbr}".lower()
-            if q not in hay:
-                continue
-
-        # date range
-        if df and d and d < df:
-            continue
-        if dt_ and d and d > dt_:
-            continue
-
-        # value range
-        if vmin is not None and v < vmin:
-            continue
-        if vmax is not None and v > vmax:
-            continue
-
-        filtered.append(it)
-
-    # sort
-    def sort_key_date(it):
-        d = parse_br_date(str(it.get("Data") or "").strip())
-        # se não tiver data, vai pro fim
-        return d or dt.date(1900, 1, 1)
-
-    def sort_key_value(it):
-        return money_to_float(it.get("Valor")) or 0.0
-
-    if order == "oldest":
-        filtered.sort(key=sort_key_date)
-    elif order == "value_desc":
-        filtered.sort(key=sort_key_value, reverse=True)
-    elif order == "value_asc":
-        filtered.sort(key=sort_key_value)
-    else:  # recent
-        filtered.sort(key=sort_key_date, reverse=True)
-
-    return filtered
-
-
-# =========================
-# API: lançar
-# =========================
 @app.post("/lancar")
 def lancar():
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    body = request.get_json(force=True, silent=True) or {}
 
-    data = request.get_json(silent=True) or {}
-    tipo = (data.get("tipo") or "").strip()
-    categoria = (data.get("categoria") or "").strip()
-    descricao = (data.get("descricao") or "").strip()
-    valor = data.get("valor")
-    data_br = (data.get("data") or "").strip()  # dd/mm/yyyy
+    tipo = str(body.get("tipo", "")).strip()
+    categoria = str(body.get("categoria", "")).strip()
+    descricao = str(body.get("descricao", "")).strip()
+    valor = body.get("valor", None)
+    data_str = str(body.get("data", "")).strip()  # dd/mm/aaaa
 
     if tipo not in ("Gasto", "Receita"):
-        return jsonify({"ok": False, "msg": "Tipo inválido."}), 400
-    if not categoria or not descricao:
-        return jsonify({"ok": False, "msg": "Categoria e descrição são obrigatórias."}), 400
+        return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
+    if not categoria or not descricao or not data_str:
+        return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
+    if not parse_any_date(data_str):
+        return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
 
-    v = money_to_float(valor)
-    if v is None or v <= 0:
+    v = safe_float(valor)
+    if v <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido."}), 400
 
-    if data_br:
-        if not parse_br_date(data_br):
-            return jsonify({"ok": False, "msg": "Data inválida (use dd/mm/aaaa)."}), 400
-    else:
-        # se não veio data, usa hoje
-        today = dt.date.today()
-        data_br = f"{today.day:02d}/{today.month:02d}/{today.year}"
+    new_id = str(uuid.uuid4())
+    created_at = datetime.utcnow().isoformat()
 
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    ws = open_user_lancamentos_ws(sheet_id, sheet_tab)
+    # salva como número no Sheets
+    ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
 
-    ws.append_row(
-        [tipo, categoria, descricao, v, data_br, now_iso()],
-        value_input_option="USER_ENTERED",
-    )
-
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
 
-# =========================
-# API: ultimos (paginado)
-# =========================
 @app.get("/ultimos")
 def ultimos():
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    _, rows = get_rows_with_rownum(ws)
 
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    items = get_all_lancamentos(sheet_id, sheet_tab)
+    month, year = get_month_year_from_request()
+    q = request.args.get("q", default="", type=str)
+    tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
-    filtered = apply_filters(items, request.args.to_dict(flat=True))
-    total = len(filtered)
+    limit = request.args.get("limit", default=10, type=int)
+    page = request.args.get("page", default=1, type=int)
+    if limit < 1:
+        limit = 10
+    if limit > 200:
+        limit = 200
+    if page < 1:
+        page = 1
 
-    page = int(request.args.get("page") or 1)
-    limit = int(request.args.get("limit") or 10)
-    page = max(1, page)
-    limit = max(1, min(500, limit))
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+    ordered = sort_rows(filtered, order)
 
+    total = len(ordered)
     start = (page - 1) * limit
     end = start + limit
-    paged = filtered[start:end]
+    items = ordered[start:end]
 
-    return jsonify({"ok": True, "total": total, "items": paged})
+    return jsonify({
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "order": order
+    })
 
 
-# =========================
-# API: resumo (cards + gráficos)
-# =========================
 @app.get("/resumo")
 def resumo():
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    _, rows = get_rows_with_rownum(ws)
 
-    args = request.args.to_dict(flat=True)
-    month = int(args.get("month") or 0) or dt.date.today().month
-    year = int(args.get("year") or 0) or dt.date.today().year
+    month, year = get_month_year_from_request()
+    q = request.args.get("q", default="", type=str)
+    tipo_filter = get_tipo_filter()
+    dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    items = get_all_lancamentos(sheet_id, sheet_tab)
-    filtered = apply_filters(items, args)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
+
+    last_day = monthrange(year, month)[1]
+    dias = [str(i + 1).zfill(2) for i in range(last_day)]
 
     entradas = 0.0
     saidas = 0.0
-
-    # série por dia do mês (do month/year atual)
-    last_day = (dt.date(year + (month // 12), (month % 12) + 1, 1) - dt.timedelta(days=1)).day
-    dias_labels = [f"{d:02d}" for d in range(1, last_day + 1)]
     serie_receita = [0.0] * last_day
     serie_gasto = [0.0] * last_day
 
-    # categorias
-    gastos_cat: Dict[str, float] = {}
-    receitas_cat: Dict[str, float] = {}
+    pizza_gastos: Dict[str, float] = {}
+    pizza_receitas: Dict[str, float] = {}
 
-    for it in filtered:
-        t = str(it.get("Tipo") or "").strip()
-        cat = str(it.get("Categoria") or "Sem categoria").strip() or "Sem categoria"
-        v = money_to_float(it.get("Valor")) or 0.0
-        d = parse_br_date(str(it.get("Data") or "").strip())
+    for r in filtered:
+        tipo = (r.get("Tipo") or "").strip()
+        cat = (r.get("Categoria") or "Sem categoria").strip() or "Sem categoria"
+        val = safe_float(r.get("Valor"))
 
-        if t.lower() == "receita":
-            entradas += v
-            receitas_cat[cat] = receitas_cat.get(cat, 0.0) + v
-            if d and d.month == month and d.year == year:
-                serie_receita[d.day - 1] += v
+        d = parse_any_date(r.get("Data", ""))
+        if not d:
+            continue
+
+        if d.month == month and d.year == year:
+            di = d.day - 1
+            if 0 <= di < last_day:
+                if tipo == "Receita":
+                    serie_receita[di] += val
+                else:
+                    serie_gasto[di] += val
+
+        if tipo == "Receita":
+            entradas += val
+            pizza_receitas[cat] = pizza_receitas.get(cat, 0.0) + val
         else:
-            saidas += v
-            gastos_cat[cat] = gastos_cat.get(cat, 0.0) + v
-            if d and d.month == month and d.year == year:
-                serie_gasto[d.day - 1] += v
+            saidas += val
+            pizza_gastos[cat] = pizza_gastos.get(cat, 0.0) + val
 
     saldo = entradas - saidas
 
-    def top_pairs(dct: Dict[str, float]) -> List[Dict[str, Any]]:
-        arr = [{"categoria": k, "total": v} for k, v in dct.items()]
-        arr.sort(key=lambda x: x["total"], reverse=True)
-        return arr
+    def collapse_top(d: Dict[str, float], top_n=12):
+        items = sorted(d.items(), key=lambda x: x[1], reverse=True)
+        top = items[:top_n]
+        rest = items[top_n:]
+        if rest:
+            top.append(("Outros", sum(v for _, v in rest)))
+        labels = [k for k, _ in top]
+        values = [round(v, 2) for _, v in top]
+        return labels, values
 
-    gastos_categorias = top_pairs(gastos_cat)
-    receitas_categorias = top_pairs(receitas_cat)
+    pg_l, pg_v = collapse_top(pizza_gastos)
+    pr_l, pr_v = collapse_top(pizza_receitas)
 
-    return jsonify(
-        {
-            "ok": True,
-            "entradas": entradas,
-            "saidas": saidas,
-            "saldo": saldo,
-            "dias": dias_labels,
-            "serie_receita": serie_receita,
-            "serie_gasto": serie_gasto,
-            "pizza_gastos_labels": [x["categoria"] for x in gastos_categorias],
-            "pizza_gastos_values": [x["total"] for x in gastos_categorias],
-            "pizza_receitas_labels": [x["categoria"] for x in receitas_categorias],
-            "pizza_receitas_values": [x["total"] for x in receitas_categorias],
-            "gastos_categorias": gastos_categorias,
-            "receitas_categorias": receitas_categorias,
-        }
-    )
+    gastos_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_gastos.items(), key=lambda x: x[1], reverse=True)]
+    receitas_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_receitas.items(), key=lambda x: x[1], reverse=True)]
+
+    return jsonify({
+        "month": month,
+        "year": year,
+        "tipo": tipo_filter,
+        "date_from": request.args.get("date_from", ""),
+        "date_to": request.args.get("date_to", ""),
+        "value_min": request.args.get("value_min", ""),
+        "value_max": request.args.get("value_max", ""),
+        "entradas": round(entradas, 2),
+        "saidas": round(saidas, 2),
+        "saldo": round(saldo, 2),
+        "dias": dias,
+        "serie_receita": [round(x, 2) for x in serie_receita],
+        "serie_gasto": [round(x, 2) for x in serie_gasto],
+        "pizza_gastos_labels": pg_l,
+        "pizza_gastos_values": pg_v,
+        "pizza_receitas_labels": pr_l,
+        "pizza_receitas_values": pr_v,
+        "gastos_categorias": gastos_table,
+        "receitas_categorias": receitas_table
+    })
 
 
-# =========================
-# API: editar/excluir
-# =========================
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    body = request.get_json(force=True, silent=True) or {}
 
-    if row < 2:
+    tipo = str(body.get("tipo", "")).strip()
+    categoria = str(body.get("categoria", "")).strip()
+    descricao = str(body.get("descricao", "")).strip()
+    valor = body.get("valor", None)
+    data_str = str(body.get("data", "")).strip()
+
+    if row <= 1:
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
 
-    data = request.get_json(silent=True) or {}
-    tipo = (data.get("tipo") or "").strip()
-    categoria = (data.get("categoria") or "").strip()
-    descricao = (data.get("descricao") or "").strip()
-    valor = data.get("valor")
-    data_br = (data.get("data") or "").strip()
-
     if tipo not in ("Gasto", "Receita"):
-        return jsonify({"ok": False, "msg": "Tipo inválido."}), 400
-    if not categoria or not descricao:
-        return jsonify({"ok": False, "msg": "Categoria e descrição são obrigatórias."}), 400
-    v = money_to_float(valor)
-    if v is None or v <= 0:
+        return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
+    if not categoria or not descricao or not data_str:
+        return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
+    if not parse_any_date(data_str):
+        return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
+
+    v = safe_float(valor)
+    if v <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido."}), 400
-    if not data_br or not parse_br_date(data_br):
-        return jsonify({"ok": False, "msg": "Data inválida (use dd/mm/aaaa)."}), 400
 
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    ws = open_user_lancamentos_ws(sheet_id, sheet_tab)
+    ws.update(f"B{row}", [[data_str]])
+    ws.update(f"C{row}", [[tipo]])
+    ws.update(f"D{row}", [[categoria]])
+    ws.update(f"E{row}", [[descricao]])
+    ws.update(f"F{row}", [[v]])  # número
 
-    # Atualiza colunas A-E (mantém CreatedAt)
-    ws.update(f"A{row}:E{row}", [[tipo, categoria, descricao, v, data_br]], value_input_option="USER_ENTERED")
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
 
 @app.delete("/lancamento/<int:row>")
-def excluir(row: int):
-    ok, resp = require_login()
-    if not ok:
-        return resp
-
-    if row < 2:
+def deletar(row: int):
+    ws = get_current_user_sheet()
+    if row <= 1:
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
-
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    ws = open_user_lancamentos_ws(sheet_id, sheet_tab)
     ws.delete_rows(row)
-    return jsonify({"ok": True})
-
-
-# =========================
-# Export CSV/PDF (filtrado)
-# =========================
-def filtered_items_for_export() -> List[Dict[str, Any]]:
-    sheet_id, sheet_tab = get_user_sheet_ctx()
-    items = get_all_lancamentos(sheet_id, sheet_tab)
-    return apply_filters(items, request.args.to_dict(flat=True))
+    return jsonify({"ok": True, "msg": "Excluído com sucesso!"})
 
 
 @app.get("/export.csv")
 def export_csv():
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    filtered = build_filtered_for_export(ws)
 
-    arr = filtered_items_for_export()
-
-    buf = io.StringIO()
-    w = csv.writer(buf, delimiter=";")
-    w.writerow(["Tipo", "Categoria", "Descrição", "Valor", "Data"])
-    for it in arr:
-        w.writerow([
-            it.get("Tipo", ""),
-            it.get("Categoria", ""),
-            it.get("Descrição", ""),
-            it.get("Valor", ""),
-            it.get("Data", ""),
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Data", "Tipo", "Categoria", "Descrição", "Valor"])
+    for r in filtered:
+        writer.writerow([
+            r.get("Data", ""),
+            r.get("Tipo", ""),
+            r.get("Categoria", ""),
+            r.get("Descrição", ""),
+            r.get("Valor", ""),
         ])
 
-    data = buf.getvalue().encode("utf-8-sig")
-    return send_file(
-        io.BytesIO(data),
+    data = output.getvalue().encode("utf-8-sig")
+    return Response(
+        data,
         mimetype="text/csv",
-        as_attachment=True,
-        download_name="finance-ai.csv",
+        headers={"Content-Disposition": "attachment; filename=finance-ai.csv"}
     )
 
 
 @app.get("/export.pdf")
 def export_pdf():
-    ok, resp = require_login()
-    if not ok:
-        return resp
+    ws = get_current_user_sheet()
+    filtered = build_filtered_for_export(ws)
 
-    arr = filtered_items_for_export()
+    month, year = get_month_year_from_request()
+    q = request.args.get("q", default="", type=str).strip()
+    tipo_filter = get_tipo_filter()
+    order = get_order()
+    dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
-    out = io.BytesIO()
-    c = canvas.Canvas(out, pagesize=A4)
-    width, height = A4
+    buf = io.BytesIO()
+    c = pdf_canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
 
-    margin = 12 * mm
-    y = height - margin
-
+    y = h - 40
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(margin, y, "Finance AI — Exportação")
-    y -= 10 * mm
+    c.drawString(40, y, f"Finance AI — Relatório {str(month).zfill(2)}/{year} — {tipo_filter}")
+    y -= 18
 
     c.setFont("Helvetica", 10)
-    c.drawString(margin, y, f"Gerado em: {dt.datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    y -= 10 * mm
+    if dfrom or dto:
+        c.drawString(40, y, f"Intervalo: {request.args.get('date_from','')} até {request.args.get('date_to','')}")
+        y -= 16
+    if vmin is not None or vmax is not None:
+        c.drawString(40, y, f"Valor: min {request.args.get('value_min','')} / max {request.args.get('value_max','')}")
+        y -= 16
+    if q:
+        c.drawString(40, y, f"Busca: {q}")
+        y -= 16
+    c.drawString(40, y, f"Ordenação: {order}")
+    y -= 18
 
-    # Cabeçalho
+    entradas = 0.0
+    saidas = 0.0
+    for r in filtered:
+        t = (r.get("Tipo") or "").strip()
+        v = safe_float(r.get("Valor"))
+        if t == "Receita":
+            entradas += v
+        else:
+            saidas += v
+    saldo = entradas - saidas
+
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(margin, y, "Tipo")
-    c.drawString(margin + 28*mm, y, "Categoria")
-    c.drawString(margin + 78*mm, y, "Descrição")
-    c.drawString(margin + 150*mm, y, "Valor")
-    c.drawString(margin + 175*mm, y, "Data")
-    y -= 6 * mm
+    c.drawString(40, y, f"Entradas: R$ {entradas:.2f}   Saídas: R$ {saidas:.2f}   Saldo: R$ {saldo:.2f}")
+    y -= 18
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y, "Data")
+    c.drawString(95, y, "Tipo")
+    c.drawString(155, y, "Categoria")
+    c.drawString(300, y, "Descrição")
+    c.drawRightString(555, y, "Valor")
+    y -= 10
+
+    c.setLineWidth(0.5)
+    c.line(40, y, 555, y)
+    y -= 12
 
     c.setFont("Helvetica", 9)
+    for r in filtered:
+        if y < 60:
+            c.showPage()
+            y = h - 40
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(40, y, "Data")
+            c.drawString(95, y, "Tipo")
+            c.drawString(155, y, "Categoria")
+            c.drawString(300, y, "Descrição")
+            c.drawRightString(555, y, "Valor")
+            y -= 10
+            c.line(40, y, 555, y)
+            y -= 12
+            c.setFont("Helvetica", 9)
 
-    def new_page():
-        nonlocal y
-        c.showPage()
-        y = height - margin
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(margin, y, "Tipo")
-        c.drawString(margin + 28*mm, y, "Categoria")
-        c.drawString(margin + 78*mm, y, "Descrição")
-        c.drawString(margin + 150*mm, y, "Valor")
-        c.drawString(margin + 175*mm, y, "Data")
-        y -= 6 * mm
-        c.setFont("Helvetica", 9)
+        data_str = (r.get("Data") or "")[:10]
+        tipo = (r.get("Tipo") or "")[:10]
+        cat = (r.get("Categoria") or "")[:22]
+        desc = (r.get("Descrição") or "")[:38]
+        val = safe_float(r.get("Valor"))
 
-    for it in arr:
-        if y < margin + 12*mm:
-            new_page()
+        c.drawString(40, y, data_str)
+        c.drawString(95, y, tipo)
+        c.drawString(155, y, cat)
+        c.drawString(300, y, desc)
+        c.drawRightString(555, y, f"R$ {val:.2f}")
+        y -= 12
 
-        tipo = str(it.get("Tipo", ""))[:12]
-        cat = str(it.get("Categoria", ""))[:22]
-        desc = str(it.get("Descrição", ""))[:36]
-        valor = str(it.get("Valor", ""))
-        data_ = str(it.get("Data", ""))
-
-        c.drawString(margin, y, tipo)
-        c.drawString(margin + 28*mm, y, cat)
-        c.drawString(margin + 78*mm, y, desc)
-        c.drawRightString(margin + 170*mm, y, valor)
-        c.drawString(margin + 175*mm, y, data_)
-
-        y -= 5 * mm
-
+    c.showPage()
     c.save()
-    out.seek(0)
 
-    return send_file(
-        out,
+    buf.seek(0)
+    return Response(
+        buf.getvalue(),
         mimetype="application/pdf",
-        as_attachment=True,
-        download_name="finance-ai.pdf",
+        headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
     )
 
 
-# =========================
-# Run
-# =========================
 if __name__ == "__main__":
-    # Render usa gunicorn, mas localmente você pode rodar:
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
