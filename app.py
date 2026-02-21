@@ -20,14 +20,14 @@ from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
 
-# Render/Proxy: garante que Flask "enxerga" https corretamente (cookies/sessão)
+# Render/Proxy: garante que Flask "enxerga" https corretamente
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Sessão (cookie)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,  # no Render é https
+    SESSION_COOKIE_SECURE=True,  # Render é https
 )
 
 SCOPES = [
@@ -43,15 +43,13 @@ _client_cached: Optional[gspread.Client] = None
 # =========================
 # AUTH (EMAIL/SENHA via sessão)
 # =========================
-def _email_password_auth_enabled() -> bool:
+def _auth_enabled() -> bool:
     email = os.getenv("APP_EMAIL", "").strip()
     pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
     return bool(email and pwd_hash)
 
-
 def is_logged() -> bool:
     return bool(session.get("user_email"))
-
 
 def require_auth():
     """
@@ -60,16 +58,15 @@ def require_auth():
     Se não estiverem:
     - sem auth (modo aberto)
     """
-    if _email_password_auth_enabled():
+    if _auth_enabled():
         if not is_logged():
             abort(401)
         return
     return
 
-
 @app.before_request
 def _auth_middleware():
-    public_paths = {"/", "/login", "/logout", "/me"}
+    public_paths = {"/", "/login", "/me", "/logout"}
     if request.path in public_paths:
         return
     if request.path.startswith("/static"):
@@ -115,7 +112,6 @@ def get_client() -> gspread.Client:
         "Defina SERVICE_ACCOUNT_JSON ou envie Secret File google_creds.json no Render."
     )
 
-
 def ensure_headers(ws: gspread.Worksheet):
     values = ws.get_all_values()
     if not values:
@@ -124,7 +120,6 @@ def ensure_headers(ws: gspread.Worksheet):
     first = [c.strip() for c in (values[0] or [])]
     if first != HEADERS:
         ws.update("A1", [HEADERS])
-
 
 def get_sheet() -> gspread.Worksheet:
     sheet_id = os.getenv("SHEET_ID", "").strip()
@@ -147,10 +142,8 @@ def get_sheet() -> gspread.Worksheet:
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
-
 def parse_iso_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-
 
 def parse_any_date(s: str) -> Optional[date]:
     if not s:
@@ -164,7 +157,6 @@ def parse_any_date(s: str) -> Optional[date]:
         return parse_br_date(s)
     except:
         return None
-
 
 def safe_float(v: Any) -> float:
     """
@@ -240,13 +232,11 @@ def get_month_year_from_request() -> Tuple[int, int]:
         year = today.year
     return month, year
 
-
 def get_tipo_filter() -> str:
     t = (request.args.get("tipo", default="Todos", type=str) or "Todos").strip()
     if t not in ("Todos", "Gasto", "Receita"):
         t = "Todos"
     return t
-
 
 def get_order() -> str:
     o = (request.args.get("order", default="recent", type=str) or "recent").strip()
@@ -254,12 +244,10 @@ def get_order() -> str:
         o = "recent"
     return o
 
-
 def get_date_range() -> Tuple[Optional[date], Optional[date]]:
     dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
     dto = parse_any_date(request.args.get("date_to", default="", type=str))
     return dfrom, dto
-
 
 def get_value_range() -> Tuple[Optional[float], Optional[float]]:
     vmin_raw = request.args.get("value_min", default="", type=str)
@@ -277,7 +265,6 @@ def get_value_range() -> Tuple[Optional[float], Optional[float]]:
         vmin, vmax = vmax, vmin
 
     return vmin, vmax
-
 
 def filter_rows(
     rows: List[Dict[str, Any]],
@@ -333,7 +320,6 @@ def filter_rows(
 
     return filtered
 
-
 def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
     def dkey(r: Dict[str, Any]) -> date:
         d = parse_any_date(r.get("Data", ""))
@@ -364,21 +350,18 @@ def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
 def home():
     return render_template("index.html")
 
-
 @app.get("/me")
 def me():
-    if not _email_password_auth_enabled():
+    if not _auth_enabled():
         return jsonify({"ok": True, "email": ""})
     if not is_logged():
         return jsonify({"ok": False}), 401
     return jsonify({"ok": True, "email": session.get("user_email")})
 
-
 @app.post("/login")
 def login():
-    # Se não configurou login, deixa aberto
-    if not _email_password_auth_enabled():
-        return jsonify({"ok": True})
+    if not _auth_enabled():
+        return jsonify({"ok": True})  # modo aberto
 
     body = request.get_json(force=True, silent=True) or {}
     email = str(body.get("email", "")).strip().lower()
@@ -393,12 +376,10 @@ def login():
     session["user_email"] = email
     return jsonify({"ok": True})
 
-
 @app.post("/logout")
 def logout():
     session.pop("user_email", None)
     return jsonify({"ok": True})
-
 
 @app.post("/lancar")
 def lancar():
@@ -425,10 +406,9 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # ✅ salva como número no Sheets
+    # salva como número no Sheets
     ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
-
 
 @app.get("/ultimos")
 def ultimos():
@@ -444,12 +424,9 @@ def ultimos():
 
     limit = request.args.get("limit", default=10, type=int)
     page = request.args.get("page", default=1, type=int)
-    if limit < 1:
-        limit = 10
-    if limit > 200:
-        limit = 200
-    if page < 1:
-        page = 1
+    if limit < 1: limit = 10
+    if limit > 200: limit = 200
+    if page < 1: page = 1
 
     filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
     ordered = sort_rows(filtered, order)
@@ -466,7 +443,6 @@ def ultimos():
         "limit": limit,
         "order": order
     })
-
 
 @app.get("/resumo")
 def resumo():
@@ -556,7 +532,6 @@ def resumo():
         "receitas_categorias": receitas_table
     })
 
-
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
     ws = get_sheet()
@@ -570,7 +545,6 @@ def editar(row: int):
 
     if row <= 1:
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
-
     if tipo not in ("Gasto", "Receita"):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
     if not categoria or not descricao or not data_str:
@@ -586,10 +560,9 @@ def editar(row: int):
     ws.update(f"C{row}", [[tipo]])
     ws.update(f"D{row}", [[categoria]])
     ws.update(f"E{row}", [[descricao]])
-    ws.update(f"F{row}", [[v]])  # ✅ número
+    ws.update(f"F{row}", [[v]])  # número
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
-
 
 @app.delete("/lancamento/<int:row>")
 def deletar(row: int):
@@ -598,7 +571,6 @@ def deletar(row: int):
         return jsonify({"ok": False, "msg": "Linha inválida."}), 400
     ws.delete_rows(row)
     return jsonify({"ok": True, "msg": "Excluído com sucesso!"})
-
 
 def build_filtered_for_export() -> List[Dict[str, Any]]:
     ws = get_sheet()
@@ -614,7 +586,6 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
     ordered = sort_rows(filtered, order)
     return ordered
-
 
 @app.get("/export.csv")
 def export_csv():
@@ -638,7 +609,6 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=finance-ai.csv"}
     )
-
 
 @app.get("/export.pdf")
 def export_pdf():
@@ -738,7 +708,6 @@ def export_pdf():
         mimetype="application/pdf",
         headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
     )
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
