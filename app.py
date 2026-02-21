@@ -123,7 +123,6 @@ def parse_br_date(s: str) -> date:
 
 
 def parse_iso_date(s: str) -> date:
-    # yyyy-mm-dd
     return datetime.strptime(s.strip(), "%Y-%m-%d").date()
 
 
@@ -224,7 +223,6 @@ def get_tipo_filter() -> str:
 
 
 def get_order() -> str:
-    # recent | oldest | value_desc | value_asc
     o = (request.args.get("order", default="recent", type=str) or "recent").strip()
     if o not in ("recent", "oldest", "value_desc", "value_asc"):
         o = "recent"
@@ -232,14 +230,32 @@ def get_order() -> str:
 
 
 def get_date_range() -> Tuple[Optional[date], Optional[date]]:
-    """
-    date_from / date_to podem vir como:
-    - dd/mm/aaaa
-    - yyyy-mm-dd
-    """
     dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
     dto = parse_any_date(request.args.get("date_to", default="", type=str))
     return dfrom, dto
+
+
+def get_value_range() -> Tuple[Optional[float], Optional[float]]:
+    """
+    value_min / value_max:
+    aceita "100", "100,00", "1.234,56"
+    """
+    vmin_raw = request.args.get("value_min", default="", type=str)
+    vmax_raw = request.args.get("value_max", default="", type=str)
+
+    vmin = safe_float(vmin_raw) if str(vmin_raw).strip() else None
+    vmax = safe_float(vmax_raw) if str(vmax_raw).strip() else None
+
+    if vmin is not None and vmin < 0:
+        vmin = None
+    if vmax is not None and vmax < 0:
+        vmax = None
+
+    # se inverteram sem querer (min > max), troca
+    if vmin is not None and vmax is not None and vmin > vmax:
+        vmin, vmax = vmax, vmin
+
+    return vmin, vmax
 
 
 def filter_rows(
@@ -249,7 +265,9 @@ def filter_rows(
     q: str,
     tipo_filter: str,
     dfrom: Optional[date],
-    dto: Optional[date]
+    dto: Optional[date],
+    vmin: Optional[float],
+    vmax: Optional[float],
 ) -> List[Dict[str, Any]]:
     q = (q or "").strip().lower()
 
@@ -260,8 +278,7 @@ def filter_rows(
         if not d:
             continue
 
-        # Se tiver intervalo, ele manda no filtro.
-        # Se NÃO tiver intervalo, usa mês/ano.
+        # data range manda no filtro
         if dfrom or dto:
             if dfrom and d < dfrom:
                 continue
@@ -273,6 +290,12 @@ def filter_rows(
 
         tipo = (r.get("Tipo") or "").strip()
         if tipo_filter != "Todos" and tipo != tipo_filter:
+            continue
+
+        val = safe_float(r.get("Valor"))
+        if vmin is not None and val < vmin:
+            continue
+        if vmax is not None and val > vmax:
             continue
 
         if q:
@@ -311,7 +334,6 @@ def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
         return sorted(rows, key=lambda r: (vkey(r), dkey(r), rownum(r)))
     if order == "value_desc":
         return sorted(rows, key=lambda r: (-vkey(r), dkey(r), rownum(r)))
-    # recent (default)
     return sorted(rows, key=lambda r: (dkey(r), rownum(r)), reverse=True)
 
 
@@ -376,6 +398,7 @@ def ultimos():
     tipo_filter = get_tipo_filter()
     order = get_order()
     dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
     limit = request.args.get("limit", default=10, type=int)
     page = request.args.get("page", default=1, type=int)
@@ -383,7 +406,7 @@ def ultimos():
     if limit > 200: limit = 200
     if page < 1: page = 1
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
     ordered = sort_rows(filtered, order)
 
     total = len(ordered)
@@ -409,11 +432,10 @@ def resumo():
     q = request.args.get("q", default="", type=str)
     tipo_filter = get_tipo_filter()
     dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
 
-    # Se estiver em intervalo (date_from/date_to), o gráfico de dias continua sendo do mês/ano selecionado,
-    # porém o filtro pode cortar parte do mês. Isso é OK.
     last_day = monthrange(year, month)[1]
     dias = [str(i + 1).zfill(2) for i in range(last_day)]
 
@@ -434,7 +456,7 @@ def resumo():
         if not d:
             continue
 
-        # só joga nas séries se bater com month/year selecionado
+        # séries do mês/ano selecionado (ok mesmo com intervalo)
         if d.month == month and d.year == year:
             di = d.day - 1
             if 0 <= di < last_day:
@@ -465,7 +487,6 @@ def resumo():
     pg_l, pg_v = collapse_top(pizza_gastos)
     pr_l, pr_v = collapse_top(pizza_receitas)
 
-    # tabelas (todas as categorias, ordenadas)
     gastos_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_gastos.items(), key=lambda x: x[1], reverse=True)]
     receitas_table = [{"categoria": k, "total": round(v, 2)} for k, v in sorted(pizza_receitas.items(), key=lambda x: x[1], reverse=True)]
 
@@ -475,6 +496,8 @@ def resumo():
         "tipo": tipo_filter,
         "date_from": request.args.get("date_from", ""),
         "date_to": request.args.get("date_to", ""),
+        "value_min": request.args.get("value_min", ""),
+        "value_max": request.args.get("value_max", ""),
         "entradas": round(entradas, 2),
         "saidas": round(saidas, 2),
         "saldo": round(saldo, 2),
@@ -543,8 +566,9 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     tipo_filter = get_tipo_filter()
     order = get_order()
     dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
-    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto)
+    filtered = filter_rows(rows, month, year, q, tipo_filter, dfrom, dto, vmin, vmax)
     ordered = sort_rows(filtered, order)
     return ordered
 
@@ -582,6 +606,7 @@ def export_pdf():
     tipo_filter = get_tipo_filter()
     order = get_order()
     dfrom, dto = get_date_range()
+    vmin, vmax = get_value_range()
 
     buf = io.BytesIO()
     c = pdf_canvas.Canvas(buf, pagesize=A4)
@@ -595,6 +620,9 @@ def export_pdf():
     c.setFont("Helvetica", 10)
     if dfrom or dto:
         c.drawString(40, y, f"Intervalo: {request.args.get('date_from','')} até {request.args.get('date_to','')}")
+        y -= 16
+    if vmin is not None or vmax is not None:
+        c.drawString(40, y, f"Valor: min {request.args.get('value_min','')} / max {request.args.get('value_max','')}")
         y -= 16
     if q:
         c.drawString(40, y, f"Busca: {q}")
