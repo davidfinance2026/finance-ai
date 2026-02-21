@@ -502,12 +502,17 @@
       <div class="closeRow">
         <div>
           <h2>🔒 Login</h2>
-          <p>Digite a senha para acessar seus lançamentos.</p>
+          <p>Entre com seu e-mail e senha para acessar seus lançamentos.</p>
         </div>
         <button class="xBtn" onclick="closeLogin()">✕</button>
       </div>
+
+      <label>E-mail</label>
+      <input id="loginEmail" type="email" placeholder="admin@seusistema.com" autocomplete="username" />
+
       <label>Senha</label>
-      <input id="loginPwd" type="password" placeholder="Sua senha" />
+      <input id="loginPwd" type="password" placeholder="Sua senha" autocomplete="current-password" />
+
       <div class="actions" style="margin-top:12px;">
         <button class="btn" onclick="doLogin()">Entrar</button>
         <button class="btn secondary" onclick="logout()">Sair</button>
@@ -565,22 +570,23 @@
 
   <script>
     // =========================
-    // AUTH TOKEN
+    // AUTH (sessão por cookie)
     // =========================
-    const TOKEN_KEY = "finance_ai_token";
-
-    function getToken(){ return localStorage.getItem(TOKEN_KEY) || ""; }
-    function setToken(t){ localStorage.setItem(TOKEN_KEY, t || ""); }
+    let currentEmail = "";
 
     function setPill(){
       const pill = document.getElementById("statusPill");
-      const has = !!getToken();
-      pill.textContent = has ? "🔓 Conectado" : "🔒 Login";
+      const has = !!currentEmail;
+      pill.textContent = has ? `🔓 Conectado` : "🔒 Login";
     }
 
     function openLogin(){
       document.getElementById("loginBack").style.display = "flex";
       setLoginMsg("", "");
+      setTimeout(()=> {
+        const el = document.getElementById("loginEmail");
+        if(el) el.focus();
+      }, 50);
     }
     function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
 
@@ -594,19 +600,54 @@
       el.style.display = "block";
     }
 
-    async function doLogin(){
-      const password = document.getElementById("loginPwd").value.trim();
+    async function apiFetch(url, opts={}){
+      // IMPORTANTE: credentials include para cookie de sessão
+      const headers = Object.assign({}, opts.headers || {});
+      return fetch(url, Object.assign({}, opts, {
+        headers,
+        credentials: "include"
+      }));
+    }
+
+    async function checkSession(){
       try{
-        const r = await fetch("/login", {
+        const r = await apiFetch("/me");
+        if(!r.ok){
+          currentEmail = "";
+          setPill();
+          return false;
+        }
+        const j = await r.json().catch(()=> ({}));
+        if(j && j.ok){
+          currentEmail = j.email || "";
+          setPill();
+          return !!currentEmail;
+        }
+      }catch(e){}
+      currentEmail = "";
+      setPill();
+      return false;
+    }
+
+    async function doLogin(){
+      const email = document.getElementById("loginEmail").value.trim().toLowerCase();
+      const password = document.getElementById("loginPwd").value.trim();
+
+      if(!email || !password){
+        setLoginMsg("err", "❌ Informe e-mail e senha.");
+        return;
+      }
+
+      try{
+        const r = await apiFetch("/login", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ password })
+          body: JSON.stringify({ email, password })
         });
         const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Senha inválida");
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Credenciais inválidas");
 
-        setToken(j.token || "");
-        setPill();
+        await checkSession();
         closeLogin();
         await carregarTudo();
       }catch(e){
@@ -614,17 +655,14 @@
       }
     }
 
-    function logout(){
-      setToken("");
+    async function logout(){
+      try{
+        await apiFetch("/logout", { method:"POST" });
+      }catch(e){}
+      currentEmail = "";
       setPill();
       openLogin();
-    }
-
-    async function apiFetch(url, opts={}){
-      const headers = Object.assign({}, opts.headers || {});
-      const token = getToken();
-      if(token) headers["X-APP-TOKEN"] = token;
-      return fetch(url, Object.assign({}, opts, { headers }));
+      setLoginMsg("ok", "✅ Você saiu. Faça login novamente.");
     }
 
     function mustLogin(){
@@ -781,7 +819,6 @@
       document.getElementById("fFrom").value = from;
       document.getElementById("fTo").value = today;
 
-      // ajusta selects mês/ano pro mês atual
       const [y,m] = today.split("-").map(Number);
       document.getElementById("fMonth").value = String(m);
       document.getElementById("fYear").value = String(y);
@@ -795,7 +832,6 @@
       document.getElementById("fFrom").value = from;
       document.getElementById("fTo").value = today;
 
-      // para o gráfico do mês: usa mês atual (fica consistente)
       const [y,m] = today.split("-").map(Number);
       document.getElementById("fMonth").value = String(m);
       document.getElementById("fYear").value = String(y);
@@ -873,7 +909,6 @@
       filtros.date_from = (document.getElementById("fFrom").value || "").trim();
       filtros.date_to = (document.getElementById("fTo").value || "").trim();
 
-      // min/max mantém string (backend parseia)
       filtros.value_min = (document.getElementById("fMin").value || "").trim();
       filtros.value_max = (document.getElementById("fMax").value || "").trim();
 
@@ -1381,7 +1416,6 @@
         if(ev.key === "Enter") aplicarFiltros();
       });
 
-      // Enter em min/max também aplica
       document.getElementById("fMin").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
@@ -1389,7 +1423,16 @@
         if(ev.key === "Enter") aplicarFiltros();
       });
 
+      // enter no modal de login
+      document.getElementById("loginPwd").addEventListener("keydown", (ev)=>{
+        if(ev.key === "Enter") doLogin();
+      });
+      document.getElementById("loginEmail").addEventListener("keydown", (ev)=>{
+        if(ev.key === "Enter") doLogin();
+      });
+
       (async ()=>{
+        await checkSession();
         try{ await carregarTudo(); }catch(e){}
       })();
     })();
