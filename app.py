@@ -7,13 +7,12 @@ from datetime import datetime, date
 from calendar import monthrange
 from typing import Any, Dict, List, Tuple, Optional
 
-from flask import (
-    Flask, jsonify, request, render_template, Response, abort, session
-)
+from flask import Flask, jsonify, request, render_template, Response, abort, session
 import gspread
 from google.oauth2.service_account import Credentials
 
 from werkzeug.security import check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # PDF (reportlab)
 from reportlab.lib.pagesizes import A4
@@ -21,8 +20,15 @@ from reportlab.pdfgen import canvas as pdf_canvas
 
 app = Flask(__name__)
 
+# Render/Proxy: garante que Flask "enxerga" https corretamente
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 # Sessão (cookie)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,   # no Render é https
+)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -35,48 +41,33 @@ _client_cached: Optional[gspread.Client] = None
 
 
 # =========================
-# AUTH (EMAIL/SENHA + compat opcional token)
+# AUTH (EMAIL/SENHA via sessão)
 # =========================
 def _email_password_auth_enabled() -> bool:
     email = os.getenv("APP_EMAIL", "").strip()
     pwd_hash = os.getenv("APP_PASSWORD_HASH", "").strip()
     return bool(email and pwd_hash)
 
-def _token_auth_enabled() -> bool:
-    # compat com seu modelo antigo
-    pwd = os.getenv("APP_PASSWORD", "").strip()
-    return bool(pwd)
-
 def is_logged() -> bool:
     return bool(session.get("user_email"))
 
 def require_auth():
     """
-    Prioridade:
-    1) Sessão (login email/senha) se configurado APP_EMAIL + APP_PASSWORD_HASH
-    2) Compat: X-APP-TOKEN == APP_PASSWORD (se existir)
-    3) Se nada configurado -> sem auth
+    Se APP_EMAIL + APP_PASSWORD_HASH estiverem configurados:
+    - exige sessão (cookie)
+    Se não estiverem:
+    - sem auth (modo aberto)
     """
     if _email_password_auth_enabled():
         if not is_logged():
             abort(401)
         return
-
-    # fallback compatível com o que você já tinha
-    if _token_auth_enabled():
-        token = request.headers.get("X-APP-TOKEN", "").strip()
-        pwd = os.getenv("APP_PASSWORD", "").strip()
-        if token != pwd:
-            abort(401)
-        return
-
-    # sem auth configurado
     return
 
 
 @app.before_request
 def _auth_middleware():
-    public_paths = {"/", "/login"}
+    public_paths = {"/", "/login", "/me"}
     if request.path in public_paths:
         return
     if request.path.startswith("/static"):
@@ -154,10 +145,8 @@ def get_sheet() -> gspread.Worksheet:
 def parse_br_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
-
 def parse_iso_date(s: str) -> date:
     return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-
 
 def parse_any_date(s: str) -> Optional[date]:
     if not s:
@@ -171,7 +160,6 @@ def parse_any_date(s: str) -> Optional[date]:
         return parse_br_date(s)
     except:
         return None
-
 
 def safe_float(v: Any) -> float:
     """
@@ -247,13 +235,11 @@ def get_month_year_from_request() -> Tuple[int, int]:
         year = today.year
     return month, year
 
-
 def get_tipo_filter() -> str:
     t = (request.args.get("tipo", default="Todos", type=str) or "Todos").strip()
     if t not in ("Todos", "Gasto", "Receita"):
         t = "Todos"
     return t
-
 
 def get_order() -> str:
     o = (request.args.get("order", default="recent", type=str) or "recent").strip()
@@ -261,12 +247,10 @@ def get_order() -> str:
         o = "recent"
     return o
 
-
 def get_date_range() -> Tuple[Optional[date], Optional[date]]:
     dfrom = parse_any_date(request.args.get("date_from", default="", type=str))
     dto = parse_any_date(request.args.get("date_to", default="", type=str))
     return dfrom, dto
-
 
 def get_value_range() -> Tuple[Optional[float], Optional[float]]:
     vmin_raw = request.args.get("value_min", default="", type=str)
@@ -284,7 +268,6 @@ def get_value_range() -> Tuple[Optional[float], Optional[float]]:
         vmin, vmax = vmax, vmin
 
     return vmin, vmax
-
 
 def filter_rows(
     rows: List[Dict[str, Any]],
@@ -340,7 +323,6 @@ def filter_rows(
 
     return filtered
 
-
 def sort_rows(rows: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
     def dkey(r: Dict[str, Any]) -> date:
         d = parse_any_date(r.get("Data", ""))
@@ -374,8 +356,8 @@ def home():
 
 @app.get("/me")
 def me():
+    # útil para testar se a sessão está ativa
     if not _email_password_auth_enabled():
-        # modo antigo (token) ou sem auth
         return jsonify({"ok": True, "email": ""})
     if not is_logged():
         return jsonify({"ok": False}), 401
@@ -384,16 +366,9 @@ def me():
 
 @app.post("/login")
 def login():
-    # Se você não configurou email/senha -> mantém comportamento antigo
+    # Se não configurou login, deixa aberto (ou você pode forçar erro)
     if not _email_password_auth_enabled():
-        pwd = os.getenv("APP_PASSWORD", "").strip()
-        if not pwd:
-            return jsonify({"ok": True, "token": ""})
-        body = request.get_json(force=True, silent=True) or {}
-        password = str(body.get("password", "")).strip()
-        if password != pwd:
-            return jsonify({"ok": False, "msg": "Senha inválida"}), 401
-        return jsonify({"ok": True, "token": password})
+        return jsonify({"ok": True})
 
     body = request.get_json(force=True, silent=True) or {}
     email = str(body.get("email", "")).strip().lower()
@@ -430,7 +405,6 @@ def lancar():
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
     if not categoria or not descricao or not data_str:
         return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
-
     if not parse_any_date(data_str):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
 
@@ -441,9 +415,8 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # ✅ IMPORTANTE: salvar como NÚMERO no Sheets (não string "360.00")
+    # salva como número (não string) no Sheets
     ws.append_row([new_id, data_str, tipo, categoria, descricao, v, created_at])
-
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
 
 
@@ -589,7 +562,6 @@ def editar(row: int):
         return jsonify({"ok": False, "msg": "Tipo inválido (Gasto ou Receita)."}), 400
     if not categoria or not descricao or not data_str:
         return jsonify({"ok": False, "msg": "Preencha categoria, descrição e data."}), 400
-
     if not parse_any_date(data_str):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa."}), 400
 
@@ -601,9 +573,7 @@ def editar(row: int):
     ws.update(f"C{row}", [[tipo]])
     ws.update(f"D{row}", [[categoria]])
     ws.update(f"E{row}", [[descricao]])
-
-    # ✅ salvar como número no Sheets
-    ws.update(f"F{row}", [[v]])
+    ws.update(f"F{row}", [[v]])  # número
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
 
