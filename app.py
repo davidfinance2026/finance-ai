@@ -15,9 +15,11 @@ from google.oauth2.service_account import Credentials
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 
-
 app = Flask(__name__)
 
+# =========================
+# CONFIG
+# =========================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -25,9 +27,13 @@ SCOPES = [
 
 HEADERS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "CreatedAt"]
 
+# Rotas públicas (NÃO exigem token)
+PUBLIC_ROUTES = {
+    "/", "/login", "/healthz", "/favicon.ico"
+}
 
 # =========================
-# AUTH (senha simples)
+# AUTH (APP_PASSWORD)
 # =========================
 def require_auth():
     pwd = os.getenv("APP_PASSWORD", "").strip()
@@ -38,26 +44,36 @@ def require_auth():
     if token != pwd:
         abort(401)
 
-
 @app.before_request
 def _auth_middleware():
-    # Se quiser liberar a home sem senha, comente a linha abaixo
-    # e aplique require_auth() apenas nas rotas de API.
+    path = request.path
+
+    # libera estáticos
+    if path.startswith("/static/"):
+        return
+
+    # libera rotas públicas
+    if path in PUBLIC_ROUTES:
+        return
+
+    # todo o resto exige auth (se APP_PASSWORD existir)
     require_auth()
 
+@app.get("/healthz")
+def healthz():
+    return jsonify({"ok": True})
 
 # =========================
-# GOOGLE SHEETS
+# GOOGLE SHEETS AUTH
 # =========================
 _client_cached = None
-
 
 def get_client() -> gspread.Client:
     """
     Prioridade:
     1) SERVICE_ACCOUNT_JSON (env com JSON inteiro)
-    2) Secret File do Render em /etc/secrets/google_creds.json
-    3) arquivo local google_creds.json (caso rode local)
+    2) Secret File do Render: /etc/secrets/google_creds.json
+    3) arquivo local: google_creds.json (dev local)
     """
     global _client_cached
     if _client_cached is not None:
@@ -90,12 +106,11 @@ def get_client() -> gspread.Client:
         "Crie SERVICE_ACCOUNT_JSON OU envie Secret File 'google_creds.json' no Render."
     )
 
-
 def get_sheet() -> gspread.Worksheet:
     """
     Usa:
     - SHEET_ID (obrigatório)
-    - SHEET_TAB (seu env atual) OU WORKSHEET_NAME (alternativo)
+    - SHEET_TAB (nome da aba, ex: Lancamentos)
     """
     sheet_id = os.getenv("SHEET_ID", "").strip()
     if not sheet_id:
@@ -105,15 +120,12 @@ def get_sheet() -> gspread.Worksheet:
     sh = client.open_by_key(sheet_id)
 
     ws_name = os.getenv("SHEET_TAB", "").strip()
-    if not ws_name:
-        ws_name = os.getenv("WORKSHEET_NAME", "").strip()
-
     ws = sh.worksheet(ws_name) if ws_name else sh.get_worksheet(0)
 
     # garante cabeçalho
     values = ws.get_all_values()
     if not values or not values[0]:
-        ws.append_row(HEADERS, value_input_option="USER_ENTERED")
+        ws.append_row(HEADERS)
     else:
         first = [c.strip() for c in values[0]]
         if first != HEADERS:
@@ -121,59 +133,69 @@ def get_sheet() -> gspread.Worksheet:
 
     return ws
 
-
+# =========================
+# HELPERS
+# =========================
 def parse_br_date(s: str) -> date:
-    # "dd/mm/aaaa"
     return datetime.strptime(s.strip(), "%d/%m/%Y").date()
 
-
-# ✅ CORRIGIDO: aceita 360,00 / 360.00 / 1.234,56 / 1,234.56
 def safe_float(v: Any) -> float:
+    """
+    Aceita:
+    - 360
+    - "360"
+    - "360,00"
+    - "360.00"
+    - "1.234,56"
+    - "1,234.56"
+    """
     if v is None:
         return 0.0
+
     if isinstance(v, (int, float)):
         return float(v)
 
-    s = str(v).strip()
-    if not s:
+    txt = str(v).strip()
+    if not txt:
         return 0.0
 
-    # remove moeda e espaços
-    s = s.replace("R$", "").replace(" ", "")
+    txt = txt.replace("R$", "").strip()
 
-    # Se tiver vírgula e ponto, decide qual é decimal pelo último separador
-    if "," in s and "." in s:
-        if s.rfind(",") > s.rfind("."):
-            # 1.234,56 -> remove milhares "." e troca decimal "," por "."
-            s = s.replace(".", "").replace(",", ".")
+    # Se tem vírgula e ponto, decidir qual é decimal pelo último separador
+    # Ex: "1.234,56" -> decimal é ","
+    # Ex: "1,234.56" -> decimal é "."
+    if "," in txt and "." in txt:
+        if txt.rfind(",") > txt.rfind("."):
+            # decimal = vírgula
+            txt = txt.replace(".", "")
+            txt = txt.replace(",", ".")
         else:
-            # 1,234.56 -> remove milhares ","
-            s = s.replace(",", "")
+            # decimal = ponto
+            txt = txt.replace(",", "")
+    elif "," in txt:
+        # só vírgula -> decimal
+        txt = txt.replace(".", "")
+        txt = txt.replace(",", ".")
     else:
-        # Só vírgula: 360,00 -> 360.00
-        if "," in s and "." not in s:
-            s = s.replace(".", "").replace(",", ".")
+        # só ponto ou nada -> já ok
+        pass
 
     try:
-        return float(s)
+        return float(txt)
     except:
         return 0.0
 
-
 def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Retorna headers e lista de dicts com _row (número da linha real no Sheets).
-    """
     values = ws.get_all_values()
     if not values or len(values) < 2:
         return HEADERS, []
 
     headers = values[0]
     data_rows = values[1:]
+    out: List[Dict[str, Any]] = []
 
-    out = []
     for idx, row in enumerate(data_rows, start=2):  # linha 2 = primeiro lançamento
-        obj = {}
+        obj: Dict[str, Any] = {}
         for h_i, h in enumerate(headers):
             obj[h] = row[h_i] if h_i < len(row) else ""
         obj["_row"] = idx
@@ -181,11 +203,10 @@ def get_rows_with_rownum(ws: gspread.Worksheet) -> Tuple[List[str], List[Dict[st
 
     return headers, out
 
-
 def filter_rows(rows: List[Dict[str, Any]], month: int, year: int, q: str) -> List[Dict[str, Any]]:
     q = (q or "").strip().lower()
+    filtered: List[Dict[str, Any]] = []
 
-    filtered = []
     for r in rows:
         d_str = (r.get("Data") or "").strip()
         try:
@@ -211,7 +232,6 @@ def filter_rows(rows: List[Dict[str, Any]], month: int, year: int, q: str) -> Li
 
     return filtered
 
-
 def get_month_year_from_request() -> Tuple[int, int]:
     today = datetime.now().date()
     month = request.args.get("month", default=today.month, type=int)
@@ -222,7 +242,6 @@ def get_month_year_from_request() -> Tuple[int, int]:
         year = today.year
     return month, year
 
-
 # =========================
 # ROUTES
 # =========================
@@ -230,9 +249,12 @@ def get_month_year_from_request() -> Tuple[int, int]:
 def home():
     return render_template("index.html")
 
-
 @app.post("/login")
 def login():
+    """
+    Se APP_PASSWORD não existir: ok true e token vazio.
+    Se existir: valida password e devolve token.
+    """
     pwd = os.getenv("APP_PASSWORD", "").strip()
     if not pwd:
         return jsonify({"ok": True, "token": ""})
@@ -242,7 +264,6 @@ def login():
     if password != pwd:
         return jsonify({"ok": False, "msg": "Senha inválida"}), 401
     return jsonify({"ok": True, "token": password})
-
 
 @app.post("/lancar")
 def lancar():
@@ -272,13 +293,9 @@ def lancar():
     new_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # ✅ salva VALOR como número (não string)
-    ws.append_row(
-        [new_id, data_str, tipo, categoria, descricao, v, created_at],
-        value_input_option="USER_ENTERED"
-    )
+    # salva com ponto decimal (numérico em texto com 2 casas)
+    ws.append_row([new_id, data_str, tipo, categoria, descricao, f"{v:.2f}", created_at])
     return jsonify({"ok": True, "msg": "Lançamento salvo!"})
-
 
 @app.get("/ultimos")
 def ultimos():
@@ -288,10 +305,7 @@ def ultimos():
     month, year = get_month_year_from_request()
     q = request.args.get("q", default="", type=str)
     limit = request.args.get("limit", default=10, type=int)
-    if limit < 1:
-        limit = 10
-    if limit > 200:
-        limit = 200
+    limit = max(1, min(200, limit))
 
     filtered = filter_rows(rows, month, year, q)
 
@@ -305,7 +319,6 @@ def ultimos():
     filtered.sort(key=sort_key)
     last = filtered[-limit:] if len(filtered) > limit else filtered
     return jsonify(last)
-
 
 @app.get("/resumo")
 def resumo():
@@ -336,7 +349,6 @@ def resumo():
             d = parse_br_date(r.get("Data"))
         except:
             continue
-
         di = d.day - 1
 
         if tipo == "Receita":
@@ -381,7 +393,6 @@ def resumo():
         "pizza_receitas_values": pr_v
     })
 
-
 @app.patch("/lancamento/<int:row>")
 def editar(row: int):
     ws = get_sheet()
@@ -407,15 +418,14 @@ def editar(row: int):
     if v <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido."}), 400
 
-    # colunas: A=ID B=Data C=Tipo D=Categoria E=Descrição F=Valor G=CreatedAt
-    ws.update(f"B{row}", [[data_str]], value_input_option="USER_ENTERED")
-    ws.update(f"C{row}", [[tipo]], value_input_option="USER_ENTERED")
-    ws.update(f"D{row}", [[categoria]], value_input_option="USER_ENTERED")
-    ws.update(f"E{row}", [[descricao]], value_input_option="USER_ENTERED")
-    ws.update(f"F{row}", [[v]], value_input_option="USER_ENTERED")  # ✅ número
+    # A=ID B=Data C=Tipo D=Categoria E=Descrição F=Valor G=CreatedAt
+    ws.update(f"B{row}", [[data_str]])
+    ws.update(f"C{row}", [[tipo]])
+    ws.update(f"D{row}", [[categoria]])
+    ws.update(f"E{row}", [[descricao]])
+    ws.update(f"F{row}", [[f"{v:.2f}"]])
 
     return jsonify({"ok": True, "msg": "Editado com sucesso!"})
-
 
 @app.delete("/lancamento/<int:row>")
 def deletar(row: int):
@@ -425,7 +435,6 @@ def deletar(row: int):
     ws.delete_rows(row)
     return jsonify({"ok": True, "msg": "Excluído com sucesso!"})
 
-
 def build_filtered_for_export() -> List[Dict[str, Any]]:
     ws = get_sheet()
     _, rows = get_rows_with_rownum(ws)
@@ -434,7 +443,6 @@ def build_filtered_for_export() -> List[Dict[str, Any]]:
     filtered = filter_rows(rows, month, year, q)
     filtered.sort(key=lambda r: (parse_br_date(r.get("Data", "01/01/1900")), r.get("_row", 0)))
     return filtered
-
 
 @app.get("/export.csv")
 def export_csv():
@@ -458,7 +466,6 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=finance-ai.csv"}
     )
-
 
 @app.get("/export.pdf")
 def export_pdf():
@@ -502,7 +509,6 @@ def export_pdf():
     c.drawString(300, y, "Descrição")
     c.drawRightString(555, y, "Valor")
     y -= 10
-
     c.setLineWidth(0.5)
     c.line(40, y, 555, y)
     y -= 12
@@ -525,27 +531,3 @@ def export_pdf():
 
         data_str = (r.get("Data") or "")[:10]
         tipo = (r.get("Tipo") or "")[:10]
-        cat = (r.get("Categoria") or "")[:22]
-        desc = (r.get("Descrição") or "")[:38]
-        val = safe_float(r.get("Valor"))
-
-        c.drawString(40, y, data_str)
-        c.drawString(95, y, tipo)
-        c.drawString(155, y, cat)
-        c.drawString(300, y, desc)
-        c.drawRightString(555, y, f"R$ {val:.2f}")
-        y -= 12
-
-    c.showPage()
-    c.save()
-
-    buf.seek(0)
-    return Response(
-        buf.getvalue(),
-        mimetype="application/pdf",
-        headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
-    )
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
