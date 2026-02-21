@@ -686,4 +686,59 @@ def export_pdf():
 
     c.setFont("Helvetica-Bold", 10)
     c.drawString(40, y, f"Entradas: R$ {entradas:.2f}   Saídas: R$ {saidas:.2f}   Saldo: R$ {saldo:.2f}")
-    y -
+    y -= 18
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y, "Data")
+    c.drawString(95, y, "Tipo")
+    c.drawString(155, y, "Categoria")
+    c.drawString(300, y, "Descrição")
+    c.drawRightString(555, y, "Valor")
+    y -= 10
+
+    c.setLineWidth(0.5)
+    c.line(40, y, 555, y)
+    y -= 12
+
+    c.setFont("Helvetica", 9)
+    for r in filtered:
+        if y < 60:
+            c.showPage()
+            y = h - 40
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(40, y, "Data")
+            c.drawString(95, y, "Tipo")
+            c.drawString(155, y, "Categoria")
+            c.drawString(300, y, "Descrição")
+            c.drawRightString(555, y, "Valor")
+            y -= 10
+            c.line(40, y, 555, y)
+            y -= 12
+            c.setFont("Helvetica", 9)
+
+        data_str = (r.get("Data") or "")[:10]
+        tipo = (r.get("Tipo") or "")[:10]
+        cat = (r.get("Categoria") or "")[:22]
+        desc = (r.get("Descrição") or "")[:38]
+        val = safe_float(r.get("Valor"))
+
+        c.drawString(40, y, data_str)
+        c.drawString(95, y, tipo)
+        c.drawString(155, y, cat)
+        c.drawString(300, y, desc)
+        c.drawRightString(555, y, f"R$ {val:.2f}")
+        y -= 12
+
+    c.showPage()
+    c.save()
+
+    buf.seek(0)
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=finance-ai.pdf"}
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
