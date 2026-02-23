@@ -7,7 +7,8 @@
 
   <!-- ✅ PWA -->
   <link rel="manifest" href="/static/manifest.json">
-  <meta name="theme-color" content="#4f8cff">
+  <!-- ✅ Mantém consistente com o manifest (theme_color #0b1020) -->
+  <meta name="theme-color" content="#0b1020">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -609,6 +610,8 @@
     </div>
   </div>
 
+  <!-- ✅ DICA: Se quiser PWA offline real, ideal é baixar Chart.js e servir local (/static/chart.min.js).
+       Mas mantendo CDN está ok, só não funciona offline. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
@@ -637,7 +640,6 @@
     }
 
     async function apiFetch(url, opts={}){
-      // IMPORTANTÍSSIMO: credentials include para cookie de sessão
       return fetch(url, Object.assign({ credentials: "include" }, opts));
     }
 
@@ -697,9 +699,7 @@
     }
 
     async function doLogout(){
-      try{
-        await apiFetch("/logout", { method:"POST" });
-      }catch(e){}
+      try{ await apiFetch("/logout", { method:"POST" }); }catch(e){}
       await refreshAuthUI();
       openLogin();
       setLoginMsg("ok", "✅ Você saiu.");
@@ -736,7 +736,6 @@
       }
 
       try{
-        // ✅ CORRIGIDO: usa /create_user (rota compatível com o app.py corrigido)
         const r = await apiFetch("/create_user", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
@@ -1511,11 +1510,17 @@
     })();
   </script>
 
-  <!-- ✅ PWA: registra Service Worker -->
+  <!-- ✅ PWA: registra Service Worker (com update forçado) -->
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+      window.addEventListener("load", async () => {
+        try{
+          const reg = await navigator.serviceWorker.register("/static/sw.js");
+          // força checar updates quando abrir
+          if(reg && reg.update) reg.update();
+        }catch(e){
+          console.error(e);
+        }
       });
     }
   </script>
