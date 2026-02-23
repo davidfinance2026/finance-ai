@@ -1,32 +1,35 @@
-const CACHE_NAME = "financeai-v2"; // 🔁 troque a versão quando atualizar
+const CACHE_NAME = "financeai-v3"; // 🔁 troque a versão quando atualizar
 
-// O mínimo pra app abrir mesmo offline
+// ✅ Essenciais para abrir offline (fallback do index + assets principais)
 const CORE_ASSETS = [
-  "/",
+  "/", // index.html (fallback offline)
   "/static/manifest.json",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
-
-  // ✅ Chart.js local (offline real)
-  "/static/vendor/chart.umd.min.js",
-  // opcional (se você subir o .map também)
-  // "/static/vendor/chart.umd.min.js.map",
+  "/static/vendor/chart.umd.min.js", // ✅ Chart.js local (sem CDN)
+  "/static/sw.js" // opcional, mas ajuda a manter atualizado no cache
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      // addAll garante que tudo do CORE seja pré-cacheado
+      await cache.addAll(CORE_ASSETS);
+      self.skipWaiting();
+    })()
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
-    )
+    (async () => {
+      // limpa caches antigos
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)));
+      self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -34,30 +37,61 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Só controla requests do mesmo domínio
+  // ✅ Só controla o mesmo domínio
   if (url.origin !== self.location.origin) {
-    // Para CDNs externas (caso você use alguma), tenta rede, se falhar tenta cache
+    // Externo (se existir): tenta rede, se falhar tenta cache.
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }
 
-  // 1) HTML "/" e navegação -> Network First (sempre atualiza após deploy)
-  if (url.pathname === "/" || event.request.mode === "navigate") {
-    event.respondWith(networkFirst(event.request));
+  // ✅ 1) Navegação/HTML -> Network First + fallback "/" offline
+  // - request.mode === "navigate" cobre mudanças de rota/refresh
+  // - url.pathname === "/" garante a home
+  if (event.request.mode === "navigate" || url.pathname === "/") {
+    event.respondWith(networkFirstHtml(event.request));
     return;
   }
 
-  // 2) Arquivos /static -> Stale While Revalidate (rápido e atualiza)
+  // ✅ 2) /static -> Stale While Revalidate
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
 
-  // 3) Default -> Network First com fallback
+  // ✅ 3) Qualquer outra coisa -> Network First com fallback cache
   event.respondWith(networkFirst(event.request));
 });
 
-// ---------- Estratégias ----------
+// -----------------------
+// Estratégias
+// -----------------------
+
+async function networkFirstHtml(request) {
+  try {
+    // tenta pegar a versão mais nova do HTML
+    const fresh = await fetch(request);
+
+    // guarda no cache (para fallback offline)
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, fresh.clone());
+
+    return fresh;
+  } catch (e) {
+    // offline: tenta o que estiver cacheado
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    // fallback final: devolve o "/" pré-cacheado (index)
+    const fallback = await caches.match("/");
+    if (fallback) return fallback;
+
+    // sem fallback disponível
+    return new Response("Offline", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8" }
+    });
+  }
+}
 
 async function networkFirst(request) {
   try {
@@ -68,13 +102,7 @@ async function networkFirst(request) {
   } catch (e) {
     const cached = await caches.match(request);
     if (cached) return cached;
-
-    // fallback do HTML para "/"
-    if (request.mode === "navigate") {
-      const fallback = await caches.match("/");
-      if (fallback) return fallback;
-    }
-    throw e;
+    return new Response("", { status: 504 });
   }
 }
 
