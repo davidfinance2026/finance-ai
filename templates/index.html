@@ -27,6 +27,45 @@
       --card: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
     }
     *{box-sizing:border-box}
+   <script>
+  (function () {
+    if (!("serviceWorker" in navigator)) return;
+
+    window.addEventListener("load", async () => {
+      try {
+        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+
+        // tenta atualizar sempre ao abrir
+        reg.update().catch(() => {});
+
+        // se já existir um SW esperando, manda ativar
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+
+        reg.addEventListener("updatefound", () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener("statechange", () => {
+            if (sw.state === "installed" && navigator.serviceWorker.controller) {
+              sw.postMessage({ type: "SKIP_WAITING" });
+            }
+          });
+        });
+
+        // quando trocar de SW, recarrega pra pegar a versão nova
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return;
+          refreshing = true;
+          location.reload();
+        });
+      } catch (e) {
+        console.log("SW register failed", e);
+      }
+    });
+  })();
+</script> 
     body{
       margin:0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
