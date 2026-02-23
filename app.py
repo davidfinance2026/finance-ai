@@ -3,7 +3,24 @@ import csv
 import io
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
+from flask import send_from_directory, make_response
 
+@app.route("/sw.js")
+def sw_root():
+    resp = send_from_directory(app.static_folder, "sw.js")
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    # MUITO IMPORTANTE: permite scope maior que /static/
+    resp.headers["Service-Worker-Allowed"] = "/"
+    # evita cache do próprio SW
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+@app.route("/manifest.json")
+def manifest_root():
+    resp = send_from_directory(app.static_folder, "manifest.json")
+    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 from flask import (
     Flask, request, jsonify, session, render_template,
     send_from_directory, make_response
@@ -899,3 +916,4 @@ if __name__ == "__main__":
 @app.route("/offline.html")
 def offline():
     return render_template("offline.html")
+
