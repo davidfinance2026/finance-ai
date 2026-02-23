@@ -26,6 +26,9 @@ SHEET_ID = os.getenv("SHEET_ID", "").strip()
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 
+# ✅ Metas mensais (dashboard)
+METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
+
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
 # Admin via env (bootstrap)
@@ -36,20 +39,23 @@ APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "").strip()
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
 SECRET_FILE_PATH = "/etc/secrets/google_creds.json"
 
+# ✅ Em localhost (http), SESSION_COOKIE_SECURE=True quebra login.
+# No Render/HTTPS pode ficar "1". Em dev local, use COOKIE_SECURE=0.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1").strip() in ("1", "true", "True", "SIM", "sim")
+
 _client_cached: Optional[gspread.Client] = None
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = FLASK_SECRET_KEY
 
 # Render / proxy (muito importante para cookies de sessão em HTTPS)
-# x_for=1, x_proto=1 normalmente resolve no Render.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # Cookies bons pro Render/HTTPS
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",   # mesmo domínio OK
-    SESSION_COOKIE_SECURE=True,      # Render usa https
+    SESSION_COOKIE_SECURE=COOKIE_SECURE,
 )
 
 # =========================
@@ -160,6 +166,13 @@ def money_to_float(v: Any) -> float:
         return 0.0
 
 
+def to_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
+
+
 def get_records(ws) -> List[Dict[str, Any]]:
     values = ws.get_all_values()
     if not values or len(values) < 2:
@@ -196,6 +209,11 @@ def item_date_num(item: Dict[str, Any]) -> int:
     if not d:
         return 0
     return int(d.strftime("%Y%m%d"))
+
+
+def current_month_year() -> Tuple[int, int]:
+    today = date.today()
+    return today.month, today.year
 
 
 # =========================
@@ -246,6 +264,16 @@ def lanc_ws():
         spread,
         SHEET_TAB,
         headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
+    )
+    return ws
+
+
+def metas_ws():
+    spread = open_ws()
+    ws = ensure_worksheet(
+        spread,
+        METAS_TAB,
+        headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
     )
     return ws
 
@@ -343,23 +371,100 @@ def _create_user_impl():
         if safe_lower(r.get("Email")) == email:
             return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
 
-    # padrão Werkz. moderno: pbkdf2:sha256 (com iterações internas)
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
     ws.append_row([email, ph, "1", now_str()], value_input_option="RAW")
 
     return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
 
 
-# ✅ rota que o seu FRONT usa
 @app.route("/create_user", methods=["POST"])
 def create_user():
     return _create_user_impl()
 
 
-# ✅ mantém a antiga também (compatibilidade)
 @app.route("/admin/create_user", methods=["POST"])
 def admin_create_user():
     return _create_user_impl()
+
+
+# =========================
+# METAS MENSAIS (DASHBOARD)
+# =========================
+def _find_meta_row(ws, email: str, mes: int, ano: int) -> Optional[int]:
+    recs = get_records(ws)
+    for r in recs:
+        if safe_lower(r.get("Email")) != safe_lower(email):
+            continue
+        if to_int(r.get("Mes"), -1) == mes and to_int(r.get("Ano"), -1) == ano:
+            return int(r.get("_row", 0)) or None
+    return None
+
+
+def _get_meta(email: str, mes: int, ano: int) -> Dict[str, Any]:
+    ws = metas_ws()
+    recs = get_records(ws)
+    for r in recs:
+        if safe_lower(r.get("Email")) == safe_lower(email) and to_int(r.get("Mes"), -1) == mes and to_int(r.get("Ano"), -1) == ano:
+            return {
+                "mes": mes,
+                "ano": ano,
+                "meta_receitas": money_to_float(r.get("MetaReceitas")),
+                "meta_gastos": money_to_float(r.get("MetaGastos")),
+            }
+    return {"mes": mes, "ano": ano, "meta_receitas": 0.0, "meta_gastos": 0.0}
+
+
+@app.route("/metas", methods=["GET"])
+def metas_get():
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    mes = request.args.get("month", type=int)
+    ano = request.args.get("year", type=int)
+    if not mes or not ano:
+        mes, ano = current_month_year()
+
+    meta = _get_meta(user_email, int(mes), int(ano))
+    return jsonify({"ok": True, **meta})
+
+
+@app.route("/metas", methods=["POST"])
+def metas_set():
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    dataj = request.get_json(silent=True) or {}
+
+    mes = to_int(dataj.get("month"), 0)
+    ano = to_int(dataj.get("year"), 0)
+    if mes <= 0 or ano <= 0:
+        mes, ano = current_month_year()
+
+    meta_receitas = money_to_float(dataj.get("meta_receitas"))
+    meta_gastos = money_to_float(dataj.get("meta_gastos"))
+    if meta_receitas < 0 or meta_gastos < 0:
+        return jsonify({"ok": False, "msg": "Metas não podem ser negativas"}), 400
+
+    ws = metas_ws()
+    headers = ws.row_values(1)
+    col = {h: idx + 1 for idx, h in enumerate(headers)}
+
+    row = _find_meta_row(ws, user_email, mes, ano)
+    if row:
+        ws.update_cell(row, col["MetaReceitas"], f"{meta_receitas:.2f}")
+        ws.update_cell(row, col["MetaGastos"], f"{meta_gastos:.2f}")
+        ws.update_cell(row, col["UpdatedAt"], now_str())
+    else:
+        ws.append_row(
+            [user_email, str(mes), str(ano), f"{meta_receitas:.2f}", f"{meta_gastos:.2f}", now_str(), now_str()],
+            value_input_option="RAW"
+        )
+
+    return jsonify({"ok": True, "msg": "Metas salvas", "month": mes, "year": ano})
 
 
 # =========================
@@ -373,12 +478,12 @@ def lancar():
 
     user_email = session["user_email"]
 
-    data = request.get_json(silent=True) or {}
-    tipo = str(data.get("tipo", "")).strip()
-    categoria = str(data.get("categoria", "")).strip()
-    descricao = str(data.get("descricao", "")).strip()
-    valor = money_to_float(data.get("valor"))
-    data_br = str(data.get("data", "")).strip()  # dd/mm/aaaa ou vazio
+    dataj = request.get_json(silent=True) or {}
+    tipo = str(dataj.get("tipo", "")).strip()
+    categoria = str(dataj.get("categoria", "")).strip()
+    descricao = str(dataj.get("descricao", "")).strip()
+    valor = money_to_float(dataj.get("valor"))
+    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa ou vazio
 
     if not tipo or not categoria or not descricao:
         return jsonify({"ok": False, "msg": "Campos obrigatórios: tipo, categoria, descricao"}), 400
@@ -584,6 +689,13 @@ def resumo():
     gastos_arr = topcats(gastos_cat)
     receitas_arr = topcats(receitas_cat)
 
+    # ✅ inclui metas no resumo (quando month/year vierem)
+    if month and year:
+        meta = _get_meta(user_email, int(month), int(year))
+    else:
+        cm, cy = current_month_year()
+        meta = _get_meta(user_email, cm, cy)
+
     return jsonify({
         "ok": True,
         "entradas": entradas,
@@ -601,7 +713,46 @@ def resumo():
 
         "gastos_categorias": gastos_arr,
         "receitas_categorias": receitas_arr,
+
+        "metas": meta
     })
+
+
+@app.route("/dashboard")
+def dashboard():
+    """
+    Um endpoint pronto para a tela "Dashboard com metas mensais":
+    devolve resumo + metas + progresso (percentuais).
+    """
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    # Reaproveita a lógica do /resumo
+    resp = resumo()
+    # resumo() pode retornar tuple em caso de erro; aqui já passou require_login
+    if isinstance(resp, tuple):
+        return resp
+
+    payload = resp.get_json() or {}
+    entradas = float(payload.get("entradas") or 0.0)
+    saidas = float(payload.get("saidas") or 0.0)
+    metas = payload.get("metas") or {}
+    mr = float(metas.get("meta_receitas") or 0.0)
+    mg = float(metas.get("meta_gastos") or 0.0)
+
+    def pct(val: float, target: float) -> float:
+        if target <= 0:
+            return 0.0
+        return round((val / target) * 100.0, 2)
+
+    payload["progresso"] = {
+        "receitas_pct": pct(entradas, mr),
+        "gastos_pct": pct(saidas, mg),
+        "receitas_restante": max(0.0, mr - entradas),
+        "gastos_restante": max(0.0, mg - saidas),
+    }
+    return jsonify(payload)
 
 
 # =========================
@@ -618,12 +769,12 @@ def editar_lancamento(row: int):
     if row < 2:
         return jsonify({"ok": False, "msg": "Linha inválida"}), 400
 
-    data = request.get_json(silent=True) or {}
-    tipo = str(data.get("tipo", "")).strip()
-    categoria = str(data.get("categoria", "")).strip()
-    descricao = str(data.get("descricao", "")).strip()
-    valor = money_to_float(data.get("valor"))
-    data_br = str(data.get("data", "")).strip()
+    dataj = request.get_json(silent=True) or {}
+    tipo = str(dataj.get("tipo", "")).strip()
+    categoria = str(dataj.get("categoria", "")).strip()
+    descricao = str(dataj.get("descricao", "")).strip()
+    valor = money_to_float(dataj.get("valor"))
+    data_br = str(dataj.get("data", "")).strip()
 
     if not tipo or not categoria or not descricao or not data_br:
         return jsonify({"ok": False, "msg": "Campos obrigatórios"}), 400
@@ -743,4 +894,5 @@ def export_pdf():
 
 
 if __name__ == "__main__":
+    # Dica: em dev local, use COOKIE_SECURE=0 pra login funcionar no http://
     app.run(host="0.0.0.0", port=5000, debug=True)
