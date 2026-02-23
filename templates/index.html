@@ -615,8 +615,6 @@
     // =========================
     // AUTH (cookie session)
     // =========================
-    const ADMIN_EMAIL = "admin@financeai.com";
-
     function setPillText(isOn){
       const pill = document.getElementById("statusPill");
       pill.textContent = isOn ? "🔓 Conectado" : "🔒 Login";
@@ -643,6 +641,7 @@
       return fetch(url, Object.assign({ credentials: "include" }, opts));
     }
 
+    // ✅ CORRIGIDO: usa /me -> is_admin (backend decide)
     async function refreshAuthUI(){
       const adminBtn = document.getElementById("adminPill");
       try{
@@ -652,8 +651,7 @@
           const logged = !!j.ok;
           setPillText(logged);
 
-          const email = String(j.email || "").trim().toLowerCase();
-          const isAdmin = logged && email === ADMIN_EMAIL.toLowerCase();
+          const isAdmin = !!j.is_admin;
           if(adminBtn) adminBtn.style.display = isAdmin ? "flex" : "none";
         }else{
           setPillText(false);
@@ -738,6 +736,7 @@
       }
 
       try{
+        // ✅ CORRIGIDO: usa /create_user (rota compatível com o app.py corrigido)
         const r = await apiFetch("/create_user", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
