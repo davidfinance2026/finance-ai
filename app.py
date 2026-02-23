@@ -896,3 +896,6 @@ def export_pdf():
 if __name__ == "__main__":
     # Dica: em dev local, use COOKIE_SECURE=0 pra login funcionar no http://
     app.run(host="0.0.0.0", port=5000, debug=True)
+@app.route("/offline.html")
+def offline():
+    return render_template("offline.html")
