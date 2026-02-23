@@ -459,13 +459,11 @@
         </div>
       </div>
 
-      <!-- movimento -->
       <div class="card chart-card">
         <div class="title" id="titleMov">Movimento</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
-      <!-- pizza gastos -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
@@ -477,7 +475,6 @@
         </div>
       </div>
 
-      <!-- pizza receitas -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -489,7 +486,6 @@
         </div>
       </div>
 
-      <!-- PAGINAÇÃO -->
       <div class="pager">
         <div class="info" id="pagerInfo">Carregando…</div>
         <div class="controls">
@@ -534,13 +530,13 @@
     </div>
   </div>
 
-  <!-- CREATE USER MODAL -->
+  <!-- CREATE USER MODAL (ADMIN) -->
   <div class="modalBack" id="createUserBack">
     <div class="modal">
       <div class="closeRow">
         <div>
           <h2>➕ Criar usuário</h2>
-          <p>Cria um novo usuário (admin).</p>
+          <p>Cria um novo usuário e o sistema gera uma planilha exclusiva automaticamente.</p>
         </div>
         <button class="xBtn" onclick="closeCreateUser()">✕</button>
       </div>
@@ -606,17 +602,10 @@
     </div>
   </div>
 
-  <!-- ===========================================================
-       ✅ ORDEM PERFEITA DOS SCRIPTS
-       1) Chart.js LOCAL (sem CDN)
-       2) App (seu código)
-       3) Service Worker
-       =========================================================== -->
-
-  <!-- 1) Chart.js LOCAL -->
+  <!-- ✅ 1) Chart local (SEM CDN) -->
   <script src="/static/vendor/chart.umd.min.js"></script>
 
-  <!-- 2) App -->
+  <!-- ✅ 2) Seu JS principal (o mesmo que você já tinha) -->
   <script>
     // =========================
     // AUTH (cookie session)
@@ -1512,7 +1501,7 @@
     })();
   </script>
 
-  <!-- 3) Service Worker (update forçado) -->
+  <!-- ✅ 3) Service Worker por último -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
