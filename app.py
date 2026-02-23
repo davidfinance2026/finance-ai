@@ -3,24 +3,7 @@ import csv
 import io
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
-from flask import send_from_directory, make_response
 
-@app.route("/sw.js")
-def sw_root():
-    resp = send_from_directory(app.static_folder, "sw.js")
-    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
-    # MUITO IMPORTANTE: permite scope maior que /static/
-    resp.headers["Service-Worker-Allowed"] = "/"
-    # evita cache do próprio SW
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
-
-@app.route("/manifest.json")
-def manifest_root():
-    resp = send_from_directory(app.static_folder, "manifest.json")
-    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
 from flask import (
     Flask, request, jsonify, session, render_template,
     send_from_directory, make_response
@@ -74,6 +57,35 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",   # mesmo domínio OK
     SESSION_COOKIE_SECURE=COOKIE_SECURE,
 )
+
+# =========================
+# ✅ ROTAS ROOT (PWA) - ANTES DE QUALQUER RUN
+# Corrige 100% o erro: NameError: app is not defined
+# e garante /sw.js e /manifest.json na RAIZ
+# =========================
+@app.route("/sw.js")
+def sw_root():
+    resp = send_from_directory(app.static_folder, "sw.js")
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    # permite o SW controlar o site inteiro
+    resp.headers["Service-Worker-Allowed"] = "/"
+    # garante que atualização do SW não fica presa em cache do servidor/CDN
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/manifest.json")
+def manifest_root():
+    resp = send_from_directory(app.static_folder, "manifest.json")
+    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/offline.html")
+def offline():
+    return render_template("offline.html")
+
 
 # =========================
 # GOOGLE CLIENT
@@ -234,7 +246,7 @@ def current_month_year() -> Tuple[int, int]:
 
 
 # =========================
-# STATIC (PWA) - garante mime OK
+# STATIC (PWA) - garante mime OK (arquivos em /static/...)
 # =========================
 @app.route("/static/<path:filename>")
 def static_files(filename):
@@ -254,7 +266,13 @@ def static_files(filename):
 # =========================
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # ⚠️ seu arquivo está em templates/Index.html (I maiúsculo)
+    # Em Linux (Render) isso importa. Então renderizamos com o nome correto.
+    # Se o seu arquivo for "index.html" minúsculo, troque aqui para "index.html".
+    try:
+        return render_template("Index.html")
+    except Exception:
+        return render_template("index.html")
 
 
 @app.route("/health")
@@ -706,7 +724,7 @@ def resumo():
     gastos_arr = topcats(gastos_cat)
     receitas_arr = topcats(receitas_cat)
 
-    # ✅ inclui metas no resumo (quando month/year vierem)
+    # ✅ inclui metas no resumo
     if month and year:
         meta = _get_meta(user_email, int(month), int(year))
     else:
@@ -738,16 +756,14 @@ def resumo():
 @app.route("/dashboard")
 def dashboard():
     """
-    Um endpoint pronto para a tela "Dashboard com metas mensais":
+    Endpoint pronto para "Dashboard com metas mensais":
     devolve resumo + metas + progresso (percentuais).
     """
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    # Reaproveita a lógica do /resumo
     resp = resumo()
-    # resumo() pode retornar tuple em caso de erro; aqui já passou require_login
     if isinstance(resp, tuple):
         return resp
 
@@ -913,7 +929,3 @@ def export_pdf():
 if __name__ == "__main__":
     # Dica: em dev local, use COOKIE_SECURE=0 pra login funcionar no http://
     app.run(host="0.0.0.0", port=5000, debug=True)
-@app.route("/offline.html")
-def offline():
-    return render_template("offline.html")
-
