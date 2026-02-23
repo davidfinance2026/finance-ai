@@ -459,11 +459,13 @@
         </div>
       </div>
 
+      <!-- movimento -->
       <div class="card chart-card">
         <div class="title" id="titleMov">Movimento</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
+      <!-- pizza gastos -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
@@ -475,6 +477,7 @@
         </div>
       </div>
 
+      <!-- pizza receitas -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -486,6 +489,7 @@
         </div>
       </div>
 
+      <!-- PAGINAÇÃO -->
       <div class="pager">
         <div class="info" id="pagerInfo">Carregando…</div>
         <div class="controls">
@@ -536,7 +540,7 @@
       <div class="closeRow">
         <div>
           <h2>➕ Criar usuário</h2>
-          <p>Cria um novo usuário e o sistema gera uma planilha exclusiva automaticamente.</p>
+          <p>Cria um novo usuário (admin).</p>
         </div>
         <button class="xBtn" onclick="closeCreateUser()">✕</button>
       </div>
@@ -602,10 +606,17 @@
     </div>
   </div>
 
-  <!-- ✅ 1) Chart.js LOCAL (SEM CDN) -->
+  <!-- ===========================================================
+       ✅ ORDEM PERFEITA DOS SCRIPTS
+       1) Chart.js LOCAL (sem CDN)
+       2) App (seu código)
+       3) Service Worker
+       =========================================================== -->
+
+  <!-- 1) Chart.js LOCAL -->
   <script src="/static/vendor/chart.umd.min.js"></script>
 
-  <!-- ✅ 2) App (toda a lógica) -->
+  <!-- 2) App -->
   <script>
     // =========================
     // AUTH (cookie session)
@@ -1501,7 +1512,7 @@
     })();
   </script>
 
-  <!-- ✅ 3) PWA: registra Service Worker por último -->
+  <!-- 3) Service Worker (update forçado) -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
