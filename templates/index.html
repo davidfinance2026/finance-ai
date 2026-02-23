@@ -7,7 +7,6 @@
 
   <!-- ✅ PWA -->
   <link rel="manifest" href="/static/manifest.json">
-  <!-- ✅ Mantém consistente com o manifest (theme_color #0b1020) -->
   <meta name="theme-color" content="#0b1020">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -314,12 +313,10 @@
         <span>Controle financeiro • simples e rápido</span>
       </div>
 
-      <!-- ✅ Pills (Admin + Login) -->
       <div style="display:flex; gap:10px; align-items:center;">
         <div class="pill" id="adminPill" onclick="openCreateUser()" style="display:none;">➕ Usuário</div>
         <div class="pill" id="statusPill" onclick="openLogin()">🔒 Login</div>
       </div>
-      <!-- ✅ /Pills -->
     </div>
 
     <div class="tabs">
@@ -462,13 +459,11 @@
         </div>
       </div>
 
-      <!-- movimento -->
       <div class="card chart-card">
         <div class="title" id="titleMov">Movimento</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
       </div>
 
-      <!-- pizza gastos -->
       <div class="card chart-card">
         <div class="title">Gastos por categoria</div>
         <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
@@ -480,7 +475,6 @@
         </div>
       </div>
 
-      <!-- pizza receitas -->
       <div class="card chart-card">
         <div class="title">Receitas por categoria</div>
         <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
@@ -492,7 +486,6 @@
         </div>
       </div>
 
-      <!-- PAGINAÇÃO -->
       <div class="pager">
         <div class="info" id="pagerInfo">Carregando…</div>
         <div class="controls">
@@ -537,7 +530,7 @@
     </div>
   </div>
 
-  <!-- ✅ CREATE USER MODAL (ADMIN) -->
+  <!-- CREATE USER MODAL -->
   <div class="modalBack" id="createUserBack">
     <div class="modal">
       <div class="closeRow">
@@ -563,7 +556,6 @@
       <div class="hint">Obs: você precisa estar logado como admin para ver este botão.</div>
     </div>
   </div>
-  <!-- ✅ /CREATE USER MODAL -->
 
   <!-- EDIT MODAL -->
   <div class="modalBack" id="editBack">
@@ -610,10 +602,10 @@
     </div>
   </div>
 
-  <!-- ✅ DICA: Se quiser PWA offline real, ideal é baixar Chart.js e servir local (/static/chart.min.js).
-       Mas mantendo CDN está ok, só não funciona offline. -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- ✅ 1) Chart.js LOCAL (SEM CDN) -->
+  <script src="/static/vendor/chart.umd.min.js"></script>
 
+  <!-- ✅ 2) App (toda a lógica) -->
   <script>
     // =========================
     // AUTH (cookie session)
@@ -643,7 +635,6 @@
       return fetch(url, Object.assign({ credentials: "include" }, opts));
     }
 
-    // ✅ CORRIGIDO: usa /me -> is_admin (backend decide)
     async function refreshAuthUI(){
       const adminBtn = document.getElementById("adminPill");
       try{
@@ -1510,13 +1501,12 @@
     })();
   </script>
 
-  <!-- ✅ PWA: registra Service Worker (com update forçado) -->
+  <!-- ✅ 3) PWA: registra Service Worker por último -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
         try{
           const reg = await navigator.serviceWorker.register("/static/sw.js");
-          // força checar updates quando abrir
           if(reg && reg.update) reg.update();
         }catch(e){
           console.error(e);
@@ -1524,6 +1514,5 @@
       });
     }
   </script>
-  <!-- ✅ /PWA -->
 </body>
 </html>
