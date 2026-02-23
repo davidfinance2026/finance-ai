@@ -1,61 +1,125 @@
-const CACHE_NAME = "financeai-v3";
+/* sw.js - Finance AI (v3)
+   - HTML (navegação) => Network First + fallback offline
+   - /static/*        => Stale-While-Revalidate
+   - cache Chart.js local (sem CDN)
+*/
 
-const CORE_ASSETS = [
-  "/",                         // index.html
-  "/static/manifest.json",
+const CACHE_VERSION = "v3";
+const CACHE_NAME = `financeai-${CACHE_VERSION}`;
+
+// Ajuste se seu Chart local tiver outro nome/caminho:
+const CHART_LOCAL_PATHS = [
   "/static/vendor/chart.umd.min.js",
-  "/static/icons/icon-192.png",
-  "/static/icons/icon-512.png"
+  "/static/vendor/chart.min.js",
+  "/static/chart.min.js",
 ];
 
-// ================= INSTALL =================
+// ✅ O "mínimo" pro app abrir offline.
+// Repare que eu uso /offline.html como fallback consistente.
+const CORE_ASSETS = [
+  "/",
+  "/offline.html", // ✅ fallback offline do HTML
+  "/static/manifest.json",
+  "/static/icons/icon-192.png",
+  "/static/icons/icon-512.png",
+  ...CHART_LOCAL_PATHS, // ✅ tenta cachear Chart local também
+];
+
+// -------------------- INSTALL --------------------
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(CORE_ASSETS);
-    })
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // Tenta adicionar tudo. Se algum Chart não existir, não quebra a instalação.
+      await cache.addAll(
+        CORE_ASSETS.filter((p) => !CHART_LOCAL_PATHS.includes(p))
+      );
+
+      // Chart: tenta um por um (porque pode não existir todos)
+      for (const p of CHART_LOCAL_PATHS) {
+        try {
+          await cache.add(p);
+        } catch (e) {
+          // ignora se não existir esse arquivo específico
+        }
+      }
+    })()
   );
+
   self.skipWaiting();
 });
 
-// ================= ACTIVATE =================
+// -------------------- ACTIVATE --------------------
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null))
-      )
-    )
+      );
+
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
-// ================= FETCH =================
+// -------------------- FETCH --------------------
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // Só intercepta mesmo domínio
-  if (url.origin !== self.location.origin) return;
-
-  // HTML (navegação) → NETWORK FIRST
-  if (event.request.mode === "navigate") {
-    event.respondWith(networkFirst(event.request));
+  // Só controla requests do mesmo domínio
+  if (url.origin !== self.location.origin) {
+    // Para terceiros (se existir), tenta rede, se falhar usa cache
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }
 
-  // Arquivos estáticos → STALE WHILE REVALIDATE
+  // ✅ 1) Navegação/HTML -> Network First + fallback offline
+  if (event.request.mode === "navigate") {
+    event.respondWith(networkFirstHTML(event.request));
+    return;
+  }
+
+  // ✅ 2) Arquivos estáticos -> Stale While Revalidate
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
 
-  // Default → network-first
+  // ✅ 3) Default -> Network First com fallback de cache
   event.respondWith(networkFirst(event.request));
 });
 
-// ================= ESTRATÉGIAS =================
+// -------------------- Strategies --------------------
+async function networkFirstHTML(request) {
+  try {
+    const fresh = await fetch(request);
+
+    // Cacheia também a página navegada (ex.: "/")
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, fresh.clone());
+
+    return fresh;
+  } catch (e) {
+    // 1) tenta cache do próprio request
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    // 2) fallback offline (HTML)
+    // Use /offline.html para evitar depender de cachear "/" corretamente.
+    const offline = await caches.match("/offline.html");
+    if (offline) return offline;
+
+    // 3) último fallback: tenta "/"
+    const home = await caches.match("/");
+    if (home) return home;
+
+    throw e;
+  }
+}
 
 async function networkFirst(request) {
   try {
@@ -63,29 +127,23 @@ async function networkFirst(request) {
     const cache = await caches.open(CACHE_NAME);
     cache.put(request, fresh.clone());
     return fresh;
-  } catch (err) {
+  } catch (e) {
     const cached = await caches.match(request);
     if (cached) return cached;
-
-    // fallback para index.html offline
-    if (request.mode === "navigate") {
-      return caches.match("/");
-    }
-
-    throw err;
+    throw e;
   }
 }
 
 async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
 
   const fetchPromise = fetch(request)
-    .then(async (fresh) => {
-      const cache = await caches.open(CACHE_NAME);
+    .then((fresh) => {
       cache.put(request, fresh.clone());
       return fresh;
     })
     .catch(() => null);
 
-  return cached || (await fetchPromise);
+  return cached || (await fetchPromise) || new Response("", { status: 504 });
 }
