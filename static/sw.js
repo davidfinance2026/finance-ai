@@ -1,130 +1,174 @@
-/* static/sw.js */
-const CACHE_NAME = "financeai-v3"; // 🔁 troque a versão quando atualizar
+/* finance-ai SW v4
+   - HTML: network-first (com fallback offline)
+   - Estáticos (css/js/icons/chart): stale-while-revalidate
+   - Fallback: index.html e offline.html no cache
+*/
 
-// ✅ arquivos essenciais para abrir offline
-const CORE_ASSETS = [
-  "/",                    // index (fallback p/ cache)
-  "/offline.html",        // fallback offline real
-  "/static/manifest.json",
-  "/static/icons/icon-192.png",
-  "/static/icons/icon-512.png",
+const VERSION = "v4";
+const CACHE_HTML = `html-${VERSION}`;
+const CACHE_STATIC = `static-${VERSION}`;
 
-  // ✅ Chart local (sem CDN)
-  "/static/vendor/chart.umd.min.js",
+const OFFLINE_URL = "/offline.html"; // rota do seu Flask (render_template)
+const INDEX_URL = "/";
+
+// ajuste se você tiver mais libs
+const STATIC_EXT = [
+  ".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".webp", ".ico",
+  ".woff", ".woff2", ".ttf", ".eot", ".json"
 ];
 
-// -------------------------
-// INSTALL
-// -------------------------
+function isHTMLRequest(request) {
+  const accept = request.headers.get("accept") || "";
+  return request.mode === "navigate" || accept.includes("text/html");
+}
+
+function isStaticRequest(url) {
+  // tudo em /static/ é estático
+  if (url.pathname.startsWith("/static/")) return true;
+
+  // também considere extensões
+  return STATIC_EXT.some(ext => url.pathname.endsWith(ext));
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(CORE_ASSETS);
-      await self.skipWaiting();
-    })()
-  );
+  event.waitUntil((async () => {
+    const htmlCache = await caches.open(CACHE_HTML);
+    // cacheia HTMLs essenciais para fallback offline
+    await htmlCache.addAll([INDEX_URL, OFFLINE_URL]);
+
+    // pré-cache do chart local (se existir)
+    const staticCache = await caches.open(CACHE_STATIC);
+    await staticCache.addAll([
+      "/static/vendor/chart.umd.min.js",
+      "/static/manifest.json",
+      // se quiser garantir ícones principais:
+      // "/static/icons/icon-192.png",
+      // "/static/icons/icon-512.png",
+    ].filter(Boolean));
+
+    self.skipWaiting();
+  })());
 });
 
-// -------------------------
-// ACTIVATE
-// -------------------------
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)));
-      await self.clients.claim();
-    })()
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter(k => (k.startsWith("html-") && k !== CACHE_HTML) || (k.startsWith("static-") && k !== CACHE_STATIC))
+        .map(k => caches.delete(k))
+    );
+    await self.clients.claim();
+  })());
 });
 
-// -------------------------
-// FETCH
-// -------------------------
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-
-  const url = new URL(event.request.url);
-
-  // Só controla requests do mesmo domínio
-  if (url.origin !== self.location.origin) return;
-
-  // ✅ 1) Navegação/HTML -> Network First com fallback offline.html
-  // (serve pra "/" e pra qualquer rota que o Flask renderiza)
-  if (event.request.mode === "navigate") {
-    event.respondWith(networkFirstHTML(event.request));
-    return;
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
   }
-
-  // ✅ 2) /static -> Stale While Revalidate
-  if (url.pathname.startsWith("/static/")) {
-    event.respondWith(staleWhileRevalidate(event.request));
-    return;
-  }
-
-  // ✅ 3) Default -> Network First com fallback de cache
-  event.respondWith(networkFirst(event.request));
 });
 
-// -------------------------
-// Estratégias
-// -------------------------
-
-// HTML: tenta rede, salva cache e se falhar cai no /offline.html
 async function networkFirstHTML(request) {
+  const cache = await caches.open(CACHE_HTML);
+
   try {
     const fresh = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, fresh.clone());
-
-    // ✅ também garante que "/" fica sempre cacheado como fallback
-    if (new URL(request.url).pathname === "/") {
-      cache.put("/", fresh.clone());
-    }
+    // só cacheia respostas ok
+    if (fresh && fresh.ok) cache.put(request, fresh.clone());
     return fresh;
-  } catch (e) {
-    // tenta cache da própria rota
-    const cached = await caches.match(request);
+  } catch (err) {
+    // tenta cache do próprio request
+    const cached = await cache.match(request);
     if (cached) return cached;
 
-    // tenta fallback do index "/"
-    const cachedIndex = await caches.match("/");
-    if (cachedIndex) return cachedIndex;
-
-    // fallback offline real
-    const offline = await caches.match("/offline.html");
+    // fallback offline.html
+    const offline = await cache.match(OFFLINE_URL);
     if (offline) return offline;
 
-    return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
+    // último fallback: index.html
+    const index = await cache.match(INDEX_URL);
+    if (index) return index;
+
+    return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
 }
 
-// Default: tenta rede, se falhar usa cache
-async function networkFirst(request) {
-  try {
-    const fresh = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, fresh.clone());
-    return fresh;
-  } catch (e) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response("", { status: 504 });
-  }
-}
-
-// Static: responde cache se existir e atualiza em background
 async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(CACHE_STATIC);
+  const cached = await cache.match(request);
 
   const fetchPromise = fetch(request)
-    .then(async (fresh) => {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, fresh.clone());
+    .then((fresh) => {
+      if (fresh && fresh.ok) cache.put(request, fresh.clone());
       return fresh;
     })
     .catch(() => null);
 
-  return cached || (await fetchPromise) || new Response("", { status: 504 });
+  // se tiver cache, devolve cache imediatamente e atualiza em background
+  if (cached) {
+    eventWait(fetchPromise);
+    return cached;
+  }
+
+  // se não tiver cache, espera a rede
+  const fresh = await fetchPromise;
+  if (fresh) return fresh;
+
+  // se falhou tudo
+  return new Response("Offline asset", { status: 503 });
 }
+
+// helper para não quebrar quando não temos event aqui
+function eventWait(promise) {
+  // no-op: o navegador ainda vai rodar o fetch
+  // (mantém simples e estável)
+}
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+
+  const url = new URL(req.url);
+
+  // só controla o mesmo domínio
+  if (url.origin !== self.location.origin) return;
+
+  // HTML: network-first (com fallback offline)
+  if (isHTMLRequest(req)) {
+    event.respondWith(networkFirstHTML(req));
+    return;
+  }
+
+  // Estáticos: stale-while-revalidate (inclui /static/vendor/chart...)
+  if (isStaticRequest(url)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_STATIC);
+      const cached = await cache.match(req);
+
+      const fetchPromise = fetch(req)
+        .then((fresh) => {
+          if (fresh && fresh.ok) cache.put(req, fresh.clone());
+          return fresh;
+        })
+        .catch(() => null);
+
+      if (cached) {
+        // atualiza em background
+        fetchPromise.catch(() => {});
+        return cached;
+      }
+
+      const fresh = await fetchPromise;
+      if (fresh) return fresh;
+
+      return new Response("Offline asset", { status: 503 });
+    })());
+    return;
+  }
+
+  // API (ex: /resumo, /ultimos...) -> network-only (ou você pode adaptar)
+  event.respondWith(fetch(req).catch(() => new Response(JSON.stringify({ ok:false, msg:"Offline" }), {
+    status: 503,
+    headers: { "Content-Type": "application/json; charset=utf-8" }
+  })));
+});
