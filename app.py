@@ -12,6 +12,7 @@ from flask import (
 import gspread
 from google.oauth2.service_account import Credentials
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # =========================
 # CONFIG
@@ -27,7 +28,7 @@ USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
-# (Opcional) Admin via env para bootstrap
+# Admin via env (bootstrap)
 APP_EMAIL = os.getenv("APP_EMAIL", "").strip()
 APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "").strip()
 
@@ -40,10 +41,14 @@ _client_cached: Optional[gspread.Client] = None
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = FLASK_SECRET_KEY
 
+# Render / proxy (muito importante para cookies de sessão em HTTPS)
+# x_for=1, x_proto=1 normalmente resolve no Render.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
 # Cookies bons pro Render/HTTPS
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",   # se estiver no mesmo domínio, OK
+    SESSION_COOKIE_SAMESITE="Lax",   # mesmo domínio OK
     SESSION_COOKIE_SECURE=True,      # Render usa https
 )
 
@@ -97,6 +102,16 @@ def now_str() -> str:
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def safe_lower(x: Any) -> str:
+    return str(x or "").strip().lower()
+
+
+def is_admin_email(email: str) -> bool:
+    if not APP_EMAIL:
+        return False
+    return safe_lower(email) == safe_lower(APP_EMAIL)
+
+
 def require_login() -> Optional[Tuple[Dict[str, Any], int]]:
     if not session.get("user_email"):
         return {"ok": False, "msg": "Não autenticado"}, 401
@@ -145,10 +160,6 @@ def money_to_float(v: Any) -> float:
         return 0.0
 
 
-def safe_lower(x: Any) -> str:
-    return str(x or "").strip().lower()
-
-
 def get_records(ws) -> List[Dict[str, Any]]:
     values = ws.get_all_values()
     if not values or len(values) < 2:
@@ -181,7 +192,6 @@ def item_value_num(item: Dict[str, Any]) -> float:
 
 
 def item_date_num(item: Dict[str, Any]) -> int:
-    # para ordenar por data
     d = parse_date_br(str(item.get("Data", "")))
     if not d:
         return 0
@@ -195,12 +205,11 @@ def item_date_num(item: Dict[str, Any]) -> int:
 def static_files(filename):
     resp = send_from_directory(app.static_folder, filename)
 
-    # Ajustes de mime (ajuda em alguns celulares/browsers)
-    if filename.endswith(".json"):
-        resp.headers["Content-Type"] = "application/json; charset=utf-8"
     if filename.endswith("manifest.json"):
         resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
-    if filename.endswith(".js"):
+    elif filename.endswith(".json"):
+        resp.headers["Content-Type"] = "application/json; charset=utf-8"
+    elif filename.endswith(".js"):
         resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
     return resp
 
@@ -219,7 +228,7 @@ def health():
 
 
 # =========================
-# AUTH
+# WORKSHEETS
 # =========================
 def users_ws():
     spread = open_ws()
@@ -242,7 +251,7 @@ def lanc_ws():
 
 
 def ensure_admin_bootstrap():
-    # Se APP_EMAIL e APP_PASSWORD_HASH existirem, garante que esse usuário exista na planilha.
+    # Se APP_EMAIL e APP_PASSWORD_HASH existirem, garante admin na aba Usuarios
     if not APP_EMAIL or not APP_PASSWORD_HASH:
         return
     ws = users_ws()
@@ -253,10 +262,18 @@ def ensure_admin_bootstrap():
     ws.append_row([APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()], value_input_option="RAW")
 
 
+# =========================
+# AUTH
+# =========================
 @app.route("/me")
 def me():
-    if session.get("user_email"):
-        return jsonify({"ok": True, "email": session["user_email"]})
+    email = session.get("user_email")
+    if email:
+        return jsonify({
+            "ok": True,
+            "email": email,
+            "is_admin": is_admin_email(email)
+        })
     return jsonify({"ok": False}), 401
 
 
@@ -292,7 +309,7 @@ def login():
         return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     session["user_email"] = email
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "email": email, "is_admin": is_admin_email(email)})
 
 
 @app.route("/logout", methods=["POST"])
@@ -301,23 +318,24 @@ def logout():
     return jsonify({"ok": True})
 
 
-# (Opcional) criar usuário via API (para você como admin testar)
-# Se você não quiser, pode ignorar essa rota.
-@app.route("/admin/create_user", methods=["POST"])
-def admin_create_user():
-    # simples: só permite se estiver logado como APP_EMAIL (admin do env)
+# =========================
+# CREATE USER (ADMIN)
+# =========================
+def _create_user_impl():
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    if APP_EMAIL and safe_lower(session.get("user_email")) != safe_lower(APP_EMAIL):
+    # Apenas admin (APP_EMAIL)
+    if not is_admin_email(session.get("user_email", "")):
         return jsonify({"ok": False, "msg": "Apenas admin"}), 403
 
     data = request.get_json(silent=True) or {}
     email = str(data.get("email", "")).strip().lower()
     password = str(data.get("password", "")).strip()
+
     if not email or not password:
-        return jsonify({"ok": False, "msg": "Informe email e password"}), 400
+        return jsonify({"ok": False, "msg": "Informe email e senha"}), 400
 
     ws = users_ws()
     recs = get_records(ws)
@@ -325,9 +343,23 @@ def admin_create_user():
         if safe_lower(r.get("Email")) == email:
             return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
 
+    # padrão Werkz. moderno: pbkdf2:sha256 (com iterações internas)
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
     ws.append_row([email, ph, "1", now_str()], value_input_option="RAW")
-    return jsonify({"ok": True})
+
+    return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
+
+
+# ✅ rota que o seu FRONT usa
+@app.route("/create_user", methods=["POST"])
+def create_user():
+    return _create_user_impl()
+
+
+# ✅ mantém a antiga também (compatibilidade)
+@app.route("/admin/create_user", methods=["POST"])
+def admin_create_user():
+    return _create_user_impl()
 
 
 # =========================
@@ -359,7 +391,6 @@ def lancar():
         if not d:
             return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
     else:
-        # se vier vazio, usa hoje
         today = date.today()
         data_br = today.strftime("%d/%m/%Y")
 
@@ -376,7 +407,6 @@ def lancar():
 # LISTAGEM + FILTROS
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
-    # month/year (baseado na Data dd/mm/aaaa)
     month = params.get("month")
     year = params.get("year")
     tipo = params.get("tipo", "Todos")
@@ -404,32 +434,26 @@ def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[D
 
     out = []
     for it in items:
-        # tipo
         if tipo and tipo != "Todos":
             if str(it.get("Tipo", "")).strip() != tipo:
                 continue
 
-        # query
         if q and not match_query(it, q):
             continue
 
-        # data
         d = parse_date_br(str(it.get("Data", "")))
         if not d:
             continue
 
-        # month/year
         if month and year:
             if not (d.month == int(month) and d.year == int(year)):
                 continue
 
-        # date range
         if df and d < df:
             continue
         if dt and d > dt:
             continue
 
-        # value range
         val = item_value_num(it)
         if vmin_n is not None and val < vmin_n:
             continue
@@ -451,10 +475,8 @@ def ultimos():
     ws = lanc_ws()
     items = get_records(ws)
 
-    # só do usuário logado
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
 
-    # params
     month = request.args.get("month", type=int)
     year = request.args.get("year", type=int)
     tipo = request.args.get("tipo", default="Todos", type=str)
@@ -473,14 +495,13 @@ def ultimos():
         "value_min": value_min, "value_max": value_max
     })
 
-    # ordenação
     if order == "oldest":
         filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
     elif order == "value_desc":
         filtered.sort(key=lambda x: item_value_num(x), reverse=True)
     elif order == "value_asc":
         filtered.sort(key=lambda x: item_value_num(x))
-    else:  # recent
+    else:
         filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
 
     total = len(filtered)
@@ -490,7 +511,6 @@ def ultimos():
     end = start + limit
     page_items = filtered[start:end]
 
-    # formata valor como "pt-BR" no front, mas aqui devolvemos como está na planilha
     return jsonify({"ok": True, "total": total, "items": page_items})
 
 
@@ -523,20 +543,17 @@ def resumo():
     entradas = 0.0
     saidas = 0.0
 
-    # séries por dia do mês selecionado (se month/year existirem)
     dias_labels: List[str] = []
     serie_receita: List[float] = []
     serie_gasto: List[float] = []
 
     if month and year:
-        # dias do mês
         import calendar
         last_day = calendar.monthrange(year, month)[1]
         dias_labels = [str(d).zfill(2) for d in range(1, last_day + 1)]
         serie_receita = [0.0] * last_day
         serie_gasto = [0.0] * last_day
 
-    # pizzas
     gastos_cat: Dict[str, float] = {}
     receitas_cat: Dict[str, float] = {}
 
@@ -559,8 +576,8 @@ def resumo():
 
     saldo = entradas - saidas
 
-    def topcats(d: Dict[str, float]) -> List[Dict[str, Any]]:
-        arr = [{"categoria": k, "total": v} for k, v in d.items()]
+    def topcats(dct: Dict[str, float]) -> List[Dict[str, Any]]:
+        arr = [{"categoria": k, "total": v} for k, v in dct.items()]
         arr.sort(key=lambda x: x["total"], reverse=True)
         return arr
 
@@ -617,19 +634,16 @@ def editar_lancamento(row: int):
 
     ws = lanc_ws()
 
-    # Segurança: valida se a linha pertence ao usuário
     row_vals = ws.row_values(row)
     headers = ws.row_values(1)
-    if not row_vals or len(row_vals) < 1:
+    if not row_vals:
         return jsonify({"ok": False, "msg": "Lançamento não encontrado"}), 404
 
-    # Mapeia colunas
     col = {h: idx + 1 for idx, h in enumerate(headers)}
     email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
     if email_in_row != user_email.lower():
         return jsonify({"ok": False, "msg": "Sem permissão"}), 403
 
-    # Atualiza células
     ws.update_cell(row, col["Tipo"], tipo)
     ws.update_cell(row, col["Categoria"], categoria)
     ws.update_cell(row, col["Descrição"], descricao)
@@ -725,11 +739,8 @@ def export_csv():
 
 @app.route("/export.pdf")
 def export_pdf():
-    # Para manter simples/estável: se você já tinha PDF antes, me fala
-    # Aqui devolvemos 400 para não quebrar o app.
     return jsonify({"ok": False, "msg": "PDF não habilitado nesta versão estável"}), 400
 
 
 if __name__ == "__main__":
-    # local
     app.run(host="0.0.0.0", port=5000, debug=True)
