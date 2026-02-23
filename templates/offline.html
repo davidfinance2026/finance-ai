@@ -1,37 +1,23 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#0b1020">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Finance AI • Offline</title>
+  <meta name="theme-color" content="#0b1020">
   <style>
-    body{
-      margin:0; min-height:100vh; display:grid; place-items:center;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:#0b1020; color:#eaf0ff; padding:20px;
-    }
-    .box{
-      width:min(520px,100%);
-      border:1px solid rgba(255,255,255,.10);
-      border-radius:18px;
-      padding:18px;
-      background:rgba(255,255,255,.04);
-    }
-    h1{margin:0 0 10px 0; font-size:18px}
-    p{margin:0 0 14px 0; color:rgba(159,176,218,.95); line-height:1.5}
-    button{
-      border:0; border-radius:14px; padding:12px 14px;
-      font-weight:900; cursor:pointer; color:#061022;
-      background:rgba(79,140,255,1);
-    }
+    body{margin:0;font-family:system-ui;background:#0b1020;color:#eaf0ff;display:grid;place-items:center;min-height:100vh;padding:20px}
+    .card{max-width:520px;width:100%;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:18px;background:rgba(255,255,255,.06)}
+    h1{margin:0 0 8px 0;font-size:20px}
+    p{margin:0;color:#9fb0da;line-height:1.4}
+    .btn{margin-top:14px;display:inline-block;padding:12px 14px;border-radius:14px;background:#4f8cff;color:#061022;font-weight:900;text-decoration:none}
   </style>
 </head>
 <body>
-  <div class="box">
-    <h1>📴 Você está offline</h1>
-    <p>Sem internet no momento. Quando a conexão voltar, atualize a página para continuar usando o Finance AI.</p>
-    <button onclick="location.reload()">Tentar novamente</button>
+  <div class="card">
+    <h1>Você está offline</h1>
+    <p>Sem internet no momento. Quando a conexão voltar, abra o app novamente ou toque no botão abaixo.</p>
+    <a class="btn" href="/">Tentar novamente</a>
   </div>
 </body>
 </html>
