@@ -2332,160 +2332,42 @@
         return;
       }
 
-      arr.forEach((item, idx) => {
-        const tipo = getField(item, ["Tipo"]);
-        const categoria = getField(item, ["Categoria"]);
-        const descricao = getField(item, ["Descrição"]);
-        const data = getField(item, ["Data"]);
-        const valor = getField(item, ["Valor"]);
-        const row = item._row;
-
-        const vnum = parseMoneyBR(valor);
-        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
-
-        const encoded = encodeURIComponent(JSON.stringify(item));
-        const menuId = `m_${row}_${idx}`;
-
-        lista.innerHTML += `
-        <div class="item">
-          <div class="l">
-            <div class="t">${it.Tipo} • ${it.Ativo}</div>
-            <div class="s">${(it.Instituicao||"")} • ${(it.Descricao||"")} • ${(it.Data||"")}</div>
-          </div>
-          <div class="r">
-            <div class="value ${it.Tipo==="Aporte" ? "green":"red"}">R$ ${fmtMoneyBr(val)}</div>
-            <button class="kebab" onclick="toggleMenu('inv_menu_${it._row}'); event.stopPropagation()">⋯</button>
-            <div class="menu" id="inv_menu_${it._row}">
-              <button onclick="openInvEdit('${encoded}')">Editar</button>
-              <button class="danger" onclick="deleteInv(${it._row})">Excluir</button>
-            </div>
-          </div>
-        </div>
-      `;
-    });
-    }
-
-    async function carregarTudo(){
-      try{ await carregarResumo(); }catch(e){}
-      try{ await carregarUltimos(); }catch(e){}
-    }
-
-    // =========================
-    // INVEST: RESUMO + LISTA
-    // =========================
-    function renderTabelaAtivos(arr){
-      const wrap = document.getElementById("invAtivosWrap");
-      const tbody = document.getElementById("invAtivosBody");
-      if(!Array.isArray(arr) || arr.length === 0){
-        wrap.style.display = "none";
-        tbody.innerHTML = "";
-        return;
-      }
-      wrap.style.display = "block";
-      tbody.innerHTML = arr.slice(0, 20).map(x => {
-        const ativo = (x.ativo || "Sem ativo");
-        const saldo = Number(x.saldo || 0);
-        const cls = saldo >= 0 ? "green" : "red";
-        return `<tr><td>${ativo}</td><td class="${cls}">${brl(saldo)}</td></tr>`;
-      }).join("");
-    }
-
-    async function carregarInvestResumo(){
-      const params = {
-        month: investFiltros.month,
-        year: investFiltros.year,
-        q: investFiltros.q
-      };
-
-      const r = await apiFetch("/invest_resumo" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /invest_resumo");
-
-      const j = await r.json().catch(()=> ({}));
-      document.getElementById("invAportes").innerText = brl(j.aportes || 0);
-      document.getElementById("invRetiradas").innerText = brl(j.retiradas || 0);
-      document.getElementById("invSaldo").innerText = brl(j.saldo || 0);
-
-      renderTabelaAtivos(j.por_ativo || []);
-      return j;
-    }
-
-    async function carregarInvestimentos(){
-      const lista = document.getElementById("invLista");
-      lista.innerHTML = `
-        <div class="item">
-          <div class="itemLeft">
-            <div class="icon">…</div>
-            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
-          </div>
-          <div class="value"> </div>
-        </div>`;
-
-      const params = {
-        month: investFiltros.month,
-        year: investFiltros.year,
-        tipo: investFiltros.tipo,
-        ativo: investFiltros.ativo,
-        q: investFiltros.q,
-        order: investFiltros.order,
-        date_from: investFiltros.date_from,
-        date_to: investFiltros.date_to,
-        value_min: investFiltros.value_min,
-        value_max: investFiltros.value_max,
-        page: investFiltros.page,
-        limit: investFiltros.limit
-      };
-
-      const r = await apiFetch("/investimentos" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /investimentos");
-
-      const payload = await r.json().catch(()=> ({}));
-      const arr = payload.items || [];
-      investFiltros.total = Number(payload.total || 0);
-
-      updateInvestPager();
-
-      lista.innerHTML = "";
-      if(!Array.isArray(arr) || arr.length === 0){
-        lista.innerHTML = `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum investimento</b><span>Não há dados nesse filtro</span></div>
-            </div>
-            <div class="value"></div>
-          </div>`;
-        return;
-      }
-
-      arr.forEach((item) => {
-        const tipo = getField(item, ["Tipo"]);
-        const ativo = getField(item, ["Ativo"]);
-        const inst = getField(item, ["Instituicao", "Instituição"]);
-        const desc = getField(item, ["Descricao", "Descrição", "Descrição"]);
-        const data = getField(item, ["Data"]);
-        const valor = getField(item, ["Valor"]);
-
-        const vnum = parseMoneyBR(valor);
-        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
-
+            arr.forEach((item) => {
+        const row = Number(item._row || 0);
+      
+        const tipo = String(getField(item, ["Tipo"], ""));
+        const categoria = String(getField(item, ["Categoria"], ""));
+        const descricao = String(getField(item, ["Descrição","Descricao","descricao"], ""));
+        const data = String(getField(item, ["Data"], ""));
+        const valor = parseMoneyBR(getField(item, ["Valor"], 0));
+        const isReceita = tipo.toLowerCase().includes("rece");
+        const menuId = `lan_menu_${row}`;
+      
         lista.innerHTML += `
           <div class="item">
             <div class="itemLeft">
-              <div class="icon">${iconForInvest(item)}</div>
+              <div class="icon">${isReceita ? "＋" : "－"}</div>
               <div class="meta">
-                <b>${tipo} • ${ativo}</b>
-                <span>${(inst||"").trim()}${inst && desc ? " • " : ""}${(desc||"").trim()} • ${data}</span>
+                <b>${tipo} • ${categoria}</b>
+                <span>${descricao} • ${data}</span>
               </div>
             </div>
-
-            <div style="display:flex; align-items:center;">
-              <div class="value ${valueClassInvest(item)}">${showVal}</div>
+      
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span class="value ${isReceita ? "pos" : "neg"}">${isReceita ? "" : "-"}${brl(valor)}</span>
+      
+              <div style="position:relative;">
+                <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
+                <div id="${menuId}" class="menu" style="display:none">
+                  <button onclick="toggleMenu('${menuId}'); openEdit(${row});">Editar</button>
+                  <button class="danger" onclick="toggleMenu('${menuId}'); excluirLancamento(${row});">Excluir</button>
+                </div>
+              </div>
             </div>
           </div>
         `;
       });
+
     }
 
     async function carregarInvestTudo(){
