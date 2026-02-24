@@ -970,6 +970,83 @@ def invest_resumo():
 
 
 # =========================
+# EDITAR / EXCLUIR (investimentos) ✅ NOVO
+# =========================
+@app.route("/investimento/<int:row>", methods=["PATCH"])
+def editar_investimento(row: int):
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    if row < 2:
+        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
+
+    dataj = request.get_json(silent=True) or {}
+    tipo = str(dataj.get("tipo", "")).strip()  # Aporte/Retirada
+    ativo = str(dataj.get("ativo", "")).strip()
+    instituicao = str(dataj.get("instituicao", "")).strip()
+    descricao = str(dataj.get("descricao", "")).strip()
+    valor = money_to_float(dataj.get("valor"))
+    data_br = str(dataj.get("data", "")).strip()
+
+    if tipo not in ("Aporte", "Retirada"):
+        return jsonify({"ok": False, "msg": "Tipo inválido. Use Aporte ou Retirada"}), 400
+    if not ativo:
+        return jsonify({"ok": False, "msg": "Ativo é obrigatório"}), 400
+    if valor <= 0:
+        return jsonify({"ok": False, "msg": "Valor inválido"}), 400
+    if not parse_date_br(data_br):
+        return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
+
+    ws = invest_ws()
+    row_vals = ws.row_values(row)
+    headers = ws.row_values(1)
+    if not row_vals:
+        return jsonify({"ok": False, "msg": "Investimento não encontrado"}), 404
+
+    col = {h: idx + 1 for idx, h in enumerate(headers)}
+    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
+    if email_in_row != user_email.lower():
+        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
+
+    ws.update_cell(row, col["Tipo"], tipo)
+    ws.update_cell(row, col["Ativo"], ativo)
+    ws.update_cell(row, col["Instituicao"], instituicao)
+    ws.update_cell(row, col["Descricao"], descricao)
+    ws.update_cell(row, col["Valor"], f"{valor:.2f}")
+    ws.update_cell(row, col["Data"], data_br)
+
+    return jsonify({"ok": True})
+
+
+@app.route("/investimento/<int:row>", methods=["DELETE"])
+def excluir_investimento(row: int):
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    if row < 2:
+        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
+
+    ws = invest_ws()
+    headers = ws.row_values(1)
+    col = {h: idx + 1 for idx, h in enumerate(headers)}
+
+    row_vals = ws.row_values(row)
+    if not row_vals:
+        return jsonify({"ok": False, "msg": "Investimento não encontrado"}), 404
+
+    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
+    if email_in_row != user_email.lower():
+        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
+
+    ws.delete_rows(row)
+    return jsonify({"ok": True})
+
+
+# =========================
 # FILTERS + LIST (lançamentos)
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
