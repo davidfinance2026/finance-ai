@@ -25,12 +25,13 @@ SCOPES = [
 ]
 
 SHEET_ID = os.getenv("SHEET_ID", "").strip()
+
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
 RESETS_TAB = os.getenv("RESETS_TAB", "PasswordResets").strip()
 
-# NOVO: INVESTIMENTOS (Modelo A)
+# ✅ NOVO: aba de investimentos
 INVEST_TAB = os.getenv("INVEST_TAB", "Investimentos").strip()
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
@@ -70,7 +71,7 @@ USERS_HEADERS_OLD = ["Email", "PasswordHash", "Ativo", "CreatedAt"]
 
 RESETS_HEADERS = ["Email", "CodeHash", "ExpiresAt", "CreatedAt", "UsedAt"]
 
-# Investimentos (Modelo A)
+# ✅ NOVO: headers investimentos (modelo A)
 INVEST_HEADERS = ["Email", "Tipo", "Ativo", "Descrição", "Valor", "Data", "CreatedAt"]
 
 
@@ -146,13 +147,6 @@ def parse_date_br(s: str) -> Optional[date]:
         return None
 
 
-def parse_date_iso(s: str) -> Optional[date]:
-    try:
-        return datetime.strptime(str(s).strip(), "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
 def money_to_float(v: Any) -> float:
     if v is None:
         return 0.0
@@ -217,6 +211,7 @@ def match_query(item: Dict[str, Any], q: str) -> bool:
     hay = " ".join([
         str(item.get("Tipo", "")),
         str(item.get("Categoria", "")),
+        str(item.get("Ativo", "")),
         str(item.get("Descrição", "")),
         str(item.get("Data", "")),
         str(item.get("Valor", "")),
@@ -325,6 +320,7 @@ def users_ws():
         values = ws.get_all_values()
         old_rows = values[1:] if len(values) > 1 else []
 
+        # reconstruir
         ws.clear()
         ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
 
@@ -581,6 +577,7 @@ def forgot_password():
     if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "Yes"):
         return jsonify({"ok": False, "msg": "Usuário inativo."}), 403
 
+    # gera código
     code = f"{secrets.randbelow(10**6):06d}"
     code_hash = generate_password_hash(code, method="pbkdf2:sha256", salt_length=16)
 
@@ -597,6 +594,7 @@ def forgot_password():
 
 def _find_latest_valid_reset_row(ws, email: str) -> Optional[Dict[str, Any]]:
     recs = get_records(ws)
+    # mais recente primeiro
     recs.sort(key=lambda x: (str(x.get("CreatedAt", ""))), reverse=True)
     for r in recs:
         if safe_lower(r.get("Email")) != safe_lower(email):
@@ -643,10 +641,12 @@ def reset_password():
     if not code_hash or not check_password_hash(code_hash, code):
         return jsonify({"ok": False, "msg": "Código inválido ou expirado."}), 400
 
+    # atualiza senha do usuário
     uws = users_ws()
     headers = uws.row_values(1)
     col = {h: i + 1 for i, h in enumerate(headers)}
 
+    # encontra a linha do usuário
     recs = get_records(uws)
     user_row = None
     for r in recs:
@@ -659,10 +659,12 @@ def reset_password():
     new_hash = generate_password_hash(new_password, method="pbkdf2:sha256", salt_length=16)
     uws.update_cell(user_row, col["PasswordHash"], new_hash)
 
+    # marca reset como usado
     used_row = int(rr.get("_row", 0)) or None
     if used_row:
         rws.update_cell(used_row, 5, now_str())  # UsedAt col 5
 
+    # auto-login
     session["user_email"] = email
     return jsonify({"ok": True, "msg": "Senha redefinida com sucesso!", "email": email})
 
@@ -735,12 +737,12 @@ def metas_set():
 
     row = _find_meta_row(ws, email, mes, ano)
     if row:
-        ws.update_cell(row, col["MetaReceitas"], float(meta_receitas))
-        ws.update_cell(row, col["MetaGastos"], float(meta_gastos))
+        ws.update_cell(row, col["MetaReceitas"], f"{meta_receitas:.2f}")
+        ws.update_cell(row, col["MetaGastos"], f"{meta_gastos:.2f}")
         ws.update_cell(row, col["UpdatedAt"], now_str())
     else:
         ws.append_row(
-            [email, str(mes), str(ano), float(meta_receitas), float(meta_gastos), now_str(), now_str()],
+            [email, str(mes), str(ano), f"{meta_receitas:.2f}", f"{meta_gastos:.2f}", now_str(), now_str()],
             value_input_option="RAW"
         )
 
@@ -748,7 +750,7 @@ def metas_set():
 
 
 # =========================
-# LANÇAR  (FIX: Valor numérico real)
+# LANÇAR (Receita/Gasto)
 # =========================
 @app.route("/lancar", methods=["POST"])
 def lancar():
@@ -778,16 +780,247 @@ def lancar():
         data_br = date.today().strftime("%d/%m/%Y")
 
     ws = lanc_ws()
-    # ✅ SALVA VALOR COMO NÚMERO (float), não string
     ws.append_row(
-        [user_email, tipo, categoria, descricao, float(valor), data_br, now_str()],
+        [user_email, tipo, categoria, descricao, f"{valor:.2f}", data_br, now_str()],
         value_input_option="RAW"
     )
     return jsonify({"ok": True})
 
 
 # =========================
-# FILTERS + LIST
+# INVESTIMENTOS (Modelo A)
+# =========================
+@app.route("/investir", methods=["POST"])
+def investir():
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    dataj = request.get_json(silent=True) or {}
+
+    tipo = str(dataj.get("tipo", "")).strip()  # Aporte | Retirada
+    ativo = str(dataj.get("ativo", "")).strip()
+    descricao = str(dataj.get("descricao", "")).strip()
+    valor = money_to_float(dataj.get("valor"))
+    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa or ""
+
+    if tipo not in ("Aporte", "Retirada"):
+        return jsonify({"ok": False, "msg": "Tipo inválido (use Aporte ou Retirada)"}), 400
+    if not ativo:
+        return jsonify({"ok": False, "msg": "Ativo é obrigatório"}), 400
+    if not descricao:
+        return jsonify({"ok": False, "msg": "Descrição é obrigatória"}), 400
+    if valor <= 0:
+        return jsonify({"ok": False, "msg": "Valor inválido"}), 400
+
+    if data_br:
+        d = parse_date_br(data_br)
+        if not d:
+            return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
+    else:
+        data_br = date.today().strftime("%d/%m/%Y")
+
+    ws = invest_ws()
+    ws.append_row(
+        [user_email, tipo, ativo, descricao, f"{valor:.2f}", data_br, now_str()],
+        value_input_option="RAW"
+    )
+    return jsonify({"ok": True})
+
+
+def apply_filters_generic(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    month = params.get("month")
+    year = params.get("year")
+    q = params.get("q", "")
+    date_from = params.get("date_from", "")
+    date_to = params.get("date_to", "")
+    vmin = params.get("value_min", "")
+    vmax = params.get("value_max", "")
+
+    df = None
+    dt = None
+    if date_from:
+        try:
+            df = datetime.strptime(date_from, "%Y-%m-%d").date()
+        except Exception:
+            df = None
+    if date_to:
+        try:
+            dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+        except Exception:
+            dt = None
+
+    vmin_n = money_to_float(vmin) if vmin else None
+    vmax_n = money_to_float(vmax) if vmax else None
+
+    out = []
+    for it in items:
+        if q and not match_query(it, q):
+            continue
+
+        d = parse_date_br(str(it.get("Data", "")))
+        if not d:
+            continue
+
+        if month and year:
+            if not (d.month == int(month) and d.year == int(year)):
+                continue
+
+        if df and d < df:
+            continue
+        if dt and d > dt:
+            continue
+
+        val = item_value_num(it)
+        if vmin_n is not None and val < vmin_n:
+            continue
+        if vmax_n is not None and val > vmax_n:
+            continue
+
+        out.append(it)
+
+    return out
+
+
+@app.route("/investimentos")
+def investimentos_list():
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    ws = invest_ws()
+    items = get_records(ws)
+    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
+
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    q = request.args.get("q", default="", type=str)
+    order = request.args.get("order", default="recent", type=str)
+    date_from = request.args.get("date_from", default="", type=str)
+    date_to = request.args.get("date_to", default="", type=str)
+    value_min = request.args.get("value_min", default="", type=str)
+    value_max = request.args.get("value_max", default="", type=str)
+    page = request.args.get("page", default=1, type=int)
+    limit = request.args.get("limit", default=10, type=int)
+
+    filtered = apply_filters_generic(items, {
+        "month": month, "year": year, "q": q,
+        "date_from": date_from, "date_to": date_to,
+        "value_min": value_min, "value_max": value_max
+    })
+
+    def signed_value(it: Dict[str, Any]) -> float:
+        v = item_value_num(it)
+        t = str(it.get("Tipo", "")).strip()
+        return v if t == "Aporte" else -v
+
+    if order == "oldest":
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
+    elif order == "value_desc":
+        filtered.sort(key=lambda x: abs(signed_value(x)), reverse=True)
+    elif order == "value_asc":
+        filtered.sort(key=lambda x: abs(signed_value(x)))
+    else:
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
+
+    total = len(filtered)
+    limit = max(1, min(int(limit or 10), 200))
+    page = max(1, int(page or 1))
+    start = (page - 1) * limit
+    end = start + limit
+    page_items = filtered[start:end]
+
+    return jsonify({"ok": True, "total": total, "items": page_items})
+
+
+@app.route("/invest_resumo")
+def invest_resumo():
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    q = request.args.get("q", default="", type=str)
+    date_from = request.args.get("date_from", default="", type=str)
+    date_to = request.args.get("date_to", default="", type=str)
+    value_min = request.args.get("value_min", default="", type=str)
+    value_max = request.args.get("value_max", default="", type=str)
+
+    ws = invest_ws()
+    items = get_records(ws)
+    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
+
+    filtered = apply_filters_generic(items, {
+        "month": month, "year": year, "q": q,
+        "date_from": date_from, "date_to": date_to,
+        "value_min": value_min, "value_max": value_max
+    })
+
+    aportes = 0.0
+    retiradas = 0.0
+
+    por_ativo: Dict[str, float] = {}
+
+    dias_labels: List[str] = []
+    serie_aporte: List[float] = []
+    serie_retirada: List[float] = []
+    serie_saldo: List[float] = []
+
+    if month and year:
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        dias_labels = [str(d).zfill(2) for d in range(1, last_day + 1)]
+        serie_aporte = [0.0] * last_day
+        serie_retirada = [0.0] * last_day
+
+    for it in filtered:
+        t = str(it.get("Tipo", "")).strip()
+        ativo = str(it.get("Ativo", "")).strip() or "Sem ativo"
+        val = item_value_num(it)
+        d = parse_date_br(str(it.get("Data", "")))
+
+        if t == "Aporte":
+            aportes += val
+            por_ativo[ativo] = por_ativo.get(ativo, 0.0) + val
+            if month and year and d and d.month == month and d.year == year:
+                serie_aporte[d.day - 1] += val
+        else:
+            retiradas += val
+            por_ativo[ativo] = por_ativo.get(ativo, 0.0) - val
+            if month and year and d and d.month == month and d.year == year:
+                serie_retirada[d.day - 1] += val
+
+    saldo = aportes - retiradas
+
+    # saldo acumulado por dia (se mês selecionado)
+    if month and year and dias_labels:
+        acc = 0.0
+        for i in range(len(dias_labels)):
+            acc += (serie_aporte[i] or 0.0) - (serie_retirada[i] or 0.0)
+            serie_saldo.append(acc)
+
+    ativos_arr = [{"ativo": k, "saldo": v} for k, v in por_ativo.items()]
+    ativos_arr.sort(key=lambda x: x["saldo"], reverse=True)
+
+    return jsonify({
+        "ok": True,
+        "aportes": aportes,
+        "retiradas": retiradas,
+        "saldo": saldo,
+        "dias": dias_labels,
+        "serie_aporte": serie_aporte,
+        "serie_retirada": serie_retirada,
+        "serie_saldo": serie_saldo,
+        "ativos": ativos_arr[:50],
+    })
+
+
+# =========================
+# FILTERS + LIST (Receita/Gasto)
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
@@ -994,7 +1227,7 @@ def resumo():
 
 
 # =========================
-# EDITAR / EXCLUIR (FIX: Valor numérico real)
+# EDITAR / EXCLUIR (Lancamentos)
 # =========================
 @app.route("/lancamento/<int:row>", methods=["PATCH"])
 def editar_lancamento(row: int):
@@ -1034,8 +1267,7 @@ def editar_lancamento(row: int):
     ws.update_cell(row, col["Tipo"], tipo)
     ws.update_cell(row, col["Categoria"], categoria)
     ws.update_cell(row, col["Descrição"], descricao)
-    # ✅ número real
-    ws.update_cell(row, col["Valor"], float(valor))
+    ws.update_cell(row, col["Valor"], f"{valor:.2f}")
     ws.update_cell(row, col["Data"], data_br)
 
     return jsonify({"ok": True})
@@ -1068,179 +1300,7 @@ def excluir_lancamento(row: int):
 
 
 # =========================
-# INVESTIMENTOS (MODELO A)
-# =========================
-@app.route("/investir", methods=["POST"])
-def investir():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    dataj = request.get_json(silent=True) or {}
-
-    tipo = str(dataj.get("tipo", "")).strip()  # Aporte/Retirada
-    ativo = str(dataj.get("ativo", "")).strip()
-    descricao = str(dataj.get("descricao", "")).strip()
-    valor = money_to_float(dataj.get("valor"))
-    data_iso = str(dataj.get("data", "")).strip()  # YYYY-MM-DD (ideal)
-
-    if tipo not in ("Aporte", "Retirada"):
-        return jsonify({"ok": False, "msg": "Tipo inválido. Use Aporte ou Retirada."}), 400
-    if not ativo:
-        return jsonify({"ok": False, "msg": "Ativo é obrigatório."}), 400
-    if valor <= 0:
-        return jsonify({"ok": False, "msg": "Valor inválido."}), 400
-
-    d = parse_date_iso(data_iso) if data_iso else date.today()
-    if not d:
-        return jsonify({"ok": False, "msg": "Data inválida. Use YYYY-MM-DD."}), 400
-
-    ws = invest_ws()
-    ws.append_row(
-        [user_email, tipo, ativo, descricao, float(valor), d.strftime("%Y-%m-%d"), now_str()],
-        value_input_option="RAW"
-    )
-    return jsonify({"ok": True})
-
-
-@app.route("/investimentos")
-def listar_investimentos():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    ws = invest_ws()
-    items = get_records(ws)
-    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-
-    # Ordena por CreatedAt desc (string UTC funciona ok)
-    items.sort(key=lambda x: str(x.get("CreatedAt", "")), reverse=True)
-    return jsonify({"ok": True, "items": items})
-
-
-@app.route("/invest_resumo")
-def resumo_investimentos():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    ws = invest_ws()
-    items = get_records(ws)
-    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-
-    total_aportes = 0.0
-    total_retiradas = 0.0
-    saldo_por_ativo: Dict[str, float] = {}
-
-    for it in items:
-        t = str(it.get("Tipo", "")).strip()
-        ativo = str(it.get("Ativo", "")).strip() or "Sem ativo"
-        v = money_to_float(it.get("Valor", 0))
-
-        if t == "Aporte":
-            total_aportes += v
-            saldo_por_ativo[ativo] = saldo_por_ativo.get(ativo, 0.0) + v
-        elif t == "Retirada":
-            total_retiradas += v
-            saldo_por_ativo[ativo] = saldo_por_ativo.get(ativo, 0.0) - v
-
-    total_investido = sum(saldo_por_ativo.values())
-
-    # ordena por saldo desc para facilitar UI
-    saldo_sorted = sorted(
-        [{"ativo": k, "saldo": v} for k, v in saldo_por_ativo.items()],
-        key=lambda x: x["saldo"],
-        reverse=True
-    )
-
-    return jsonify({
-        "ok": True,
-        "total_investido": total_investido,
-        "total_aportes": total_aportes,
-        "total_retiradas": total_retiradas,
-        "saldo_por_ativo": saldo_sorted
-    })
-
-
-@app.route("/investimento/<int:row>", methods=["PATCH"])
-def editar_investimento(row: int):
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    if row < 2:
-        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
-
-    dataj = request.get_json(silent=True) or {}
-    tipo = str(dataj.get("tipo", "")).strip()
-    ativo = str(dataj.get("ativo", "")).strip()
-    descricao = str(dataj.get("descricao", "")).strip()
-    valor = money_to_float(dataj.get("valor"))
-    data_iso = str(dataj.get("data", "")).strip()
-
-    if tipo not in ("Aporte", "Retirada"):
-        return jsonify({"ok": False, "msg": "Tipo inválido. Use Aporte ou Retirada."}), 400
-    if not ativo:
-        return jsonify({"ok": False, "msg": "Ativo é obrigatório."}), 400
-    if valor <= 0:
-        return jsonify({"ok": False, "msg": "Valor inválido."}), 400
-    d = parse_date_iso(data_iso) if data_iso else date.today()
-    if not d:
-        return jsonify({"ok": False, "msg": "Data inválida. Use YYYY-MM-DD."}), 400
-
-    ws = invest_ws()
-    headers = ws.row_values(1)
-    col = {h: idx + 1 for idx, h in enumerate(headers)}
-
-    row_vals = ws.row_values(row)
-    if not row_vals:
-        return jsonify({"ok": False, "msg": "Investimento não encontrado"}), 404
-
-    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
-    if email_in_row != user_email.lower():
-        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
-
-    ws.update_cell(row, col["Tipo"], tipo)
-    ws.update_cell(row, col["Ativo"], ativo)
-    ws.update_cell(row, col["Descrição"], descricao)
-    ws.update_cell(row, col["Valor"], float(valor))
-    ws.update_cell(row, col["Data"], d.strftime("%Y-%m-%d"))
-
-    return jsonify({"ok": True})
-
-
-@app.route("/investimento/<int:row>", methods=["DELETE"])
-def excluir_investimento(row: int):
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    if row < 2:
-        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
-
-    ws = invest_ws()
-    headers = ws.row_values(1)
-    col = {h: idx + 1 for idx, h in enumerate(headers)}
-
-    row_vals = ws.row_values(row)
-    if not row_vals:
-        return jsonify({"ok": False, "msg": "Investimento não encontrado"}), 404
-
-    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
-    if email_in_row != user_email.lower():
-        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
-
-    ws.delete_rows(row)
-    return jsonify({"ok": True})
-
-
-# =========================
-# EXPORT CSV (LANÇAMENTOS)
+# EXPORT CSV (Lancamentos)
 # =========================
 @app.route("/export.csv")
 def export_csv():
@@ -1287,33 +1347,6 @@ def export_csv():
     resp = make_response(out.getvalue())
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
     resp.headers["Content-Disposition"] = "attachment; filename=finance-ai.csv"
-    return resp
-
-
-# =========================
-# EXPORT CSV (INVESTIMENTOS)
-# =========================
-@app.route("/export_invest.csv")
-def export_invest_csv():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    ws = invest_ws()
-    items = get_records(ws)
-    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-    items.sort(key=lambda x: str(x.get("CreatedAt", "")), reverse=True)
-
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(["Tipo", "Ativo", "Descrição", "Valor", "Data"])
-    for it in items:
-        w.writerow([it.get("Tipo", ""), it.get("Ativo", ""), it.get("Descrição", ""), it.get("Valor", ""), it.get("Data", "")])
-
-    resp = make_response(out.getvalue())
-    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
-    resp.headers["Content-Disposition"] = "attachment; filename=finance-ai-investimentos.csv"
     return resp
 
 
