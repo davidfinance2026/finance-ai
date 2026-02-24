@@ -1,27 +1,70 @@
 {
-  "id": "/?source=pwa",
   "name": "Finance AI",
-  "short_name": "Finance AI",
-  "description": "Controle financeiro simples e rápido.",
+  "short_name": "FinanceAI",
+  "description": "Controle financeiro com dashboard, metas e investimentos.",
   "lang": "pt-BR",
+  "dir": "ltr",
+
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+
   "background_color": "#0b1020",
   "theme_color": "#0b1020",
+
+  "orientation": "portrait-primary",
+
   "icons": [
     {
       "src": "/static/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/static/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+
+  "categories": ["finance", "productivity", "utilities"],
+
+  "shortcuts": [
+    {
+      "name": "Novo lançamento",
+      "short_name": "Lançar",
+      "description": "Criar um novo gasto/receita",
+      "url": "/?tab=lancar",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dash",
+      "description": "Abrir o dashboard do mês",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Investir",
+      "short_name": "Investir",
+      "description": "Registrar aporte/resgate/rendimento",
+      "url": "/?tab=investir",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
