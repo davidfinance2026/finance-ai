@@ -1108,6 +1108,59 @@
     </div>
   </div>
 
+  <!-- INVEST EDIT MODAL -->
+  <div class="backdrop" id="invEditBack" style="display:none">
+    <div class="modal">
+      <div class="modalHead">
+        <div class="modalTitle">Editar investimento</div>
+        <button class="iconBtn" onclick="closeInvEdit()">✕</button>
+      </div>
+
+      <input type="hidden" id="invEditRow" value=""/>
+
+      <div class="segWrap" style="margin-top:10px">
+        <div class="seg">
+          <button id="invEditTipoAporte" class="segBtn on" onclick="setInvEditTipo('Aporte')">Aporte</button>
+          <button id="invEditTipoRetirada" class="segBtn" onclick="setInvEditTipo('Retirada')">Retirada</button>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:14px">
+        <div>
+          <label class="lbl">Ativo</label>
+          <input id="invEditAtivo" class="in" placeholder="Ex: Tesouro Selic, PETR4, BTC"/>
+        </div>
+        <div>
+          <label class="lbl">Instituição</label>
+          <input id="invEditInstituicao" class="in" placeholder="Ex: Nubank, Inter, XP..."/>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <label class="lbl">Descrição</label>
+        <input id="invEditDescricao" class="in" placeholder="Ex: aporte mensal"/>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div>
+          <label class="lbl">Valor</label>
+          <input id="invEditValor" class="in" inputmode="decimal" placeholder="Ex: 500,00"/>
+        </div>
+        <div>
+          <label class="lbl">Data</label>
+          <input id="invEditData" class="in" type="date"/>
+        </div>
+      </div>
+
+      <div class="modalActions" style="margin-top:16px">
+        <button class="btn ghost" onclick="closeInvEdit()">Cancelar</button>
+        <button class="btn" onclick="saveInvEdit()">Salvar alterações</button>
+      </div>
+    </div>
+  </div>
+  <!-- /INVEST EDIT MODAL -->
+
+
   <!-- Chart local (SEM CDN) -->
   <script src="/static/vendor/chart.umd.min.js"></script>
 
@@ -2294,27 +2347,22 @@
         const menuId = `m_${row}_${idx}`;
 
         lista.innerHTML += `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">${iconFor(item)}</div>
-              <div class="meta">
-                <b>${tipo} • ${categoria}</b>
-                <span>${descricao} • ${data}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; align-items:center;">
-              <div class="value ${valueClass(item)}">${showVal}</div>
-              <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
-            </div>
-
-            <div class="menu" id="${menuId}">
-              <button onclick='openEdit("${encoded}"); closeAllItemMenus();'>✏️ Editar</button>
-              <button class="dangerItem" onclick="excluirLancamento(${row}); closeAllItemMenus();">🗑 Excluir</button>
+        <div class="item">
+          <div class="l">
+            <div class="t">${it.Tipo} • ${it.Ativo}</div>
+            <div class="s">${(it.Instituicao||"")} • ${(it.Descricao||"")} • ${(it.Data||"")}</div>
+          </div>
+          <div class="r">
+            <div class="value ${it.Tipo==="Aporte" ? "green":"red"}">R$ ${fmtMoneyBr(val)}</div>
+            <button class="kebab" onclick="toggleMenu('inv_menu_${it._row}'); event.stopPropagation()">⋯</button>
+            <div class="menu" id="inv_menu_${it._row}">
+              <button onclick="openInvEdit('${encoded}')">Editar</button>
+              <button class="danger" onclick="deleteInv(${it._row})">Excluir</button>
             </div>
           </div>
-        `;
-      });
+        </div>
+      `;
+    });
     }
 
     async function carregarTudo(){
@@ -2526,6 +2574,101 @@
         alert("❌ " + (j.msg || "Erro ao excluir"));
         return;
       }
+
+  // =========================
+  // INVESTIMENTOS: EDITAR / EXCLUIR
+  // =========================
+  function isoFromBR(br){
+    const s = String(br||"").trim();
+    if(!s) return "";
+    const parts = s.split("/");
+    if(parts.length!==3) return "";
+    const [dd,mm,yy] = parts;
+    return `${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+  }
+
+  let _invEditTipo = "Aporte";
+
+  function setInvEditTipo(t){
+    _invEditTipo = t === "Retirada" ? "Retirada" : "Aporte";
+    const bA = document.getElementById("invEditTipoAporte");
+    const bR = document.getElementById("invEditTipoRetirada");
+    if(bA && bR){
+      bA.classList.toggle("on", _invEditTipo==="Aporte");
+      bR.classList.toggle("on", _invEditTipo==="Retirada");
+    }
+  }
+
+  function openInvEdit(encoded){
+    closeAllItemMenus();
+    try{
+      const it = JSON.parse(decodeURIComponent(encoded));
+      document.getElementById("invEditRow").value = String(it._row||"");
+      setInvEditTipo(String(it.Tipo||"Aporte").trim()==="Retirada" ? "Retirada" : "Aporte");
+      document.getElementById("invEditAtivo").value = String(it.Ativo||"");
+      document.getElementById("invEditInstituicao").value = String(it.Instituicao||"");
+      document.getElementById("invEditDescricao").value = String(it.Descricao||"");
+      document.getElementById("invEditValor").value = fmtMoneyBr(parseMoneyBR(it.Valor||0));
+      document.getElementById("invEditData").value = isoFromBR(it.Data||"");
+      document.getElementById("invEditBack").style.display = "flex";
+    }catch(e){
+      toast("Não foi possível abrir edição", true);
+    }
+  }
+
+  function closeInvEdit(){
+    const back = document.getElementById("invEditBack");
+    if(back) back.style.display = "none";
+  }
+
+  async function saveInvEdit(){
+    const row = Number(document.getElementById("invEditRow").value || 0);
+    if(!row || row < 2) return toast("Linha inválida", true);
+
+    const ativo = String(document.getElementById("invEditAtivo").value||"").trim();
+    const instituicao = String(document.getElementById("invEditInstituicao").value||"").trim();
+    const descricao = String(document.getElementById("invEditDescricao").value||"").trim();
+    const valor = parseMoneyBR(document.getElementById("invEditValor").value);
+    const dataIso = String(document.getElementById("invEditData").value||"").trim();
+    const data = formatBRfromISO(dataIso);
+
+    if(!ativo) return toast("Ativo é obrigatório", true);
+    if(!(valor>0)) return toast("Valor inválido", true);
+    if(!data) return toast("Data inválida", true);
+
+    try{
+      const payload = { tipo: _invEditTipo, ativo, instituicao, descricao, valor, data };
+      const res = await apiFetch(`/investimento/${row}`, { method:"PATCH", body: JSON.stringify(payload) });
+      if(!res.ok){
+        const j = await res.json().catch(()=>({}));
+        return toast(j.msg || "Erro ao salvar edição", true);
+      }
+      closeInvEdit();
+      toast("Investimento atualizado!");
+      await carregarInvestResumo();
+      await carregarInvestList();
+    }catch(e){
+      toast("Erro ao salvar edição", true);
+    }
+  }
+
+  async function deleteInv(row){
+    closeAllItemMenus();
+    if(!confirm("Excluir este investimento?")) return;
+    try{
+      const res = await apiFetch(`/investimento/${row}`, { method:"DELETE" });
+      if(!res.ok){
+        const j = await res.json().catch(()=>({}));
+        return toast(j.msg || "Erro ao excluir", true);
+      }
+      toast("Investimento excluído!");
+      await carregarInvestResumo();
+      await carregarInvestList();
+    }catch(e){
+      toast("Erro ao excluir", true);
+    }
+  }
+
       await carregarTudo();
       await atualizarDashboard();
     }
