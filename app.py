@@ -2,13 +2,33 @@ import os
 import csv
 import io
 import secrets
-from functools import wraps
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from functools import wraps
+
+
+def require_login(fn=None):
+    """Decorator para proteger rotas. Use como @require_login ou @require_login()."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if not session.get("user_email"):
+                # Para chamadas de API, retorna JSON; para páginas, redireciona
+                if request.path.startswith("/api/"):
+                    return jsonify({"ok": False, "error": "not_authenticated"}), 401
+                return redirect(url_for("index", _external=False) + "?login=1")
+            return f(*args, **kwargs)
+        return wrapper
+
+    if callable(fn):
+        return decorator(fn)
+    return decorator
+
+
 from flask import (
     Flask, request, jsonify, session, render_template,
-    send_from_directory, make_response, redirect, url_for
+    send_from_directory, make_response
 )
 
 import gspread
@@ -109,74 +129,16 @@ def open_spread():
 
 
 def ensure_worksheet(spread, title: str, headers: List[str]):
-    """
-    Garante que a aba existe e que a primeira linha contém os headers esperados.
-
-    ⚠️ Importante:
-    - Esta função NÃO apaga dados automaticamente quando há mismatch de header.
-    - Se detectar header diferente e existir conteúdo, faz migração "best effort" preservando linhas.
-    - Só limpa se a aba estiver vazia (sem dados) ou tiver apenas cabeçalho.
-    """
     try:
         ws = spread.worksheet(title)
     except gspread.WorksheetNotFound:
         ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
-        ws.append_row(headers, value_input_option="RAW")
-        return ws
 
-    values = ws.get_all_values() or []
-    existing = [h.strip() for h in (values[0] if values else [])]
-
-    # Se vazio: só grava header
-    if not values:
+    existing = ws.row_values(1)
+    # Aqui NÃO apagamos automaticamente se for Users — para Users faremos migração segura.
+    if title != USERS_TAB and [h.strip() for h in existing] != headers:
         ws.clear()
         ws.append_row(headers, value_input_option="RAW")
-        return ws
-
-    # Se bate, ok
-    if [h.strip() for h in existing] == headers:
-        return ws
-
-    # Se só tem 1 linha (header) e nada mais, pode resetar seguro
-    if len(values) <= 1:
-        ws.clear()
-        ws.append_row(headers, value_input_option="RAW")
-        return ws
-
-    # Migração: mapear colunas por similaridade (case-insensitive, sem acento)
-    import unicodedata
-    import re as _re
-
-    def _norm(h: str) -> str:
-        s = str(h or "").strip().lower()
-        s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
-        s = _re.sub(r"\s+", "", s)
-        return s
-
-    norm_existing = [_norm(h) for h in existing]
-    norm_target = [_norm(h) for h in headers]
-
-    # mapa target -> idx existing (ou -1)
-    idx_map = []
-    for t in norm_target:
-        try:
-            idx_map.append(norm_existing.index(t))
-        except ValueError:
-            idx_map.append(-1)
-
-    data_rows = values[1:]
-    new_rows = []
-    for r in data_rows:
-        nr = []
-        for i in idx_map:
-            nr.append(r[i] if i >= 0 and i < len(r) else "")
-        new_rows.append(nr)
-
-    # Regrava mantendo dados
-    ws.clear()
-    ws.append_row(headers, value_input_option="RAW")
-    if new_rows:
-        ws.append_rows(new_rows, value_input_option="RAW")
     return ws
 
 
@@ -197,35 +159,127 @@ def is_admin_email(email: str) -> bool:
     return safe_lower(email) == safe_lower(APP_EMAIL)
 
 
-def _require_login_guard() -> Optional[Tuple[Dict[str, Any], int]]:
-    """Guard helper. Returns (payload, status_code) when not authenticated, else None."""
+def require_login_guard():
     if not session.get("user_email"):
-        return ({"ok": False, "error": "not_authenticated"}, 401)
+        return {"ok": False, "msg": "Não autenticado"}, 401
     return None
 
 
-def require_login(fn=None):
-    """Use as guard (require_login()) or decorator (@require_login)."""
-    # Guard mode
-    if fn is None:
-        return _require_login_guard()
-
-    # Decorator mode
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        guard = _require_login_guard()
-        if guard:
-            payload, status = guard
-            accept = (request.headers.get("Accept") or "").lower()
-            # If a browser asks for HTML, go back to the home page.
-            if "text/html" in accept and not request.path.startswith("/api/"):
-                return redirect(url_for("index"))
-            return jsonify(payload), status
-        return fn(*args, **kwargs)
-
-    return wrapper
+def parse_date_br(s: str) -> Optional[date]:
+    try:
+        d, m, y = s.strip().split("/")
+        return date(int(y), int(m), int(d))
+    except Exception:
+        return None
 
 
+def money_to_float(v: Any) -> float:
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+
+    s = str(v).strip()
+    if not s:
+        return 0.0
+
+    s = s.replace("R$", "").strip()
+
+    has_comma = "," in s
+    has_dot = "." in s
+
+    if has_comma and has_dot:
+        # pt-BR: 1.234,56
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif has_comma:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", "")
+
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def to_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
+
+
+def current_month_year() -> Tuple[int, int]:
+    today = date.today()
+    return today.month, today.year
+
+
+def get_records(ws) -> List[Dict[str, Any]]:
+    values = ws.get_all_values()
+    if not values or len(values) < 2:
+        return []
+    headers = values[0]
+    out = []
+    for i, row in enumerate(values[1:], start=2):
+        item = {headers[j]: row[j] if j < len(row) else "" for j in range(len(headers))}
+        item["_row"] = i
+        out.append(item)
+    return out
+
+
+def match_query(item: Dict[str, Any], q: str, keys: Optional[List[str]] = None) -> bool:
+    if not q:
+        return True
+    ql = q.lower()
+    if not keys:
+        keys = ["Tipo", "Categoria", "Descrição", "Data", "Valor"]
+    hay = " ".join([str(item.get(k, "")) for k in keys]).lower()
+    return ql in hay
+
+
+def item_value_num(item: Dict[str, Any], key: str = "Valor") -> float:
+    return money_to_float(item.get(key, 0))
+
+
+def item_date_num(item: Dict[str, Any], key: str = "Data") -> int:
+    d = parse_date_br(str(item.get(key, "")))
+    if not d:
+        return 0
+    return int(d.strftime("%Y%m%d"))
+
+
+def normalize_phone_br(raw: str) -> Optional[str]:
+    digits = "".join([c for c in str(raw or "") if c.isdigit()])
+    if len(digits) not in (10, 11):
+        return None
+
+    ddd = digits[:2]
+    rest = digits[2:]
+
+    if len(rest) == 8:  # fixo
+        return f"({ddd}) {rest[:4]}-{rest[4:]}"
+    # móvel (9XXXX-XXXX)
+    return f"({ddd}) {rest[:5]}-{rest[5:]}"
+
+
+def utc_plus_minutes_str(minutes: int) -> str:
+    return (datetime.utcnow() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def parse_utc_str(s: str) -> Optional[datetime]:
+    try:
+        return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+# =========================
+# STATIC (PWA) - correct MIME
+# =========================
+@app.route("/static/<path:filename>")
 def static_files(filename):
     resp = send_from_directory(app.static_folder, filename)
 
@@ -350,30 +404,42 @@ def users_ws():
 
 def lanc_ws():
     spread = open_spread()
-    return ensure_worksheet(
-        spread,
-        SHEET_TAB,
-        headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
-    )
+    ws = ensure_worksheet(spread, SHEET_TAB, headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"])
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != ["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]:
+        ws.clear()
+        ws.append_row(["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"], value_input_option="RAW")
+    return ws
 
 
 def metas_ws():
     spread = open_spread()
-    return ensure_worksheet(
-        spread,
-        METAS_TAB,
-        headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
-    )
+    ws = ensure_worksheet(spread, METAS_TAB, headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"])
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != ["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]:
+        ws.clear()
+        ws.append_row(["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"], value_input_option="RAW")
+    return ws
 
 
 def resets_ws():
     spread = open_spread()
-    return ensure_worksheet(spread, RESETS_TAB, headers=RESETS_HEADERS)
+    ws = ensure_worksheet(spread, RESETS_TAB, headers=RESETS_HEADERS)
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != RESETS_HEADERS:
+        ws.clear()
+        ws.append_row(RESETS_HEADERS, value_input_option="RAW")
+    return ws
 
 
 def invest_ws():
     spread = open_spread()
-    return ensure_worksheet(spread, INVEST_TAB, headers=INVEST_HEADERS)
+    ws = ensure_worksheet(spread, INVEST_TAB, headers=INVEST_HEADERS)
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != INVEST_HEADERS:
+        ws.clear()
+        ws.append_row(INVEST_HEADERS, value_input_option="RAW")
+    return ws
 
 
 def ensure_admin_bootstrap():
@@ -627,7 +693,7 @@ def _get_meta(email: str, mes: int, ano: int) -> Dict[str, Any]:
 
 @app.route("/metas", methods=["GET"])
 def metas_get():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -643,7 +709,7 @@ def metas_get():
 
 @app.route("/metas", methods=["POST"])
 def metas_set():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -683,7 +749,7 @@ def metas_set():
 # =========================
 @app.route("/lancar", methods=["POST"])
 def lancar():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -718,7 +784,7 @@ def lancar():
 # =========================
 @app.route("/investir", methods=["POST"])
 def investir():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -820,7 +886,7 @@ def apply_invest_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) ->
 
 @app.route("/investimentos")
 def investimentos_list():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -873,7 +939,7 @@ def invest_resumo():
     """
     Resumo simples: total aportado, total retirado, saldo líquido e saldo por ativo.
     """
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -929,7 +995,7 @@ def invest_resumo():
 # =========================
 @app.route("/investimento/<int:row>", methods=["PATCH"])
 def editar_investimento(row: int):
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -977,7 +1043,7 @@ def editar_investimento(row: int):
 
 @app.route("/investimento/<int:row>", methods=["DELETE"])
 def excluir_investimento(row: int):
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -1065,7 +1131,7 @@ def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[D
 
 @app.route("/ultimos")
 def ultimos():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -1189,7 +1255,7 @@ def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], t
 
 @app.route("/resumo")
 def resumo():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -1213,7 +1279,7 @@ def resumo():
 # =========================
 @app.route("/lancamento/<int:row>", methods=["PATCH"])
 def editar_lancamento(row: int):
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -1257,7 +1323,7 @@ def editar_lancamento(row: int):
 
 @app.route("/lancamento/<int:row>", methods=["DELETE"])
 def excluir_lancamento(row: int):
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
@@ -1286,7 +1352,7 @@ def excluir_lancamento(row: int):
 # =========================
 @app.route("/export.csv")
 def export_csv():
-    guard = require_login()
+    guard = require_login_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
 
