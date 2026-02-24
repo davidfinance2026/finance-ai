@@ -17,6 +17,7 @@
       --bg0:#070b16;
       --bg1:#0b1020;
       --card: rgba(255,255,255,.06);
+      --card2: rgba(255,255,255,.045);
       --border: rgba(255,255,255,.08);
       --text:#eef3ff;
       --muted:#aebad9;
@@ -57,7 +58,6 @@
     .brand span{ display:block; margin-top:4px; color:var(--muted); font-size:13px; }
 
     .top-actions{ display:flex; gap:10px; align-items:center; }
-
     .pill{
       padding:10px 12px;
       border:1px solid var(--border);
@@ -144,13 +144,10 @@
     .row>*{flex:1}
 
     .seg{
-      display:flex;
-      gap:10px;
-      padding:6px;
+      display:flex; gap:10px; padding:6px;
       background: rgba(255,255,255,.04);
       border:1px solid var(--border);
       border-radius:999px;
-      margin-top:10px;
     }
     .seg button{
       flex:1;
@@ -244,7 +241,9 @@
       display:flex; gap:10px; align-items:center; justify-content:space-between;
       margin:10px 0 0 0;
     }
-    .barRow .left{ display:flex; gap:10px; align-items:center; }
+    .barRow .left{
+      display:flex; gap:10px; align-items:center;
+    }
 
     .chipBtn{
       border:1px solid var(--border);
@@ -298,8 +297,12 @@
     }
     tr:last-child td{border-bottom:none;}
 
-    .list{ margin-top:12px; display:flex; flex-direction:column; gap:10px; }
-
+    .list{
+      margin-top:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
     .item{
       background: rgba(10,16,32,.48);
       border:1px solid rgba(255,255,255,.07);
@@ -311,7 +314,6 @@
       gap:10px;
       position:relative;
     }
-
     .itemLeft{
       display:flex; gap:10px; align-items:center;
       flex:1;
@@ -342,7 +344,6 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
-
     .value{
       font-weight:900;
       font-size:14px;
@@ -430,7 +431,12 @@
       user-select:none;
     }
 
-    .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
+    .hint{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12px;
+      opacity:.9;
+    }
 
     .backdrop{
       position:fixed; inset:0;
@@ -441,6 +447,7 @@
       padding:16px;
       z-index:9999;
     }
+
     .sheet{
       width:min(560px, 100%);
       background: rgba(10,16,32,.92);
@@ -453,6 +460,7 @@
       max-height: 86vh;
       overflow:auto;
     }
+
     .sheetTop{
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       margin-bottom:8px;
@@ -509,7 +517,6 @@
 
 <body>
   <div class="app">
-
     <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
@@ -656,7 +663,6 @@
         <div id="alertsBox" class="hint">Carregando…</div>
       </div>
     </div>
-
   </div>
 
   <!-- ===== LOGIN / SIGNUP SHEET ===== -->
@@ -664,79 +670,57 @@
     <div class="sheet">
       <div class="sheetTop">
         <div>
-          <h2>🔒 Acesso</h2>
-          <p>Entre com sua conta ou crie uma nova.</p>
+          <h2 id="authTitle">🔒 Login</h2>
+          <p id="authSubtitle">Entre com seu e-mail e senha.</p>
         </div>
         <button class="xBtn" onclick="closeLogin()">✕</button>
       </div>
 
-      <div class="seg">
+      <div class="seg" style="margin-top:6px;">
         <button id="loginModeBtn" class="active" onclick="setAuthMode('login')">Entrar</button>
         <button id="signupModeBtn" onclick="setAuthMode('signup')">Criar conta</button>
       </div>
 
-      <!-- LOGIN fields -->
+      <!-- signup fields -->
+      <div id="signupFields" style="display:none;">
+        <label>Nome / Apelido</label>
+        <input id="suNick" placeholder="Ex: David" />
+
+        <label>Nome completo</label>
+        <input id="suFull" placeholder="Ex: David Ferreira" />
+
+        <label>Telefone (DDD + número)</label>
+        <input id="suPhone" inputmode="numeric" placeholder="(31) 9XXXX-XXXX" />
+      </div>
+
       <label>E-mail</label>
       <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
 
       <label>Senha</label>
       <input id="loginPwd" type="password" placeholder="Sua senha" />
 
-      <!-- SIGNUP fields -->
-      <div id="signupFields" style="display:none;">
-        <label>Nome/apelido</label>
-        <input id="suNick" placeholder="Ex: David" />
-
-        <label>Nome completo</label>
-        <input id="suFull" placeholder="Ex: David Ferreira" />
-
-        <label>Número de telefone</label>
-        <input id="suPhone" inputmode="tel" placeholder="(31) 9xxxx-xxxx" />
+      <div id="confirmPwdWrap" style="display:none;">
+        <label>Confirmar senha</label>
+        <input id="signupPwd2" type="password" placeholder="Repita a senha" />
       </div>
 
       <div class="actions" style="margin-top:12px;">
-        <button class="btn" id="authPrimaryBtn" onclick="handleAuthPrimary()">Entrar</button>
+        <button class="btn" id="authPrimaryBtn" onclick="doAuth()">Entrar</button>
         <button class="btn secondary" onclick="doLogout()">Sair</button>
       </div>
 
       <div id="loginMsg" class="msg"></div>
-      <div class="hint">Senha mínima recomendada: 6 caracteres.</div>
+      <div class="hint">Você pode criar sua conta sem depender do admin.</div>
     </div>
   </div>
 
-  <!-- ===== CREATE USER (ADMIN) SHEET ===== -->
-  <div class="backdrop" id="createUserBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>➕ Criar usuário (Admin)</h2>
-          <p>Cria usuário manualmente.</p>
-        </div>
-        <button class="xBtn" onclick="closeCreateUser()">✕</button>
-      </div>
-
-      <label>E-mail do usuário</label>
-      <input id="cuEmail" type="email" placeholder="cliente@dominio.com" />
-
-      <label>Senha do usuário</label>
-      <input id="cuPwd" type="password" placeholder="Senha do usuário" />
-
-      <div class="actions" style="margin-top:12px;">
-        <button class="btn" onclick="doCreateUser()">Criar</button>
-        <button class="btn secondary" onclick="closeCreateUser()">Cancelar</button>
-      </div>
-
-      <div id="createUserMsg" class="msg"></div>
-    </div>
-  </div>
-
-  <!-- ===== FILTERS SHEET ===== -->
+  <!-- ===== FILTERS BOTTOM SHEET ===== -->
   <div class="backdrop" id="filtersBack">
     <div class="sheet">
       <div class="sheetTop">
         <div>
           <h2>⚙️ Filtros</h2>
-          <p>Escolha mês/ano e refine.</p>
+          <p>Escolha mês/ano e refine a lista.</p>
         </div>
         <button class="xBtn" onclick="closeFilters()">✕</button>
       </div>
@@ -824,10 +808,12 @@
           <button class="btn secondary" onclick="exportar('pdf')">⬇ Exportar PDF</button>
         </div>
       </div>
+
+      <div class="hint">Dica: filtros ficam aqui pra manter a tela limpa.</div>
     </div>
   </div>
 
-  <!-- ===== EDIT SHEET ===== -->
+  <!-- EDIT SHEET -->
   <div class="backdrop" id="editBack">
     <div class="sheet">
       <div class="sheetTop">
@@ -877,27 +863,10 @@
 
   <script>
     // =========================
-    // URL TAB (/?tab=dashboard) or (#dashboard)
-    // =========================
-    function getTabFromURL(){
-      const p = new URLSearchParams(location.search);
-      const qtab = (p.get("tab") || "").toLowerCase().trim();
-      const htab = (location.hash || "").replace("#","").toLowerCase().trim();
-      const t = qtab || htab;
-      if(["lancar","ultimos","dashboard"].includes(t)) return t;
-      return "lancar";
-    }
-
-    function setTabInURL(tab){
-      const url = new URL(location.href);
-      url.searchParams.set("tab", tab);
-      url.hash = tab;
-      history.replaceState({}, "", url.toString());
-    }
-
-    // =========================
     // AUTH
     // =========================
+    let AUTH_MODE = "login";
+
     function setPillText(isOn){
       const pill = document.getElementById("statusPill");
       pill.textContent = isOn ? "🔓 Conectado" : "🔒 Login";
@@ -906,7 +875,6 @@
     function openLogin(){
       document.getElementById("loginBack").style.display = "flex";
       setLoginMsg("", "");
-      setAuthMode("login");
     }
     function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
 
@@ -950,6 +918,31 @@
       setLoginMsg("err", "❌ Faça login para continuar.");
     }
 
+    function setAuthMode(mode){
+      AUTH_MODE = mode;
+
+      document.getElementById("loginModeBtn").classList.toggle("active", mode==="login");
+      document.getElementById("signupModeBtn").classList.toggle("active", mode==="signup");
+
+      document.getElementById("signupFields").style.display = (mode==="signup") ? "block" : "none";
+      document.getElementById("confirmPwdWrap").style.display = (mode==="signup") ? "block" : "none";
+
+      document.getElementById("authTitle").textContent = (mode==="signup") ? "✨ Criar conta" : "🔒 Login";
+      document.getElementById("authSubtitle").textContent = (mode==="signup")
+        ? "Crie sua conta para acessar seus lançamentos."
+        : "Entre com seu e-mail e senha.";
+
+      const btn = document.getElementById("authPrimaryBtn");
+      btn.textContent = (mode==="signup") ? "Criar conta" : "Entrar";
+
+      setLoginMsg("", "");
+    }
+
+    async function doAuth(){
+      if(AUTH_MODE === "signup") return doSignup();
+      return doLogin();
+    }
+
     async function doLogin(){
       const email = (document.getElementById("loginEmail").value || "").trim();
       const password = (document.getElementById("loginPwd").value || "").trim();
@@ -983,41 +976,72 @@
       try{ await apiFetch("/logout", { method:"POST" }); }catch(e){}
       await refreshAuthUI();
       openLogin();
+      setAuthMode("login");
       setLoginMsg("ok", "✅ Você saiu.");
     }
 
     // =========================
-    // SIGNUP (SELF REGISTER)
+    // SIGNUP helpers
     // =========================
-    let AUTH_MODE = "login";
+    function onlyDigits(s){ return String(s||"").replace(/\D/g,""); }
 
-    function setAuthMode(mode){
-      AUTH_MODE = mode;
+    function maskPhoneBR(value){
+      const d = onlyDigits(value).slice(0,11);
+      if(d.length <= 2) return d ? `(${d}` : "";
+      const ddd = d.slice(0,2);
+      const rest = d.slice(2);
 
-      document.getElementById("loginModeBtn").classList.toggle("active", mode==="login");
-      document.getElementById("signupModeBtn").classList.toggle("active", mode==="signup");
+      if(rest.length <= 4) return `(${ddd}) ${rest}`;
+      if(rest.length <= 8) return `(${ddd}) ${rest.slice(0,4)}-${rest.slice(4)}`;
 
-      document.getElementById("signupFields").style.display = (mode==="signup") ? "block" : "none";
-
-      const btn = document.getElementById("authPrimaryBtn");
-      btn.textContent = (mode==="signup") ? "Criar conta" : "Entrar";
+      return `(${ddd}) ${rest.slice(0,5)}-${rest.slice(5,9)}`;
     }
 
-    async function handleAuthPrimary(){
-      if(AUTH_MODE === "signup") return doSignup();
-      return doLogin();
+    function wirePhoneMask(){
+      const el = document.getElementById("suPhone");
+      if(!el) return;
+
+      const handler = () => {
+        const start = el.selectionStart || 0;
+        const before = el.value;
+        el.value = maskPhoneBR(el.value);
+        const diff = el.value.length - before.length;
+        const pos = Math.max(0, start + diff);
+        try{ el.setSelectionRange(pos, pos); }catch(e){}
+      };
+
+      el.addEventListener("input", handler);
+      el.addEventListener("blur", handler);
+    }
+
+    function validatePhoneDigits(phone){
+      const d = onlyDigits(phone);
+      return d.length === 10 || d.length === 11;
     }
 
     async function doSignup(){
-      const email = (document.getElementById("loginEmail").value || "").trim().toLowerCase();
-      const password = (document.getElementById("loginPwd").value || "").trim();
-
       const nome_apelido = (document.getElementById("suNick").value || "").trim();
       const nome_completo = (document.getElementById("suFull").value || "").trim();
       const telefone = (document.getElementById("suPhone").value || "").trim();
 
-      if(!nome_apelido || !nome_completo || !telefone || !email || !password){
+      const email = (document.getElementById("loginEmail").value || "").trim().toLowerCase();
+      const password = (document.getElementById("loginPwd").value || "").trim();
+      const confirm_password = (document.getElementById("signupPwd2").value || "").trim();
+
+      if(!nome_apelido || !nome_completo || !telefone || !email || !password || !confirm_password){
         setLoginMsg("err", "❌ Preencha todos os campos do cadastro.");
+        return;
+      }
+      if(password.length < 6){
+        setLoginMsg("err", "❌ Senha muito curta (mín. 6 caracteres).");
+        return;
+      }
+      if(password !== confirm_password){
+        setLoginMsg("err", "❌ As senhas não conferem.");
+        return;
+      }
+      if(!validatePhoneDigits(telefone)){
+        setLoginMsg("err", "❌ Telefone inválido. Use DDD + número (10 ou 11 dígitos).");
         return;
       }
 
@@ -1025,7 +1049,7 @@
         const r = await apiFetch("/signup", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ nome_apelido, nome_completo, telefone, email, password })
+          body: JSON.stringify({ nome_apelido, nome_completo, telefone, email, password, confirm_password })
         });
 
         const j = await r.json().catch(()=> ({}));
@@ -1035,9 +1059,11 @@
         await refreshAuthUI();
         closeLogin();
 
+        // limpa campos
         document.getElementById("suNick").value = "";
         document.getElementById("suFull").value = "";
         document.getElementById("suPhone").value = "";
+        document.getElementById("signupPwd2").value = "";
 
         await carregarTudo();
         await atualizarDashboard();
@@ -1047,60 +1073,11 @@
     }
 
     // =========================
-    // CREATE USER (ADMIN)
-    // =========================
-    function openCreateUser(){
-      document.getElementById("createUserBack").style.display = "flex";
-      setCreateUserMsg("", "");
-    }
-    function closeCreateUser(){
-      document.getElementById("createUserBack").style.display = "none";
-    }
-
-    function setCreateUserMsg(kind, text){
-      const el = document.getElementById("createUserMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    async function doCreateUser(){
-      const email = (document.getElementById("cuEmail").value || "").trim().toLowerCase();
-      const password = (document.getElementById("cuPwd").value || "").trim();
-
-      if(!email || !password){
-        setCreateUserMsg("err", "❌ Informe e-mail e senha do usuário.");
-        return;
-      }
-
-      try{
-        const r = await apiFetch("/create_user", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ email, password })
-        });
-
-        if(r.status === 401){ mustLogin(); return; }
-
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao criar usuário");
-
-        setCreateUserMsg("ok", "✅ " + (j.msg || "Usuário criado!"));
-        document.getElementById("cuEmail").value = "";
-        document.getElementById("cuPwd").value = "";
-      }catch(e){
-        setCreateUserMsg("err", "❌ " + e.message);
-      }
-    }
-
-    // =========================
     // FILTERS SHEET
     // =========================
-    function openFilters(){
+    function openFilters(fromDashboard=false){
       document.getElementById("filtersBack").style.display = "flex";
+      if(fromDashboard) setTitleMov();
     }
     function closeFilters(){
       document.getElementById("filtersBack").style.display = "none";
@@ -1249,8 +1226,6 @@
       document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
-
-      setTabInURL(tab);
 
       if(tab==="ultimos") carregarTudo();
       if(tab==="dashboard") atualizarDashboard();
@@ -1510,8 +1485,10 @@
           },
           scales:{
             x:{ ticks:{ color:"rgba(174,186,217,.80)" }, grid:{ color:"rgba(255,255,255,0.04)" } },
-            y:{ ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) },
-                grid:{ color:"rgba(255,255,255,0.04)" } }
+            y:{
+              ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) },
+              grid:{ color:"rgba(255,255,255,0.04)" }
+            }
           }
         }
       });
@@ -1862,11 +1839,12 @@
     }
 
     // =========================
-    // DASHBOARD (usa /resumo)
+    // DASHBOARD (derivado do /resumo)
     // =========================
     function buildInsights(j){
       const gastosCats = j.gastos_categorias || [];
       const receitasCats = j.receitas_categorias || [];
+
       const topG = gastosCats.length ? gastosCats[0] : null;
       const topR = receitasCats.length ? receitasCats[0] : null;
 
@@ -1954,8 +1932,9 @@
       fillMonthYear();
       document.getElementById("data").value = isoToday();
 
+      wirePhoneMask();
+
       wireBackdropClose("loginBack", closeLogin);
-      wireBackdropClose("createUserBack", closeCreateUser);
       wireBackdropClose("filtersBack", closeFilters);
       wireBackdropClose("editBack", closeEdit);
 
@@ -1973,19 +1952,15 @@
       });
 
       (async ()=>{
+        setAuthMode("login");
         await refreshAuthUI();
-
-        // abre aba via URL
-        const tab = getTabFromURL();
-        showTab(tab);
-
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
       })();
     })();
   </script>
 
-  <!-- ✅ Service Worker (APENAS 1 REGISTRO) -->
+  <!-- Service Worker (somente 1 registro) -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
