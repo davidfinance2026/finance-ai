@@ -970,7 +970,7 @@ def invest_resumo():
 
 
 # =========================
-# EDITAR / EXCLUIR (investimentos) ✅ NOVO
+# EDITAR / EXCLUIR (investimentos)
 # =========================
 @app.route("/investimento/<int:row>", methods=["PATCH"])
 def editar_investimento(row: int):
@@ -983,7 +983,7 @@ def editar_investimento(row: int):
         return jsonify({"ok": False, "msg": "Linha inválida"}), 400
 
     dataj = request.get_json(silent=True) or {}
-    tipo = str(dataj.get("tipo", "")).strip()  # Aporte/Retirada
+    tipo = str(dataj.get("tipo", "")).strip()
     ativo = str(dataj.get("ativo", "")).strip()
     instituicao = str(dataj.get("instituicao", "")).strip()
     descricao = str(dataj.get("descricao", "")).strip()
@@ -991,12 +991,12 @@ def editar_investimento(row: int):
     data_br = str(dataj.get("data", "")).strip()
 
     if tipo not in ("Aporte", "Retirada"):
-        return jsonify({"ok": False, "msg": "Tipo inválido. Use Aporte ou Retirada"}), 400
+        return jsonify({"ok": False, "msg": "Tipo inválido"}), 400
     if not ativo:
         return jsonify({"ok": False, "msg": "Ativo é obrigatório"}), 400
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido"}), 400
-    if not parse_date_br(data_br):
+    if not data_br or not parse_date_br(data_br):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
 
     ws = invest_ws()
