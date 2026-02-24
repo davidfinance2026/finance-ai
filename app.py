@@ -1159,7 +1159,18 @@ def ultimos():
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
+# =========================
+# COMPATIBILIDADE FRONT
+# =========================
 
+@app.route("/lancamentos", methods=["GET"])
+@require_login
+def lancamentos():
+    """
+    Rota espelho para manter compatibilidade com o front-end.
+    O front chama /lancamentos, mas a lógica está em /ultimos.
+    """
+    return ultimos()
     user_email = session["user_email"]
     ws = lanc_ws()
     items = get_records(ws)
@@ -1431,3 +1442,4 @@ def export_pdf():
 if __name__ == "__main__":
     # Local dev tip: COOKIE_SECURE=0
     app.run(host="0.0.0.0", port=5000, debug=True)
+
