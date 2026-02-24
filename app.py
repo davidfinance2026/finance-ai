@@ -2,12 +2,13 @@ import os
 import csv
 import io
 import secrets
+from functools import wraps
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     Flask, request, jsonify, session, render_template,
-    send_from_directory, make_response
+    send_from_directory, make_response, redirect, url_for
 )
 
 import gspread
@@ -196,127 +197,35 @@ def is_admin_email(email: str) -> bool:
     return safe_lower(email) == safe_lower(APP_EMAIL)
 
 
-def require_login() -> Optional[Tuple[Dict[str, Any], int]]:
+def _require_login_guard() -> Optional[Tuple[Dict[str, Any], int]]:
+    """Guard helper. Returns (payload, status_code) when not authenticated, else None."""
     if not session.get("user_email"):
-        return {"ok": False, "msg": "Não autenticado"}, 401
+        return ({"ok": False, "error": "not_authenticated"}, 401)
     return None
 
 
-def parse_date_br(s: str) -> Optional[date]:
-    try:
-        d, m, y = s.strip().split("/")
-        return date(int(y), int(m), int(d))
-    except Exception:
-        return None
+def require_login(fn=None):
+    """Use as guard (require_login()) or decorator (@require_login)."""
+    # Guard mode
+    if fn is None:
+        return _require_login_guard()
+
+    # Decorator mode
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        guard = _require_login_guard()
+        if guard:
+            payload, status = guard
+            accept = (request.headers.get("Accept") or "").lower()
+            # If a browser asks for HTML, go back to the home page.
+            if "text/html" in accept and not request.path.startswith("/api/"):
+                return redirect(url_for("index"))
+            return jsonify(payload), status
+        return fn(*args, **kwargs)
+
+    return wrapper
 
 
-def money_to_float(v: Any) -> float:
-    if v is None:
-        return 0.0
-    if isinstance(v, (int, float)):
-        return float(v)
-
-    s = str(v).strip()
-    if not s:
-        return 0.0
-
-    s = s.replace("R$", "").strip()
-
-    has_comma = "," in s
-    has_dot = "." in s
-
-    if has_comma and has_dot:
-        # pt-BR: 1.234,56
-        if s.rfind(",") > s.rfind("."):
-            s = s.replace(".", "").replace(",", ".")
-        else:
-            s = s.replace(",", "")
-    elif has_comma:
-        s = s.replace(".", "").replace(",", ".")
-    else:
-        s = s.replace(",", "")
-
-    try:
-        return float(s)
-    except Exception:
-        return 0.0
-
-
-def to_int(v: Any, default: int = 0) -> int:
-    try:
-        return int(str(v).strip())
-    except Exception:
-        return default
-
-
-def current_month_year() -> Tuple[int, int]:
-    today = date.today()
-    return today.month, today.year
-
-
-def get_records(ws) -> List[Dict[str, Any]]:
-    values = ws.get_all_values()
-    if not values or len(values) < 2:
-        return []
-    headers = values[0]
-    out = []
-    for i, row in enumerate(values[1:], start=2):
-        item = {headers[j]: row[j] if j < len(row) else "" for j in range(len(headers))}
-        item["_row"] = i
-        out.append(item)
-    return out
-
-
-def match_query(item: Dict[str, Any], q: str, keys: Optional[List[str]] = None) -> bool:
-    if not q:
-        return True
-    ql = q.lower()
-    if not keys:
-        keys = ["Tipo", "Categoria", "Descrição", "Data", "Valor"]
-    hay = " ".join([str(item.get(k, "")) for k in keys]).lower()
-    return ql in hay
-
-
-def item_value_num(item: Dict[str, Any], key: str = "Valor") -> float:
-    return money_to_float(item.get(key, 0))
-
-
-def item_date_num(item: Dict[str, Any], key: str = "Data") -> int:
-    d = parse_date_br(str(item.get(key, "")))
-    if not d:
-        return 0
-    return int(d.strftime("%Y%m%d"))
-
-
-def normalize_phone_br(raw: str) -> Optional[str]:
-    digits = "".join([c for c in str(raw or "") if c.isdigit()])
-    if len(digits) not in (10, 11):
-        return None
-
-    ddd = digits[:2]
-    rest = digits[2:]
-
-    if len(rest) == 8:  # fixo
-        return f"({ddd}) {rest[:4]}-{rest[4:]}"
-    # móvel (9XXXX-XXXX)
-    return f"({ddd}) {rest[:5]}-{rest[5:]}"
-
-
-def utc_plus_minutes_str(minutes: int) -> str:
-    return (datetime.utcnow() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def parse_utc_str(s: str) -> Optional[datetime]:
-    try:
-        return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return None
-
-
-# =========================
-# STATIC (PWA) - correct MIME
-# =========================
-@app.route("/static/<path:filename>")
 def static_files(filename):
     resp = send_from_directory(app.static_folder, filename)
 
@@ -1159,18 +1068,7 @@ def ultimos():
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
-# =========================
-# COMPATIBILIDADE FRONT
-# =========================
 
-@app.route("/lancamentos", methods=["GET"])
-@require_login
-def lancamentos():
-    """
-    Rota espelho para manter compatibilidade com o front-end.
-    O front chama /lancamentos, mas a lógica está em /ultimos.
-    """
-    return ultimos()
     user_email = session["user_email"]
     ws = lanc_ws()
     items = get_records(ws)
@@ -1442,4 +1340,3 @@ def export_pdf():
 if __name__ == "__main__":
     # Local dev tip: COOKIE_SECURE=0
     app.run(host="0.0.0.0", port=5000, debug=True)
-
