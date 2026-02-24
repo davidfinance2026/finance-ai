@@ -24,11 +24,9 @@ SCOPES = [
 ]
 
 SHEET_ID = os.getenv("SHEET_ID", "").strip()
-
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
-INVEST_TAB = os.getenv("INVEST_TAB", "Investimentos").strip()
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
@@ -86,15 +84,37 @@ def open_spread():
 
 
 def ensure_worksheet(spread, title: str, headers: List[str]):
+    """
+    Versão segura:
+    - não apaga dados quando muda header
+    - se faltar colunas, adiciona no header mantendo o que já existe
+    """
     try:
         ws = spread.worksheet(title)
     except gspread.WorksheetNotFound:
-        ws = spread.add_worksheet(title=title, rows=4000, cols=max(12, len(headers)))
+        ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
+        ws.append_row(headers, value_input_option="RAW")
+        return ws
 
     existing = ws.row_values(1)
-    if [h.strip() for h in existing] != headers:
-        ws.clear()
-        ws.append_row(headers, value_input_option="RAW")
+    existing_clean = [h.strip() for h in existing if str(h).strip()]
+    target_clean = [h.strip() for h in headers]
+
+    # Se está vazio, seta header
+    if not existing_clean:
+        ws.update("A1", [headers])
+        return ws
+
+    # Se já bate exatamente, ok
+    if existing_clean == target_clean:
+        return ws
+
+    # Se faltam colunas: adiciona faltantes no header (sem apagar dados)
+    missing = [h for h in headers if h not in existing_clean]
+    if missing:
+        new_header = existing_clean + missing
+        ws.update("A1", [new_header])
+
     return ws
 
 
@@ -186,20 +206,26 @@ def get_records(ws) -> List[Dict[str, Any]]:
     return out
 
 
-def match_query_text(fields: List[str], q: str) -> bool:
+def match_query(item: Dict[str, Any], q: str) -> bool:
     if not q:
         return True
     ql = q.lower()
-    hay = " ".join([str(x or "") for x in fields]).lower()
+    hay = " ".join([
+        str(item.get("Tipo", "")),
+        str(item.get("Categoria", "")),
+        str(item.get("Descrição", "")),
+        str(item.get("Data", "")),
+        str(item.get("Valor", "")),
+    ]).lower()
     return ql in hay
 
 
-def item_value_num(item: Dict[str, Any], key: str = "Valor") -> float:
-    return money_to_float(item.get(key, 0))
+def item_value_num(item: Dict[str, Any]) -> float:
+    return money_to_float(item.get("Valor", 0))
 
 
-def item_date_num(item: Dict[str, Any], key: str = "Data") -> int:
-    d = parse_date_br(str(item.get(key, "")))
+def item_date_num(item: Dict[str, Any]) -> int:
+    d = parse_date_br(str(item.get("Data", "")))
     if not d:
         return 0
     return int(d.strftime("%Y%m%d"))
@@ -250,7 +276,15 @@ def users_ws():
     return ensure_worksheet(
         spread,
         USERS_TAB,
-        headers=["Email", "PasswordHash", "Ativo", "CreatedAt"]
+        headers=[
+            "NomeApelido",
+            "NomeCompleto",
+            "Telefone",
+            "Email",
+            "PasswordHash",
+            "Ativo",
+            "CreatedAt",
+        ]
     )
 
 
@@ -272,15 +306,6 @@ def metas_ws():
     )
 
 
-def invest_ws():
-    spread = open_spread()
-    return ensure_worksheet(
-        spread,
-        INVEST_TAB,
-        headers=["Email", "Ativo", "Operacao", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
-    )
-
-
 def ensure_admin_bootstrap():
     if not APP_EMAIL or not APP_PASSWORD_HASH:
         return
@@ -289,7 +314,12 @@ def ensure_admin_bootstrap():
     for r in recs:
         if safe_lower(r.get("Email")) == safe_lower(APP_EMAIL):
             return
-    ws.append_row([APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()], value_input_option="RAW")
+
+    # Admin sem perfil preenchido (ok)
+    ws.append_row(
+        ["Admin", "Administrador", "", APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()],
+        value_input_option="RAW"
+    )
 
 
 # =========================
@@ -338,6 +368,49 @@ def login():
     return jsonify({"ok": True, "email": email, "is_admin": is_admin_email(email)})
 
 
+@app.route("/signup", methods=["POST"])
+def signup():
+    """
+    Auto-cadastro (self signup) - não depende de admin.
+    Salva na aba Usuarios.
+    """
+    ensure_admin_bootstrap()
+
+    data = request.get_json(silent=True) or {}
+
+    nome_apelido = str(data.get("nome_apelido", "")).strip()
+    nome_completo = str(data.get("nome_completo", "")).strip()
+    telefone = str(data.get("telefone", "")).strip()
+    email = str(data.get("email", "")).strip().lower()
+    password = str(data.get("password", "")).strip()
+
+    if not nome_apelido or not nome_completo or not telefone or not email or not password:
+        return jsonify({"ok": False, "msg": "Preencha todos os campos."}), 400
+
+    if "@" not in email or "." not in email:
+        return jsonify({"ok": False, "msg": "E-mail inválido."}), 400
+
+    if len(password) < 6:
+        return jsonify({"ok": False, "msg": "Senha muito curta (mín. 6 caracteres)."}), 400
+
+    ws = users_ws()
+    recs = get_records(ws)
+
+    for r in recs:
+        if safe_lower(r.get("Email")) == email:
+            return jsonify({"ok": False, "msg": "Este e-mail já está cadastrado."}), 400
+
+    ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
+    ws.append_row(
+        [nome_apelido, nome_completo, telefone, email, ph, "1", now_str()],
+        value_input_option="RAW"
+    )
+
+    # auto-login
+    session["user_email"] = email
+    return jsonify({"ok": True, "msg": "Cadastro criado com sucesso!", "email": email})
+
+
 @app.route("/logout", methods=["POST"])
 def logout():
     session.pop("user_email", None)
@@ -369,7 +442,10 @@ def _create_user_impl():
             return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
 
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
-    ws.append_row([email, ph, "1", now_str()], value_input_option="RAW")
+    ws.append_row(
+        ["", "", "", email, ph, "1", now_str()],
+        value_input_option="RAW"
+    )
     return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
 
 
@@ -464,7 +540,7 @@ def metas_set():
 
 
 # =========================
-# LANÇAR (Receita/Gasto)
+# LANÇAR
 # =========================
 @app.route("/lancar", methods=["POST"])
 def lancar():
@@ -502,9 +578,9 @@ def lancar():
 
 
 # =========================
-# FILTERS (Lancamentos)
+# FILTERS
 # =========================
-def apply_filters_lanc(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
     year = params.get("year")
     tipo = params.get("tipo", "Todos")
@@ -536,11 +612,8 @@ def apply_filters_lanc(items: List[Dict[str, Any]], params: Dict[str, Any]) -> L
             if str(it.get("Tipo", "")).strip() != tipo:
                 continue
 
-        if q:
-            if not match_query_text([
-                it.get("Tipo", ""), it.get("Categoria", ""), it.get("Descrição", ""), it.get("Data", ""), it.get("Valor", "")
-            ], q):
-                continue
+        if q and not match_query(it, q):
+            continue
 
         d = parse_date_br(str(it.get("Data", "")))
         if not d:
@@ -555,7 +628,7 @@ def apply_filters_lanc(items: List[Dict[str, Any]], params: Dict[str, Any]) -> L
         if dt and d > dt:
             continue
 
-        val = item_value_num(it, "Valor")
+        val = item_value_num(it)
         if vmin_n is not None and val < vmin_n:
             continue
         if vmax_n is not None and val > vmax_n:
@@ -589,20 +662,20 @@ def ultimos():
     page = request.args.get("page", default=1, type=int)
     limit = request.args.get("limit", default=10, type=int)
 
-    filtered = apply_filters_lanc(items, {
+    filtered = apply_filters(items, {
         "month": month, "year": year, "tipo": tipo, "q": q,
         "date_from": date_from, "date_to": date_to,
         "value_min": value_min, "value_max": value_max
     })
 
     if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
     elif order == "value_desc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
+        filtered.sort(key=lambda x: item_value_num(x), reverse=True)
     elif order == "value_asc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
+        filtered.sort(key=lambda x: item_value_num(x))
     else:
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
 
     total = len(filtered)
     limit = max(1, min(int(limit or 10), 200))
@@ -620,7 +693,7 @@ def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], t
     items = get_records(ws)
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
 
-    filtered = apply_filters_lanc(items, {
+    filtered = apply_filters(items, {
         "month": month, "year": year, "tipo": tipo, "q": q,
         "date_from": date_from, "date_to": date_to,
         "value_min": value_min, "value_max": value_max
@@ -646,7 +719,7 @@ def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], t
     for it in filtered:
         t = str(it.get("Tipo", "")).strip()
         cat = str(it.get("Categoria", "")).strip() or "Sem categoria"
-        val = item_value_num(it, "Valor")
+        val = item_value_num(it)
         d = parse_date_br(str(it.get("Data", "")))
 
         if "Rece" in t:
@@ -711,110 +784,8 @@ def resumo():
     return jsonify(payload)
 
 
-@app.route("/dashboard")
-def dashboard():
-    """
-    Dashboard completo: resumo + metas + progresso + insights + alertas.
-    """
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    tipo = request.args.get("tipo", default="Todos", type=str)
-    q = request.args.get("q", default="", type=str)
-    date_from = request.args.get("date_from", default="", type=str)
-    date_to = request.args.get("date_to", default="", type=str)
-    value_min = request.args.get("value_min", default="", type=str)
-    value_max = request.args.get("value_max", default="", type=str)
-
-    if not month or not year:
-        month, year = current_month_year()
-
-    base = compute_resumo(user_email, month, year, tipo, q, date_from, date_to, value_min, value_max)
-    meta = _get_meta(user_email, int(month), int(year))
-
-    entradas = float(base.get("entradas") or 0.0)
-    saidas = float(base.get("saidas") or 0.0)
-    saldo = float(base.get("saldo") or 0.0)
-
-    mr = float(meta.get("meta_receitas") or 0.0)
-    mg = float(meta.get("meta_gastos") or 0.0)
-
-    def pct(val: float, target: float) -> float:
-        if target <= 0:
-            return 0.0
-        return round((val / target) * 100.0, 2)
-
-    progresso = {
-        "receitas_pct": pct(entradas, mr),
-        "gastos_pct": pct(saidas, mg),
-        "receitas_restante": max(0.0, mr - entradas),
-        "gastos_restante": max(0.0, mg - saidas),
-    }
-
-    top_gasto = base.get("gastos_categorias", [])[:1]
-    top_receita = base.get("receitas_categorias", [])[:1]
-
-    insights = []
-    if top_gasto:
-        insights.append({
-            "title": "Maior gasto do mês",
-            "desc": f"{top_gasto[0]['categoria']}: R$ {top_gasto[0]['total']:.2f}"
-        })
-    if top_receita:
-        insights.append({
-            "title": "Maior receita do mês",
-            "desc": f"{top_receita[0]['categoria']}: R$ {top_receita[0]['total']:.2f}"
-        })
-    if saldo < 0:
-        insights.append({
-            "title": "Atenção ao saldo",
-            "desc": "Seu saldo está negativo neste período. Revise categorias e metas."
-        })
-
-    alerts = []
-    if mg > 0 and saidas > mg:
-        alerts.append({
-            "level": "danger",
-            "title": "Meta de gastos estourada",
-            "desc": f"Você gastou R$ {saidas:.2f} e a meta era R$ {mg:.2f}."
-        })
-    elif mg > 0 and progresso["gastos_pct"] >= 85:
-        alerts.append({
-            "level": "warn",
-            "title": "Você está perto do limite de gastos",
-            "desc": f"Você já usou {progresso['gastos_pct']:.0f}% do limite."
-        })
-
-    if mr > 0 and entradas >= mr:
-        alerts.append({
-            "level": "ok",
-            "title": "Meta de receitas batida",
-            "desc": f"Você fez R$ {entradas:.2f} e a meta era R$ {mr:.2f}."
-        })
-
-    if saldo < 0:
-        alerts.append({
-            "level": "warn",
-            "title": "Saldo negativo no período",
-            "desc": f"Saldo: R$ {saldo:.2f}. Ajuste metas e categorias."
-        })
-
-    return jsonify({
-        **base,
-        "metas": meta,
-        "progresso": progresso,
-        "insights": insights,
-        "alerts": alerts
-    })
-
-
 # =========================
-# EDITAR / EXCLUIR (Lancamentos)
+# EDITAR / EXCLUIR
 # =========================
 @app.route("/lancamento/<int:row>", methods=["PATCH"])
 def editar_lancamento(row: int):
@@ -887,356 +858,6 @@ def excluir_lancamento(row: int):
 
 
 # =========================
-# INVESTIMENTOS (Aporte / Resgate / Rendimento)
-# =========================
-def apply_filters_invest(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
-    month = params.get("month")
-    year = params.get("year")
-    oper = params.get("operacao", "Todas")
-    q = params.get("q", "")
-    ativo = params.get("ativo", "")
-    categoria = params.get("categoria", "")
-    date_from = params.get("date_from", "")
-    date_to = params.get("date_to", "")
-    vmin = params.get("value_min", "")
-    vmax = params.get("value_max", "")
-
-    df = None
-    dt = None
-    if date_from:
-        try:
-            df = datetime.strptime(date_from, "%Y-%m-%d").date()
-        except Exception:
-            df = None
-    if date_to:
-        try:
-            dt = datetime.strptime(date_to, "%Y-%m-%d").date()
-        except Exception:
-            dt = None
-
-    vmin_n = money_to_float(vmin) if vmin else None
-    vmax_n = money_to_float(vmax) if vmax else None
-
-    out = []
-    for it in items:
-        op = str(it.get("Operacao", "")).strip()
-
-        if oper and oper != "Todas":
-            if op != oper:
-                continue
-
-        if ativo:
-            if safe_lower(it.get("Ativo")) != safe_lower(ativo):
-                continue
-
-        if categoria:
-            if safe_lower(it.get("Categoria")) != safe_lower(categoria):
-                continue
-
-        if q:
-            if not match_query_text([
-                it.get("Ativo", ""), it.get("Operacao", ""), it.get("Categoria", ""),
-                it.get("Descrição", ""), it.get("Data", ""), it.get("Valor", "")
-            ], q):
-                continue
-
-        d = parse_date_br(str(it.get("Data", "")))
-        if not d:
-            continue
-
-        if month and year:
-            if not (d.month == int(month) and d.year == int(year)):
-                continue
-
-        if df and d < df:
-            continue
-        if dt and d > dt:
-            continue
-
-        val = item_value_num(it, "Valor")
-        if vmin_n is not None and val < vmin_n:
-            continue
-        if vmax_n is not None and val > vmax_n:
-            continue
-
-        out.append(it)
-
-    return out
-
-
-@app.route("/investir", methods=["POST"])
-def investir():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    dataj = request.get_json(silent=True) or {}
-
-    ativo = str(dataj.get("ativo", "")).strip()
-    operacao = str(dataj.get("operacao", "")).strip()  # Aporte / Resgate / Rendimento
-    categoria = str(dataj.get("categoria", "")).strip()
-    descricao = str(dataj.get("descricao", "")).strip()
-    valor = money_to_float(dataj.get("valor"))
-    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa or ""
-
-    if not ativo or not operacao or not categoria or not descricao:
-        return jsonify({"ok": False, "msg": "Campos obrigatórios: ativo, operacao, categoria, descricao"}), 400
-
-    if operacao not in ("Aporte", "Resgate", "Rendimento"):
-        return jsonify({"ok": False, "msg": "Operação inválida"}), 400
-
-    if valor <= 0:
-        return jsonify({"ok": False, "msg": "Valor inválido"}), 400
-
-    if data_br:
-        d = parse_date_br(data_br)
-        if not d:
-            return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
-    else:
-        data_br = date.today().strftime("%d/%m/%Y")
-
-    ws = invest_ws()
-    ws.append_row(
-        [user_email, ativo, operacao, categoria, descricao, f"{valor:.2f}", data_br, now_str()],
-        value_input_option="RAW"
-    )
-    return jsonify({"ok": True})
-
-
-@app.route("/investimentos")
-def investimentos_list():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    ws = invest_ws()
-    items = get_records(ws)
-    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    operacao = request.args.get("operacao", default="Todas", type=str)
-    ativo = request.args.get("ativo", default="", type=str)
-    categoria = request.args.get("categoria", default="", type=str)
-    q = request.args.get("q", default="", type=str)
-    order = request.args.get("order", default="recent", type=str)
-    date_from = request.args.get("date_from", default="", type=str)
-    date_to = request.args.get("date_to", default="", type=str)
-    value_min = request.args.get("value_min", default="", type=str)
-    value_max = request.args.get("value_max", default="", type=str)
-    page = request.args.get("page", default=1, type=int)
-    limit = request.args.get("limit", default=10, type=int)
-
-    filtered = apply_filters_invest(items, {
-        "month": month, "year": year, "operacao": operacao,
-        "ativo": ativo, "categoria": categoria,
-        "q": q,
-        "date_from": date_from, "date_to": date_to,
-        "value_min": value_min, "value_max": value_max
-    })
-
-    if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
-    elif order == "value_desc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
-    elif order == "value_asc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
-    else:
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
-
-    total = len(filtered)
-    limit = max(1, min(int(limit or 10), 200))
-    page = max(1, int(page or 1))
-    start = (page - 1) * limit
-    end = start + limit
-    page_items = filtered[start:end]
-
-    return jsonify({"ok": True, "total": total, "items": page_items})
-
-
-def compute_invest_resumo(user_email: str, month: Optional[int], year: Optional[int], operacao: str,
-                         q: str, date_from: str, date_to: str, value_min: str, value_max: str) -> Dict[str, Any]:
-    ws = invest_ws()
-    items = get_records(ws)
-    items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-
-    filtered = apply_filters_invest(items, {
-        "month": month, "year": year,
-        "operacao": operacao,
-        "q": q,
-        "date_from": date_from, "date_to": date_to,
-        "value_min": value_min, "value_max": value_max
-    })
-
-    aportes = 0.0
-    resgates = 0.0
-    rendimentos = 0.0
-
-    dias_labels: List[str] = []
-    serie_aporte: List[float] = []
-    serie_resgate: List[float] = []
-    serie_rendimento: List[float] = []
-
-    if month and year:
-        import calendar
-        last_day = calendar.monthrange(year, month)[1]
-        dias_labels = [str(d).zfill(2) for d in range(1, last_day + 1)]
-        serie_aporte = [0.0] * last_day
-        serie_resgate = [0.0] * last_day
-        serie_rendimento = [0.0] * last_day
-
-    by_ativo: Dict[str, float] = {}
-    by_cat: Dict[str, float] = {}
-
-    for it in filtered:
-        op = str(it.get("Operacao", "")).strip()
-        at = str(it.get("Ativo", "")).strip() or "Sem ativo"
-        cat = str(it.get("Categoria", "")).strip() or "Sem categoria"
-        val = item_value_num(it, "Valor")
-        d = parse_date_br(str(it.get("Data", "")))
-
-        if op == "Aporte":
-            aportes += val
-            by_ativo[at] = by_ativo.get(at, 0.0) + val
-            by_cat[cat] = by_cat.get(cat, 0.0) + val
-            if month and year and d and d.month == month and d.year == year:
-                serie_aporte[d.day - 1] += val
-        elif op == "Resgate":
-            resgates += val
-            if month and year and d and d.month == month and d.year == year:
-                serie_resgate[d.day - 1] += val
-        elif op == "Rendimento":
-            rendimentos += val
-            if month and year and d and d.month == month and d.year == year:
-                serie_rendimento[d.day - 1] += val
-
-    saldo_investido = (aportes - resgates + rendimentos)
-
-    def top(dct: Dict[str, float]) -> List[Dict[str, Any]]:
-        arr = [{"nome": k, "total": v} for k, v in dct.items()]
-        arr.sort(key=lambda x: x["total"], reverse=True)
-        return arr
-
-    top_ativos = top(by_ativo)
-    top_cats = top(by_cat)
-
-    return {
-        "ok": True,
-        "aportes": aportes,
-        "resgates": resgates,
-        "rendimentos": rendimentos,
-        "saldo_investido": saldo_investido,
-
-        "dias": dias_labels,
-        "serie_aporte": serie_aporte,
-        "serie_resgate": serie_resgate,
-        "serie_rendimento": serie_rendimento,
-
-        "pizza_ativos_labels": [x["nome"] for x in top_ativos[:12]],
-        "pizza_ativos_values": [x["total"] for x in top_ativos[:12]],
-        "pizza_cats_labels": [x["nome"] for x in top_cats[:12]],
-        "pizza_cats_values": [x["total"] for x in top_cats[:12]],
-    }
-
-
-@app.route("/investimentos/resumo")
-def investimentos_resumo():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    operacao = request.args.get("operacao", default="Todas", type=str)
-    q = request.args.get("q", default="", type=str)
-    date_from = request.args.get("date_from", default="", type=str)
-    date_to = request.args.get("date_to", default="", type=str)
-    value_min = request.args.get("value_min", default="", type=str)
-    value_max = request.args.get("value_max", default="", type=str)
-
-    payload = compute_invest_resumo(user_email, month, year, operacao, q, date_from, date_to, value_min, value_max)
-    return jsonify(payload)
-
-
-@app.route("/investimento/<int:row>", methods=["PATCH"])
-def editar_investimento(row: int):
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    if row < 2:
-        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
-
-    dataj = request.get_json(silent=True) or {}
-    ativo = str(dataj.get("ativo", "")).strip()
-    operacao = str(dataj.get("operacao", "")).strip()
-    categoria = str(dataj.get("categoria", "")).strip()
-    descricao = str(dataj.get("descricao", "")).strip()
-    valor = money_to_float(dataj.get("valor"))
-    data_br = str(dataj.get("data", "")).strip()
-
-    if not ativo or not operacao or not categoria or not descricao or not data_br:
-        return jsonify({"ok": False, "msg": "Campos obrigatórios"}), 400
-    if operacao not in ("Aporte", "Resgate", "Rendimento"):
-        return jsonify({"ok": False, "msg": "Operação inválida"}), 400
-    if valor <= 0:
-        return jsonify({"ok": False, "msg": "Valor inválido"}), 400
-    if not parse_date_br(data_br):
-        return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
-
-    ws = invest_ws()
-    headers = ws.row_values(1)
-    col = {h: idx + 1 for idx, h in enumerate(headers)}
-
-    row_vals = ws.row_values(row)
-    if not row_vals:
-        return jsonify({"ok": False, "msg": "Registro não encontrado"}), 404
-
-    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
-    if email_in_row != user_email.lower():
-        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
-
-    ws.update_cell(row, col["Ativo"], ativo)
-    ws.update_cell(row, col["Operacao"], operacao)
-    ws.update_cell(row, col["Categoria"], categoria)
-    ws.update_cell(row, col["Descrição"], descricao)
-    ws.update_cell(row, col["Valor"], f"{valor:.2f}")
-    ws.update_cell(row, col["Data"], data_br)
-
-    return jsonify({"ok": True})
-
-
-@app.route("/investimento/<int:row>", methods=["DELETE"])
-def excluir_investimento(row: int):
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
-    if row < 2:
-        return jsonify({"ok": False, "msg": "Linha inválida"}), 400
-
-    ws = invest_ws()
-    headers = ws.row_values(1)
-    col = {h: idx + 1 for idx, h in enumerate(headers)}
-
-    row_vals = ws.row_values(row)
-    if not row_vals:
-        return jsonify({"ok": False, "msg": "Registro não encontrado"}), 404
-
-    email_in_row = (row_vals[col["Email"] - 1] if "Email" in col and len(row_vals) >= col["Email"] else "").strip().lower()
-    if email_in_row != user_email.lower():
-        return jsonify({"ok": False, "msg": "Sem permissão"}), 403
-
-    ws.delete_rows(row)
-    return jsonify({"ok": True})
-
-
-# =========================
 # EXPORT CSV
 # =========================
 @app.route("/export.csv")
@@ -1260,20 +881,20 @@ def export_csv():
     value_min = request.args.get("value_min", default="", type=str)
     value_max = request.args.get("value_max", default="", type=str)
 
-    filtered = apply_filters_lanc(items, {
+    filtered = apply_filters(items, {
         "month": month, "year": year, "tipo": tipo, "q": q,
         "date_from": date_from, "date_to": date_to,
         "value_min": value_min, "value_max": value_max
     })
 
     if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
     elif order == "value_desc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
+        filtered.sort(key=lambda x: item_value_num(x), reverse=True)
     elif order == "value_asc":
-        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
+        filtered.sort(key=lambda x: item_value_num(x))
     else:
-        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
+        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
 
     out = io.StringIO()
     w = csv.writer(out)
