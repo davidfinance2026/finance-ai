@@ -17,12 +17,11 @@
       --bg0:#070b16;
       --bg1:#0b1020;
       --card: rgba(255,255,255,.06);
-      --card2: rgba(255,255,255,.045);
       --border: rgba(255,255,255,.08);
       --text:#eef3ff;
       --muted:#aebad9;
 
-      --primary:#6aa2ff;     /* azul elegante */
+      --primary:#6aa2ff;
       --primary2:#4f8cff;
       --danger:#ff6b7a;
       --success:#3ee29b;
@@ -31,8 +30,6 @@
       --radius2:22px;
       --shadow: 0 10px 30px rgba(0,0,0,.35);
       --shadow2: 0 18px 45px rgba(0,0,0,.35);
-
-      --tap: rgba(255,255,255,.08);
     }
 
     *{box-sizing:border-box}
@@ -50,31 +47,16 @@
       justify-content:center;
     }
 
-    .app{
-      width:min(560px, 100%);
-      padding-bottom:18px;
-    }
+    .app{ width:min(560px, 100%); padding-bottom:18px; }
 
-    /* TOP */
     .topbar{
       display:flex; align-items:center; justify-content:space-between; gap:12px;
       padding:4px 2px 10px 2px;
     }
-    .brand h1{
-      margin:0;
-      font-size:22px;
-      letter-spacing:.2px;
-    }
-    .brand span{
-      display:block;
-      margin-top:4px;
-      color:var(--muted);
-      font-size:13px;
-    }
+    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
+    .brand span{ display:block; margin-top:4px; color:var(--muted); font-size:13px; }
 
-    .top-actions{
-      display:flex; gap:10px; align-items:center;
-    }
+    .top-actions{ display:flex; gap:10px; align-items:center; }
 
     .pill{
       padding:10px 12px;
@@ -97,7 +79,6 @@
       box-shadow: 0 10px 20px rgba(79,140,255,.18);
     }
 
-    /* TABS (Nubank-ish pill) */
     .tabsWrap{
       margin:8px 0 14px 0;
       padding:8px;
@@ -128,7 +109,6 @@
       box-shadow: 0 10px 22px rgba(79,140,255,.18);
     }
 
-    /* CARDS */
     .card{
       background: rgba(255,255,255,.055);
       border:1px solid var(--border);
@@ -139,7 +119,6 @@
       -webkit-backdrop-filter: blur(12px);
     }
 
-    /* FORM */
     label{
       display:block;
       margin-top:12px;
@@ -171,6 +150,7 @@
       background: rgba(255,255,255,.04);
       border:1px solid var(--border);
       border-radius:999px;
+      margin-top:10px;
     }
     .seg button{
       flex:1;
@@ -188,7 +168,6 @@
       border:1px solid rgba(106,162,255,.25);
     }
 
-    /* BUTTONS */
     .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
     .btn{
       border:0;
@@ -235,7 +214,6 @@
     .msg.ok{display:block; border-color: rgba(62,226,155,.30);}
     .msg.err{display:block; border-color: rgba(255,107,122,.30);}
 
-    /* SUMMARY */
     .summaryGrid{
       display:grid;
       grid-template-columns: 1fr;
@@ -262,14 +240,11 @@
       white-space:nowrap;
     }
 
-    /* HEADER ACTIONS (Ultimos) */
     .barRow{
       display:flex; gap:10px; align-items:center; justify-content:space-between;
       margin:10px 0 0 0;
     }
-    .barRow .left{
-      display:flex; gap:10px; align-items:center;
-    }
+    .barRow .left{ display:flex; gap:10px; align-items:center; }
 
     .chipBtn{
       border:1px solid var(--border);
@@ -285,7 +260,6 @@
     }
     .chipBtn:active{ transform: scale(.985); background: rgba(255,255,255,.07); }
 
-    /* CHART */
     .chartCard{ margin-top: 12px; }
     .chartWrap{ height:240px; }
     .title{
@@ -324,13 +298,7 @@
     }
     tr:last-child td{border-bottom:none;}
 
-    /* LIST */
-    .list{
-      margin-top:12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
+    .list{ margin-top:12px; display:flex; flex-direction:column; gap:10px; }
 
     .item{
       background: rgba(10,16,32,.48);
@@ -384,7 +352,6 @@
     .value.green{ color: #7dffbf; }
     .value.red{ color: #ff9aa5; }
 
-    /* 3-dot menu */
     .kebab{
       border:1px solid rgba(255,255,255,.08);
       background: rgba(255,255,255,.04);
@@ -429,10 +396,9 @@
     .menu button:hover{ background: rgba(255,255,255,.06); }
     .menu .dangerItem{ color: #ff9aa5; }
 
-    /* PAGER */
     .pager{
       margin-top:12px;
-      display:none; /* só aparece se precisar */
+      display:none;
       justify-content:space-between;
       align-items:center;
       gap:10px;
@@ -464,14 +430,8 @@
       user-select:none;
     }
 
-    .hint{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:12px;
-      opacity:.9;
-    }
+    .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
 
-    /* MODALS / SHEETS */
     .backdrop{
       position:fixed; inset:0;
       background:rgba(0,0,0,.55);
@@ -481,7 +441,6 @@
       padding:16px;
       z-index:9999;
     }
-
     .sheet{
       width:min(560px, 100%);
       background: rgba(10,16,32,.92);
@@ -494,20 +453,12 @@
       max-height: 86vh;
       overflow:auto;
     }
-
     .sheetTop{
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       margin-bottom:8px;
     }
-    .sheetTop h2{
-      margin:0;
-      font-size:16px;
-    }
-    .sheetTop p{
-      margin:4px 0 0 0;
-      color: var(--muted);
-      font-size:13px;
-    }
+    .sheetTop h2{ margin:0; font-size:16px; }
+    .sheetTop p{ margin:4px 0 0 0; color: var(--muted); font-size:13px; }
     .xBtn{
       border:1px solid rgba(255,255,255,.10);
       background:rgba(255,255,255,.05);
@@ -519,7 +470,6 @@
     }
     .xBtn:active{ transform: scale(.985); }
 
-    /* Filters grid inside sheet */
     .filtersGrid{
       margin-top:10px;
       display:grid;
@@ -676,7 +626,7 @@
       <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
     </div>
 
-    <!-- ===== SCREEN: DASHBOARD (derivado do /resumo) ===== -->
+    <!-- ===== SCREEN: DASHBOARD ===== -->
     <div class="card" id="screen-dashboard" style="display:none;">
       <div class="title">Dashboard do mês</div>
 
@@ -709,39 +659,58 @@
 
   </div>
 
-  <!-- ===== LOGIN SHEET ===== -->
+  <!-- ===== LOGIN / SIGNUP SHEET ===== -->
   <div class="backdrop" id="loginBack">
     <div class="sheet">
       <div class="sheetTop">
         <div>
-          <h2>🔒 Login</h2>
-          <p>Entre com seu e-mail e senha.</p>
+          <h2>🔒 Acesso</h2>
+          <p>Entre com sua conta ou crie uma nova.</p>
         </div>
         <button class="xBtn" onclick="closeLogin()">✕</button>
       </div>
 
+      <div class="seg">
+        <button id="loginModeBtn" class="active" onclick="setAuthMode('login')">Entrar</button>
+        <button id="signupModeBtn" onclick="setAuthMode('signup')">Criar conta</button>
+      </div>
+
+      <!-- LOGIN fields -->
       <label>E-mail</label>
-      <input id="loginEmail" type="email" placeholder="admin@financeai.com" />
+      <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
 
       <label>Senha</label>
       <input id="loginPwd" type="password" placeholder="Sua senha" />
 
+      <!-- SIGNUP fields -->
+      <div id="signupFields" style="display:none;">
+        <label>Nome/apelido</label>
+        <input id="suNick" placeholder="Ex: David" />
+
+        <label>Nome completo</label>
+        <input id="suFull" placeholder="Ex: David Ferreira" />
+
+        <label>Número de telefone</label>
+        <input id="suPhone" inputmode="tel" placeholder="(31) 9xxxx-xxxx" />
+      </div>
+
       <div class="actions" style="margin-top:12px;">
-        <button class="btn" onclick="doLogin()">Entrar</button>
+        <button class="btn" id="authPrimaryBtn" onclick="handleAuthPrimary()">Entrar</button>
         <button class="btn secondary" onclick="doLogout()">Sair</button>
       </div>
 
       <div id="loginMsg" class="msg"></div>
+      <div class="hint">Senha mínima recomendada: 6 caracteres.</div>
     </div>
   </div>
 
-  <!-- ===== CREATE USER SHEET ===== -->
+  <!-- ===== CREATE USER (ADMIN) SHEET ===== -->
   <div class="backdrop" id="createUserBack">
     <div class="sheet">
       <div class="sheetTop">
         <div>
-          <h2>➕ Criar usuário</h2>
-          <p>Cria usuário e gera planilha exclusiva.</p>
+          <h2>➕ Criar usuário (Admin)</h2>
+          <p>Cria usuário manualmente.</p>
         </div>
         <button class="xBtn" onclick="closeCreateUser()">✕</button>
       </div>
@@ -758,17 +727,16 @@
       </div>
 
       <div id="createUserMsg" class="msg"></div>
-      <div class="hint">Obs: você precisa estar logado como admin.</div>
     </div>
   </div>
 
-  <!-- ===== FILTERS BOTTOM SHEET ===== -->
+  <!-- ===== FILTERS SHEET ===== -->
   <div class="backdrop" id="filtersBack">
     <div class="sheet">
       <div class="sheetTop">
         <div>
           <h2>⚙️ Filtros</h2>
-          <p>Escolha mês/ano e refine a lista.</p>
+          <p>Escolha mês/ano e refine.</p>
         </div>
         <button class="xBtn" onclick="closeFilters()">✕</button>
       </div>
@@ -856,12 +824,10 @@
           <button class="btn secondary" onclick="exportar('pdf')">⬇ Exportar PDF</button>
         </div>
       </div>
-
-      <div class="hint">Dica: filtros ficam aqui pra manter a tela limpa.</div>
     </div>
   </div>
 
-  <!-- EDIT SHEET -->
+  <!-- ===== EDIT SHEET ===== -->
   <div class="backdrop" id="editBack">
     <div class="sheet">
       <div class="sheetTop">
@@ -911,38 +877,26 @@
 
   <script>
     // =========================
-    // URL TABS (via ?tab=... ou #...)
+    // URL TAB (/?tab=dashboard) or (#dashboard)
     // =========================
-    const VALID_TABS = new Set(["lancar","ultimos","dashboard"]);
-
     function getTabFromURL(){
-      try{
-        const u = new URL(window.location.href);
-        const qTab = (u.searchParams.get("tab") || "").toLowerCase().trim();
-        if(VALID_TABS.has(qTab)) return qTab;
-
-        const h = (u.hash || "").replace("#","").toLowerCase().trim();
-        if(VALID_TABS.has(h)) return h;
-      }catch(e){}
+      const p = new URLSearchParams(location.search);
+      const qtab = (p.get("tab") || "").toLowerCase().trim();
+      const htab = (location.hash || "").replace("#","").toLowerCase().trim();
+      const t = qtab || htab;
+      if(["lancar","ultimos","dashboard"].includes(t)) return t;
       return "lancar";
     }
 
-    function setURLForTab(tab, push=true){
-      if(!VALID_TABS.has(tab)) tab = "lancar";
-      const u = new URL(window.location.href);
-      u.searchParams.set("tab", tab);
-      u.hash = ""; // não mistura
-      if(push) history.pushState({ tab }, "", u.toString());
-      else history.replaceState({ tab }, "", u.toString());
+    function setTabInURL(tab){
+      const url = new URL(location.href);
+      url.searchParams.set("tab", tab);
+      url.hash = tab;
+      history.replaceState({}, "", url.toString());
     }
 
-    window.addEventListener("popstate", ()=>{
-      const t = getTabFromURL();
-      showTab(t, true); // silent
-    });
-
     // =========================
-    // AUTH (cookie session)
+    // AUTH
     // =========================
     function setPillText(isOn){
       const pill = document.getElementById("statusPill");
@@ -952,6 +906,7 @@
     function openLogin(){
       document.getElementById("loginBack").style.display = "flex";
       setLoginMsg("", "");
+      setAuthMode("login");
     }
     function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
 
@@ -1032,6 +987,66 @@
     }
 
     // =========================
+    // SIGNUP (SELF REGISTER)
+    // =========================
+    let AUTH_MODE = "login";
+
+    function setAuthMode(mode){
+      AUTH_MODE = mode;
+
+      document.getElementById("loginModeBtn").classList.toggle("active", mode==="login");
+      document.getElementById("signupModeBtn").classList.toggle("active", mode==="signup");
+
+      document.getElementById("signupFields").style.display = (mode==="signup") ? "block" : "none";
+
+      const btn = document.getElementById("authPrimaryBtn");
+      btn.textContent = (mode==="signup") ? "Criar conta" : "Entrar";
+    }
+
+    async function handleAuthPrimary(){
+      if(AUTH_MODE === "signup") return doSignup();
+      return doLogin();
+    }
+
+    async function doSignup(){
+      const email = (document.getElementById("loginEmail").value || "").trim().toLowerCase();
+      const password = (document.getElementById("loginPwd").value || "").trim();
+
+      const nome_apelido = (document.getElementById("suNick").value || "").trim();
+      const nome_completo = (document.getElementById("suFull").value || "").trim();
+      const telefone = (document.getElementById("suPhone").value || "").trim();
+
+      if(!nome_apelido || !nome_completo || !telefone || !email || !password){
+        setLoginMsg("err", "❌ Preencha todos os campos do cadastro.");
+        return;
+      }
+
+      try{
+        const r = await apiFetch("/signup", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ nome_apelido, nome_completo, telefone, email, password })
+        });
+
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao cadastrar");
+
+        setLoginMsg("ok", "✅ Conta criada e logada!");
+        await refreshAuthUI();
+        closeLogin();
+
+        document.getElementById("suNick").value = "";
+        document.getElementById("suFull").value = "";
+        document.getElementById("suPhone").value = "";
+
+        await carregarTudo();
+        await atualizarDashboard();
+      }catch(e){
+        setLoginMsg("err", "❌ " + e.message);
+      }
+    }
+
+    // =========================
     // CREATE USER (ADMIN)
     // =========================
     function openCreateUser(){
@@ -1084,15 +1099,13 @@
     // =========================
     // FILTERS SHEET
     // =========================
-    function openFilters(fromDashboard=false){
+    function openFilters(){
       document.getElementById("filtersBack").style.display = "flex";
-      if(fromDashboard) setTitleMov();
     }
     function closeFilters(){
       document.getElementById("filtersBack").style.display = "none";
     }
 
-    // fechar sheets tocando fora
     function wireBackdropClose(id, closeFn){
       const back = document.getElementById(id);
       back.addEventListener("click", (e)=>{
@@ -1228,9 +1241,7 @@
     // =========================
     // UI
     // =========================
-    function showTab(tab, silent=false){
-      if(!VALID_TABS.has(tab)) tab = "lancar";
-
+    function showTab(tab){
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
       document.getElementById("tab3").classList.toggle("active", tab==="dashboard");
@@ -1239,7 +1250,7 @@
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
 
-      if(!silent) setURLForTab(tab, true);
+      setTabInURL(tab);
 
       if(tab==="ultimos") carregarTudo();
       if(tab==="dashboard") atualizarDashboard();
@@ -1369,7 +1380,7 @@
     }
 
     // =========================
-    // PAGINAÇÃO (só aparece se precisar)
+    // PAGINAÇÃO
     // =========================
     function updatePager(){
       const page = filtros.page;
@@ -1499,10 +1510,8 @@
           },
           scales:{
             x:{ ticks:{ color:"rgba(174,186,217,.80)" }, grid:{ color:"rgba(255,255,255,0.04)" } },
-            y:{
-              ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) },
-              grid:{ color:"rgba(255,255,255,0.04)" }
-            }
+            y:{ ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) },
+                grid:{ color:"rgba(255,255,255,0.04)" } }
           }
         }
       });
@@ -1853,12 +1862,11 @@
     }
 
     // =========================
-    // DASHBOARD (derivado do /resumo)
+    // DASHBOARD (usa /resumo)
     // =========================
     function buildInsights(j){
       const gastosCats = j.gastos_categorias || [];
       const receitasCats = j.receitas_categorias || [];
-
       const topG = gastosCats.length ? gastosCats[0] : null;
       const topR = receitasCats.length ? receitasCats[0] : null;
 
@@ -1925,7 +1933,7 @@
 
     async function atualizarDashboard(){
       try{
-        const j = await carregarResumo(); // reaproveita o /resumo
+        const j = await carregarResumo();
         document.getElementById("dashReceitas").innerText = brl(j.entradas);
         document.getElementById("dashGastos").innerText   = brl(j.saidas);
         document.getElementById("dashSaldo").innerText    = brl(j.saldo);
@@ -1966,18 +1974,18 @@
 
       (async ()=>{
         await refreshAuthUI();
+
+        // abre aba via URL
+        const tab = getTabFromURL();
+        showTab(tab);
+
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
       })();
-
-      // aplica aba via URL sem criar histórico
-      const startTab = getTabFromURL();
-      setURLForTab(startTab, false); // normaliza ?tab=
-      showTab(startTab, true);       // silent
     })();
   </script>
 
-  <!-- Service Worker (somente 1 registro) -->
+  <!-- ✅ Service Worker (APENAS 1 REGISTRO) -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
