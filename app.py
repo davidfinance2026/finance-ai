@@ -1,3 +1,4 @@
+# app.py
 import os
 import csv
 import io
@@ -210,27 +211,37 @@ def item_date_num(item: Dict[str, Any]) -> int:
 
 
 # =========================
-# STATIC (PWA) - correct MIME
+# STATIC / PWA HEADERS (no duplicate /static route)
 # =========================
-@app.route("/static/<path:filename>")
-def static_files(filename):
-    resp = send_from_directory(app.static_folder, filename)
+@app.after_request
+def add_pwa_headers(resp):
+    path = request.path or ""
 
-    if filename.endswith("manifest.json"):
-        resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
-    elif filename.endswith(".json"):
-        resp.headers["Content-Type"] = "application/json; charset=utf-8"
-    elif filename.endswith(".js"):
+    # root service worker: always fresh check
+    if path == "/sw.js":
+        resp.headers["Cache-Control"] = "no-cache"
         resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+        return resp
+
+    # manifest MIME
+    if path.endswith("/static/manifest.json"):
+        resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
+
+    # JS MIME (covers /static/vendor/chart.umd.min.js too)
+    if path.endswith(".js"):
+        resp.headers.setdefault("Content-Type", "application/javascript; charset=utf-8")
+
+    # JSON MIME
+    if path.endswith(".json"):
+        resp.headers.setdefault("Content-Type", "application/json; charset=utf-8")
+
     return resp
 
 
 # ✅ route /sw.js at root (best practice for PWA scope)
 @app.route("/sw.js")
 def sw_root():
-    resp = send_from_directory(app.static_folder, "sw.js")
-    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
-    return resp
+    return send_from_directory(app.static_folder, "sw.js")
 
 
 # =========================
