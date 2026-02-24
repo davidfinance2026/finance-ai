@@ -84,37 +84,15 @@ def open_spread():
 
 
 def ensure_worksheet(spread, title: str, headers: List[str]):
-    """
-    Versão segura:
-    - não apaga dados quando muda header
-    - se faltar colunas, adiciona no header mantendo o que já existe
-    """
     try:
         ws = spread.worksheet(title)
     except gspread.WorksheetNotFound:
         ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
-        ws.append_row(headers, value_input_option="RAW")
-        return ws
 
     existing = ws.row_values(1)
-    existing_clean = [h.strip() for h in existing if str(h).strip()]
-    target_clean = [h.strip() for h in headers]
-
-    # Se está vazio, seta header
-    if not existing_clean:
-        ws.update("A1", [headers])
-        return ws
-
-    # Se já bate exatamente, ok
-    if existing_clean == target_clean:
-        return ws
-
-    # Se faltam colunas: adiciona faltantes no header (sem apagar dados)
-    missing = [h for h in headers if h not in existing_clean]
-    if missing:
-        new_header = existing_clean + missing
-        ws.update("A1", [new_header])
-
+    if [h.strip() for h in existing] != headers:
+        ws.clear()
+        ws.append_row(headers, value_input_option="RAW")
     return ws
 
 
@@ -231,6 +209,20 @@ def item_date_num(item: Dict[str, Any]) -> int:
     return int(d.strftime("%Y%m%d"))
 
 
+def normalize_phone_br(raw: str) -> Optional[str]:
+    digits = "".join([c for c in str(raw or "") if c.isdigit()])
+    if len(digits) not in (10, 11):
+        return None
+
+    ddd = digits[:2]
+    rest = digits[2:]
+
+    if len(rest) == 8:  # fixo
+        return f"({ddd}) {rest[:4]}-{rest[4:]}"
+    # móvel (9XXXX-XXXX)
+    return f"({ddd}) {rest[:5]}-{rest[5:]}"
+
+
 # =========================
 # STATIC (PWA) - correct MIME
 # =========================
@@ -273,18 +265,11 @@ def health():
 # =========================
 def users_ws():
     spread = open_spread()
+    # ✅ NOVO schema de usuários (self-signup)
     return ensure_worksheet(
         spread,
         USERS_TAB,
-        headers=[
-            "NomeApelido",
-            "NomeCompleto",
-            "Telefone",
-            "Email",
-            "PasswordHash",
-            "Ativo",
-            "CreatedAt",
-        ]
+        headers=["NomeApelido", "NomeCompleto", "Telefone", "Email", "PasswordHash", "Ativo", "CreatedAt"]
     )
 
 
@@ -307,17 +292,24 @@ def metas_ws():
 
 
 def ensure_admin_bootstrap():
+    """
+    Cria admin na planilha se APP_EMAIL e APP_PASSWORD_HASH existirem
+    """
     if not APP_EMAIL or not APP_PASSWORD_HASH:
         return
+
     ws = users_ws()
     recs = get_records(ws)
     for r in recs:
         if safe_lower(r.get("Email")) == safe_lower(APP_EMAIL):
             return
 
-    # Admin sem perfil preenchido (ok)
+    # Campos extras do admin
+    nome_apelido = "Admin"
+    nome_completo = "Administrador"
+    telefone = "(00) 00000-0000"
     ws.append_row(
-        ["Admin", "Administrador", "", APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()],
+        [nome_apelido, nome_completo, telefone, APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()],
         value_input_option="RAW"
     )
 
@@ -357,7 +349,7 @@ def login():
         return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     ativo = str(user.get("Ativo", "1")).strip()
-    if ativo not in ("1", "true", "True", "SIM", "sim"):
+    if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "Yes"):
         return jsonify({"ok": False, "msg": "Usuário inativo"}), 403
 
     ph = str(user.get("PasswordHash", "")).strip()
@@ -368,10 +360,20 @@ def login():
     return jsonify({"ok": True, "email": email, "is_admin": is_admin_email(email)})
 
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.pop("user_email", None)
+    return jsonify({"ok": True})
+
+
+# =========================
+# SELF SIGNUP (SEM ADMIN)
+# =========================
 @app.route("/signup", methods=["POST"])
 def signup():
     """
     Auto-cadastro (self signup) - não depende de admin.
+    Valida telefone (10-11 dígitos), senha e confirmar senha.
     Salva na aba Usuarios.
     """
     ensure_admin_bootstrap()
@@ -380,45 +382,43 @@ def signup():
 
     nome_apelido = str(data.get("nome_apelido", "")).strip()
     nome_completo = str(data.get("nome_completo", "")).strip()
-    telefone = str(data.get("telefone", "")).strip()
+    telefone_raw = str(data.get("telefone", "")).strip()
     email = str(data.get("email", "")).strip().lower()
     password = str(data.get("password", "")).strip()
+    confirm_password = str(data.get("confirm_password", "")).strip()
 
-    if not nome_apelido or not nome_completo or not telefone or not email or not password:
+    if not nome_apelido or not nome_completo or not telefone_raw or not email or not password or not confirm_password:
         return jsonify({"ok": False, "msg": "Preencha todos os campos."}), 400
 
     if "@" not in email or "." not in email:
         return jsonify({"ok": False, "msg": "E-mail inválido."}), 400
 
+    if password != confirm_password:
+        return jsonify({"ok": False, "msg": "As senhas não conferem."}), 400
+
     if len(password) < 6:
         return jsonify({"ok": False, "msg": "Senha muito curta (mín. 6 caracteres)."}), 400
 
+    telefone = normalize_phone_br(telefone_raw)
+    if not telefone:
+        return jsonify({"ok": False, "msg": "Telefone inválido. Use DDD + número (10 ou 11 dígitos)."}), 400
+
     ws = users_ws()
     recs = get_records(ws)
-
     for r in recs:
         if safe_lower(r.get("Email")) == email:
             return jsonify({"ok": False, "msg": "Este e-mail já está cadastrado."}), 400
 
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
-    ws.append_row(
-        [nome_apelido, nome_completo, telefone, email, ph, "1", now_str()],
-        value_input_option="RAW"
-    )
+    ws.append_row([nome_apelido, nome_completo, telefone, email, ph, "1", now_str()], value_input_option="RAW")
 
     # auto-login
     session["user_email"] = email
     return jsonify({"ok": True, "msg": "Cadastro criado com sucesso!", "email": email})
 
 
-@app.route("/logout", methods=["POST"])
-def logout():
-    session.pop("user_email", None)
-    return jsonify({"ok": True})
-
-
 # =========================
-# CREATE USER (ADMIN)
+# CREATE USER (ADMIN) - mantém
 # =========================
 def _create_user_impl():
     guard = require_login()
@@ -442,10 +442,13 @@ def _create_user_impl():
             return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
 
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
-    ws.append_row(
-        ["", "", "", email, ph, "1", now_str()],
-        value_input_option="RAW"
-    )
+
+    # cria "mínimo" para admin
+    nome_apelido = (email.split("@")[0] or "Usuário").strip()[:40]
+    nome_completo = ""
+    telefone = "(00) 00000-0000"
+
+    ws.append_row([nome_apelido, nome_completo, telefone, email, ph, "1", now_str()], value_input_option="RAW")
     return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
 
 
