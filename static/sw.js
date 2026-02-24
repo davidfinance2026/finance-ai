@@ -1,104 +1,125 @@
-/* static/sw.js */
-'use strict';
+/* static/sw.js
+   Estratégias:
+   - HTML (navegação): NETWORK-FIRST com fallback para cache do index
+   - Static (css/js/img/icons): STALE-WHILE-REVALIDATE
+   - Chart local: cache (stale-while-revalidate)
+*/
 
-const VERSION = 'v1.0.0';
-const CACHE_NAME = `finance-ai-${VERSION}`;
+const VERSION = "fa-v1.0.0";
+const STATIC_CACHE = `fa-static-${VERSION}`;
+const HTML_CACHE = `fa-html-${VERSION}`;
 
-const CORE_ASSETS = [
-  '/',               // index
-  '/offline.html',   // offline fallback
-  '/static/manifest.json',
-  '/static/vendor/chart.umd.min.js',
-  // se você tiver ícones, adicione aqui:
-  '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png',
+const OFFLINE_FALLBACK_URL = "/"; // fallback offline: index.html (rota "/")
+
+// Arquivos essenciais para iniciar offline
+const PRECACHE = [
+  OFFLINE_FALLBACK_URL,
+  "/static/manifest.json",
+  "/static/vendor/chart.umd.min.js",
+  "/static/icons/icon-192.png",
+  "/static/icons/icon-512.png",
 ];
 
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);
+    const staticCache = await caches.open(STATIC_CACHE);
+    await staticCache.addAll(PRECACHE);
     self.skipWaiting();
   })());
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)));
+    await Promise.all(
+      keys.map((k) => {
+        if (k !== STATIC_CACHE && k !== HTML_CACHE) return caches.delete(k);
+      })
+    );
     await self.clients.claim();
   })());
 });
 
-// Permite o app mandar "SKIP_WAITING"
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
-function isApiRequest(url) {
-  // não cachear endpoints dinâmicos
+function isNavigationRequest(request) {
+  return request.mode === "navigate" ||
+    (request.method === "GET" && request.headers.get("accept") && request.headers.get("accept").includes("text/html"));
+}
+
+function isStaticAsset(url) {
   return (
-    url.pathname.startsWith('/login') ||
-    url.pathname.startsWith('/logout') ||
-    url.pathname.startsWith('/me') ||
-    url.pathname.startsWith('/lancar') ||
-    url.pathname.startsWith('/ultimos') ||
-    url.pathname.startsWith('/resumo') ||
-    url.pathname.startsWith('/dashboard') ||
-    url.pathname.startsWith('/metas') ||
-    url.pathname.startsWith('/lancamento/') ||
-    url.pathname.startsWith('/export.')
+    url.pathname.startsWith("/static/") ||
+    url.pathname.endsWith(".js") ||
+    url.pathname.endsWith(".css") ||
+    url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".jpg") ||
+    url.pathname.endsWith(".jpeg") ||
+    url.pathname.endsWith(".webp") ||
+    url.pathname.endsWith(".svg") ||
+    url.pathname.endsWith(".ico")
   );
 }
 
-// Network-first para navegação; cache-first para assets
-self.addEventListener('fetch', (event) => {
+async function networkFirst(request) {
+  const cache = await caches.open(HTML_CACHE);
+  try {
+    const response = await fetch(request);
+    // cacheia apenas respostas OK e do mesmo origin
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+      // também cacheia o fallback "/" quando navegar
+      if (new URL(request.url).pathname === "/") {
+        cache.put(OFFLINE_FALLBACK_URL, response.clone());
+      }
+    }
+    return response;
+  } catch (err) {
+    // fallback: tenta cache da página solicitada, senão "/", senão qualquer HTML cacheado
+    const cached = await cache.match(request);
+    if (cached) return cached;
+
+    const cachedHome = await cache.match(OFFLINE_FALLBACK_URL);
+    if (cachedHome) return cachedHome;
+
+    const staticCache = await caches.open(STATIC_CACHE);
+    const cachedStaticHome = await staticCache.match(OFFLINE_FALLBACK_URL);
+    if (cachedStaticHome) return cachedStaticHome;
+
+    return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+}
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response && response.ok) cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => null);
+
+  return cached || (await fetchPromise) || new Response("", { status: 504 });
+}
+
+self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // só mesma origem
   if (url.origin !== self.location.origin) return;
 
-  // não interferir em API
-  if (isApiRequest(url)) return;
-
-  // Navegação (abrir a página): network-first com fallback offline
-  if (req.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(req, fresh.clone()).catch(() => {});
-        return fresh;
-      } catch (e) {
-        const cache = await caches.open(CACHE_NAME);
-        return (await cache.match(req)) || (await cache.match('/offline.html'));
-      }
-    })());
+  // HTML: network-first
+  if (isNavigationRequest(req)) {
+    event.respondWith(networkFirst(req));
     return;
   }
 
-  // Assets: cache-first
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(req);
-    if (cached) return cached;
-
-    try {
-      const fresh = await fetch(req);
-      // cacheia somente GET e respostas ok
-      if (req.method === 'GET' && fresh && fresh.ok) {
-        cache.put(req, fresh.clone()).catch(() => {});
-      }
-      return fresh;
-    } catch (e) {
-      // fallback se for html/asset
-      if (req.headers.get('accept')?.includes('text/html')) {
-        return (await cache.match('/offline.html')) || Response.error();
-      }
-      return Response.error();
-    }
-  })());
+  // Static: SWR
+  if (isStaticAsset(url)) {
+    event.respondWith(staleWhileRevalidate(req));
+    return;
+  }
 });
