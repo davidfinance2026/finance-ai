@@ -22,7 +22,7 @@
       --text:#eef3ff;
       --muted:#aebad9;
 
-      --primary:#6aa2ff;
+      --primary:#6aa2ff;     /* azul elegante */
       --primary2:#4f8cff;
       --danger:#ff6b7a;
       --success:#3ee29b;
@@ -72,7 +72,9 @@
       font-size:13px;
     }
 
-    .top-actions{ display:flex; gap:10px; align-items:center; }
+    .top-actions{
+      display:flex; gap:10px; align-items:center;
+    }
 
     .pill{
       padding:10px 12px;
@@ -118,7 +120,7 @@
       color: var(--muted);
       background: transparent;
       transition: .15s ease;
-      white-space:nowrap;
+      min-width: 0; /* evita quebrar em telas pequenas */
     }
     .tab:active{ transform: scale(.98); background: rgba(255,255,255,.04); }
     .tab.active{
@@ -180,7 +182,6 @@
       color:var(--muted);
       font-weight:900;
       cursor:pointer;
-      white-space:nowrap;
     }
     .seg button.active{
       background: rgba(106,162,255,.18);
@@ -262,12 +263,14 @@
       white-space:nowrap;
     }
 
-    /* HEADER ACTIONS */
+    /* HEADER ACTIONS (Ultimos) */
     .barRow{
       display:flex; gap:10px; align-items:center; justify-content:space-between;
       margin:10px 0 0 0;
     }
-    .barRow .left{ display:flex; gap:10px; align-items:center; }
+    .barRow .left{
+      display:flex; gap:10px; align-items:center;
+    }
 
     .chipBtn{
       border:1px solid var(--border);
@@ -296,7 +299,6 @@
       font-size:12px;
     }
 
-    /* TABLE */
     .tableWrap{
       margin-top:10px;
       border:1px solid rgba(255,255,255,.07);
@@ -331,6 +333,7 @@
       flex-direction:column;
       gap:10px;
     }
+
     .item{
       background: rgba(10,16,32,.48);
       border:1px solid rgba(255,255,255,.07);
@@ -342,6 +345,7 @@
       gap:10px;
       position:relative;
     }
+
     .itemLeft{
       display:flex; gap:10px; align-items:center;
       flex:1;
@@ -372,6 +376,7 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
+
     .value{
       font-weight:900;
       font-size:14px;
@@ -394,6 +399,7 @@
       user-select:none;
     }
     .kebab:active{ transform: scale(.985); background: rgba(255,255,255,.06); }
+
     .menu{
       position:absolute;
       right:12px;
@@ -428,7 +434,7 @@
     /* PAGER */
     .pager{
       margin-top:12px;
-      display:none;
+      display:none; /* só aparece se precisar */
       justify-content:space-between;
       align-items:center;
       gap:10px;
@@ -477,6 +483,7 @@
       padding:16px;
       z-index:9999;
     }
+
     .sheet{
       width:min(560px, 100%);
       background: rgba(10,16,32,.92);
@@ -489,13 +496,20 @@
       max-height: 86vh;
       overflow:auto;
     }
+
     .sheetTop{
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       margin-bottom:8px;
     }
-    .sheetTop h2{ margin:0; font-size:16px; }
-    .sheetTop p{ margin:4px 0 0 0; color: var(--muted); font-size:13px; }
-
+    .sheetTop h2{
+      margin:0;
+      font-size:16px;
+    }
+    .sheetTop p{
+      margin:4px 0 0 0;
+      color: var(--muted);
+      font-size:13px;
+    }
     .xBtn{
       border:1px solid rgba(255,255,255,.10);
       background:rgba(255,255,255,.05);
@@ -515,7 +529,13 @@
       gap:10px;
     }
     .filtersGrid .full{ grid-column: 1 / -1; }
-    .quickRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+
+    .quickRow{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
     .chip{
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.05);
@@ -527,7 +547,10 @@
       font-size:12px;
       user-select:none;
     }
-    .chip.secondary{ background:rgba(255,255,255,.035); color:var(--muted); }
+    .chip.secondary{
+      background:rgba(255,255,255,.035);
+      color:var(--muted);
+    }
     .chip:active{ transform: scale(.985); }
 
     .linkBtn{
@@ -543,6 +566,7 @@
 
     @media(max-width:480px){
       .filtersGrid{ grid-template-columns:1fr; }
+      .tab{ padding:12px 8px; }
     }
   </style>
 </head>
@@ -561,12 +585,11 @@
       </div>
     </div>
 
-    <!-- TABS -->
     <div class="tabsWrap">
       <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
       <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
       <button class="tab" id="tab3" onclick="showTab('dashboard')">Dashboard</button>
-      <button class="tab" id="tab4" onclick="showTab('investimentos')">Invest.</button>
+      <button class="tab" id="tab4" onclick="showTab('invest')">Investimentos</button>
     </div>
 
     <!-- ===== SCREEN: LANÇAR ===== -->
@@ -698,42 +721,26 @@
       </div>
     </div>
 
-    <!-- ===== SCREEN: INVESTIMENTOS ===== -->
-    <div class="card" id="screen-investimentos" style="display:none;">
-      <div class="title">Investimentos</div>
-
-      <div class="summaryGrid" style="margin-bottom:8px;">
-        <div class="sumRow"><div class="k">Total investido</div><div class="v" id="invTotal">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Aportes</div><div class="v" id="invAportes">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Retiradas</div><div class="v" id="invRetiradas">R$ 0,00</div></div>
-      </div>
-
-      <div class="card chartCard" style="margin-top:0;">
-        <div class="title">Distribuição por ativo</div>
-        <div class="chartWrap"><canvas id="invPizza"></canvas></div>
-        <div class="tableWrap" id="tblInvWrap" style="display:none;">
-          <table>
-            <thead><tr><th>Ativo</th><th>Saldo</th></tr></thead>
-            <tbody id="tblInv"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="seg" style="margin-top:12px;">
-        <button id="btnAporte" class="active" onclick="setInvTipo('Aporte')">Aporte</button>
-        <button id="btnRetirada" onclick="setInvTipo('Retirada')">Retirada</button>
+    <!-- ===== SCREEN: INVESTIMENTOS (Modelo A) ===== -->
+    <div class="card" id="screen-invest" style="display:none;">
+      <div class="seg">
+        <button id="btnAporte" class="active" onclick="setInvestTipo('Aporte')">Aporte</button>
+        <button id="btnRetirada" onclick="setInvestTipo('Retirada')">Retirada</button>
       </div>
 
       <label>Ativo</label>
-      <input id="invAtivo" placeholder="Ex: Tesouro Selic, BTC, IVVB11" />
+      <input id="invAtivo" placeholder="Ex: Tesouro Selic, PETR4, BTC" />
 
-      <label>Descrição (opcional)</label>
-      <input id="invDesc" placeholder="Ex: aporte mensal" />
+      <label>Instituição</label>
+      <input id="invInstituicao" placeholder="Ex: Nubank, Inter, XP..." />
+
+      <label>Descrição</label>
+      <input id="invDescricao" placeholder="Ex: aporte mensal" />
 
       <div class="row">
         <div>
           <label>Valor</label>
-          <input id="invValor" type="text" inputmode="decimal" placeholder="Ex: 200,00" />
+          <input id="invValor" type="text" inputmode="decimal" placeholder="Ex: 500,00" />
         </div>
         <div>
           <label>Data</label>
@@ -742,15 +749,48 @@
       </div>
 
       <div class="actions">
-        <button class="btn" onclick="enviarInvestimento()">Salvar</button>
-        <button class="btn secondary" onclick="limparInvestimento()">Limpar</button>
-        <button class="btn secondary" onclick="carregarInvestimentosTudo()">⟳ Atualizar</button>
+        <button class="btn" onclick="enviarInvest()">Salvar</button>
+        <button class="btn secondary" onclick="limparInvest()">Limpar</button>
       </div>
 
       <div id="invMsg" class="msg"></div>
 
-      <div class="list" id="invLista"></div>
-      <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
+      <div class="barRow" style="margin-top:14px;">
+        <div class="left">
+          <button class="chipBtn" onclick="openInvestFilters()">⚙️ Filtros</button>
+          <button class="chipBtn" onclick="carregarInvestTudo()">⟳ Atualizar</button>
+        </div>
+        <button class="chipBtn" onclick="jumpToInvestList()">📒 Ver lista</button>
+      </div>
+
+      <div class="card chartCard">
+        <div class="title" id="invTitle">Investimentos (mês/ano)</div>
+
+        <div class="summaryGrid" style="margin-bottom:8px;">
+          <div class="sumRow"><div class="k">Aportes</div><div class="v" id="invAportes">R$ 0,00</div></div>
+          <div class="sumRow"><div class="k">Retiradas</div><div class="v" id="invRetiradas">R$ 0,00</div></div>
+          <div class="sumRow"><div class="k">Saldo</div><div class="v" id="invSaldo">R$ 0,00</div></div>
+        </div>
+
+        <div class="tableWrap" id="invAtivosWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Ativo</th><th>Saldo</th></tr></thead>
+            <tbody id="invAtivosBody"></tbody>
+          </table>
+        </div>
+
+        <div class="pager" id="invPager">
+          <div class="info" id="invPagerInfo">Carregando…</div>
+          <div class="controls">
+            <button class="btn secondary small" onclick="prevInvestPage()">◀</button>
+            <span class="pillSmall" id="invPagerPage">Página 1</span>
+            <button class="btn secondary small" onclick="nextInvestPage()">▶</button>
+          </div>
+        </div>
+
+        <div class="list" id="invLista"></div>
+        <div class="hint">Modelo A: aportes e retiradas por ativo → saldo líquido por ativo.</div>
+      </div>
     </div>
 
   </div>
@@ -826,7 +866,7 @@
     </div>
   </div>
 
-  <!-- ===== FILTERS BOTTOM SHEET ===== -->
+  <!-- ===== FILTERS BOTTOM SHEET (LANÇAMENTOS) ===== -->
   <div class="backdrop" id="filtersBack">
     <div class="sheet">
       <div class="sheetTop">
@@ -925,7 +965,105 @@
     </div>
   </div>
 
-  <!-- EDIT SHEET (LANÇAMENTOS) -->
+  <!-- ===== FILTERS BOTTOM SHEET (INVESTIMENTOS) ===== -->
+  <div class="backdrop" id="invFiltersBack">
+    <div class="sheet">
+      <div class="sheetTop">
+        <div>
+          <h2>⚙️ Filtros • Investimentos</h2>
+          <p>Refine por mês/ano, ativo e valores.</p>
+        </div>
+        <button class="xBtn" onclick="closeInvestFilters()">✕</button>
+      </div>
+
+      <div class="filtersGrid">
+        <div>
+          <label>Mês</label>
+          <select id="ifMonth"></select>
+        </div>
+        <div>
+          <label>Ano</label>
+          <select id="ifYear"></select>
+        </div>
+
+        <div class="full">
+          <label>Atalhos</label>
+          <div class="quickRow">
+            <button class="chip" onclick="setInvestQuickThisMonth()">Mês atual</button>
+            <button class="chip" onclick="setInvestQuickLastDays(30)">Últimos 30 dias</button>
+            <button class="chip" onclick="setInvestQuickLastDays(90)">Últimos 90 dias</button>
+            <button class="chip secondary" onclick="clearInvestQuickDates()">Limpar datas</button>
+          </div>
+        </div>
+
+        <div class="full">
+          <label>Tipo</label>
+          <select id="ifTipo">
+            <option value="Todos">Todos</option>
+            <option value="Aporte">Aportes</option>
+            <option value="Retirada">Retiradas</option>
+          </select>
+        </div>
+
+        <div class="full">
+          <label>Ativo</label>
+          <input id="ifAtivo" placeholder="Ex: Tesouro Selic, PETR4, BTC" />
+        </div>
+
+        <div class="full">
+          <label>Ordenar</label>
+          <select id="ifOrder">
+            <option value="recent">Mais recente</option>
+            <option value="oldest">Mais antigo</option>
+            <option value="value_desc">Maior valor</option>
+            <option value="value_asc">Menor valor</option>
+          </select>
+        </div>
+
+        <div>
+          <label>De</label>
+          <input id="ifFrom" type="date" />
+        </div>
+        <div>
+          <label>Até</label>
+          <input id="ifTo" type="date" />
+        </div>
+
+        <div>
+          <label>Valor mínimo</label>
+          <input id="ifMin" type="text" inputmode="decimal" placeholder="Ex: 100,00" />
+        </div>
+        <div>
+          <label>Valor máximo</label>
+          <input id="ifMax" type="text" inputmode="decimal" placeholder="Ex: 5000,00" />
+        </div>
+
+        <div class="full">
+          <label>Buscar</label>
+          <input id="ifSearch" placeholder="Ex: CDB, Inter, aporte..." />
+        </div>
+
+        <div class="full">
+          <label>Itens por página</label>
+          <select id="ifLimit">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+
+        <div class="full actions">
+          <button class="btn secondary" onclick="aplicarInvestFiltros()">Aplicar filtros</button>
+          <button class="btn" onclick="limparInvestFiltros()">Limpar</button>
+        </div>
+      </div>
+
+      <div class="hint">Dica: o “Ativo” filtra por correspondência exata no backend (case-insensitive).</div>
+    </div>
+  </div>
+
+  <!-- EDIT SHEET (lançamentos) -->
   <div class="backdrop" id="editBack">
     <div class="sheet">
       <div class="sheetTop">
@@ -967,51 +1105,6 @@
       </div>
 
       <div id="editMsg" class="msg"></div>
-    </div>
-  </div>
-
-  <!-- EDIT SHEET (INVESTIMENTOS) -->
-  <div class="backdrop" id="invEditBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>✏️ Editar investimento</h2>
-          <p>Altere e salve.</p>
-        </div>
-        <button class="xBtn" onclick="closeInvEdit()">✕</button>
-      </div>
-
-      <input type="hidden" id="invEditRow" />
-
-      <label>Tipo</label>
-      <select id="invEditTipo">
-        <option value="Aporte">Aporte</option>
-        <option value="Retirada">Retirada</option>
-      </select>
-
-      <label>Ativo</label>
-      <input id="invEditAtivo" placeholder="Ex: IVVB11" />
-
-      <label>Descrição</label>
-      <input id="invEditDesc" placeholder="Opcional" />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="invEditValor" type="text" inputmode="decimal" placeholder="Ex: 200,00" />
-        </div>
-        <div>
-          <label>Data (YYYY-MM-DD)</label>
-          <input id="invEditData" type="date" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="salvarInvEdicao()">Salvar</button>
-        <button class="btn secondary" onclick="closeInvEdit()">Cancelar</button>
-      </div>
-
-      <div id="invEditMsg" class="msg"></div>
     </div>
   </div>
 
@@ -1157,7 +1250,7 @@
 
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
-        try{ await carregarInvestimentosTudo(); }catch(e){}
+        try{ await carregarInvestTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1210,7 +1303,7 @@
 
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
-        try{ await carregarInvestimentosTudo(); }catch(e){}
+        try{ await carregarInvestTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1280,7 +1373,7 @@
 
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
-        try{ await carregarInvestimentosTudo(); }catch(e){}
+        try{ await carregarInvestTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1301,10 +1394,19 @@
     }
 
     // =========================
-    // FILTERS SHEET
+    // FILTERS SHEETS
     // =========================
-    function openFilters(){ document.getElementById("filtersBack").style.display = "flex"; }
+    function openFilters(fromDashboard=false){
+      document.getElementById("filtersBack").style.display = "flex";
+      if(fromDashboard) setTitleMov();
+    }
     function closeFilters(){ document.getElementById("filtersBack").style.display = "none"; }
+
+    function openInvestFilters(){
+      document.getElementById("invFiltersBack").style.display = "flex";
+      setInvestTitle();
+    }
+    function closeInvestFilters(){ document.getElementById("invFiltersBack").style.display = "none"; }
 
     // fechar sheets tocando fora
     function wireBackdropClose(id, closeFn){
@@ -1315,13 +1417,15 @@
     }
 
     // =========================
-    // ESTADO (LANÇAMENTOS)
+    // ESTADO
     // =========================
     let tipoAtual = "Gasto";
     let chartMov = null;
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
     let chartSaldo = null;
+
+    let investTipoAtual = "Aporte";
 
     const filtros = {
       month: null,
@@ -1338,11 +1442,21 @@
       total: 0
     };
 
-    // =========================
-    // ESTADO (INVESTIMENTOS)
-    // =========================
-    let invTipoAtual = "Aporte";
-    let invChart = null;
+    const investFiltros = {
+      month: null,
+      year: null,
+      tipo: "Todos",     // Todos | Aporte | Retirada
+      ativo: "",         // filtro exato no backend
+      q: "",
+      order: "recent",
+      date_from: "",
+      date_to: "",
+      value_min: "",
+      value_max: "",
+      limit: 10,
+      page: 1,
+      total: 0
+    };
 
     // =========================
     // HELPERS
@@ -1372,13 +1486,17 @@
       return `${y}-${pad2(m)}-01`;
     }
 
+    // ✅ parse pt-BR para número (evita 360 virar 360000)
     function parseMoneyBR(str){
       if(str == null) return NaN;
       let s = String(str).trim();
       if(!s) return NaN;
+
       s = s.replace("R$", "").trim();
+
       const hasComma = s.includes(",");
       const hasDot = s.includes(".");
+
       if(hasComma && hasDot){
         if(s.lastIndexOf(",") > s.lastIndexOf(".")){
           s = s.replace(/\./g, "");
@@ -1392,8 +1510,63 @@
       }else{
         s = s.replace(/,/g, "");
       }
+
       const n = Number(s);
       return Number.isFinite(n) ? n : NaN;
+    }
+
+    function setMsg(kind, text){
+      const el = document.getElementById("msg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function setInvMsg(kind, text){
+      const el = document.getElementById("invMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function setEditMsg(kind, text){
+      const el = document.getElementById("editMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function getField(obj, keys){
+      for(const k of keys){
+        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return "";
+    }
+    function iconFor(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("rece") ? "⬆" : "⬇";
+    }
+    function valueClass(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("rece") ? "green" : "red";
+    }
+
+    function iconForInvest(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("aport") ? "➕" : "➖";
+    }
+    function valueClassInvest(item){
+      const t = (item.Tipo || item.tipo || "").toLowerCase();
+      return t.includes("aport") ? "green" : "red";
     }
 
     function qs(params){
@@ -1408,20 +1581,18 @@
     }
 
     // =========================
-    // TAB via URL
+    // TAB via URL ( ?tab=ultimos | dashboard | lancar | invest ) + hash (#tab=...)
     // =========================
-    const TABS = ["lancar","ultimos","dashboard","investimentos"];
-
     function getTabFromURL(){
       try{
         const url = new URL(window.location.href);
         const t = (url.searchParams.get("tab") || "").toLowerCase();
-        if(TABS.includes(t)) return t;
+        if(t === "ultimos" || t === "dashboard" || t === "lancar" || t === "invest") return t;
 
         const h = (url.hash || "").replace("#","").trim();
         if(h.startsWith("tab=")){
           const hv = h.split("=").slice(1).join("=").toLowerCase();
-          if(TABS.includes(hv)) return hv;
+          if(hv === "ultimos" || hv === "dashboard" || hv === "lancar" || hv === "invest") return hv;
         }
       }catch(e){}
       return null;
@@ -1442,24 +1613,30 @@
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
       document.getElementById("tab3").classList.toggle("active", tab==="dashboard");
-      document.getElementById("tab4").classList.toggle("active", tab==="investimentos");
+      document.getElementById("tab4").classList.toggle("active", tab==="invest");
 
       document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
-      document.getElementById("screen-investimentos").style.display = tab==="investimentos" ? "block" : "none";
+      document.getElementById("screen-invest").style.display = tab==="invest" ? "block" : "none";
 
       if(syncURL) setTabInURL(tab);
 
       if(tab==="ultimos") carregarTudo();
       if(tab==="dashboard") atualizarDashboard();
-      if(tab==="investimentos") carregarInvestimentosTudo();
+      if(tab==="invest") carregarInvestTudo();
     }
 
     function setTipo(tipo){
       tipoAtual = tipo;
       document.getElementById("btnGasto").classList.toggle("active", tipo==="Gasto");
       document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
+    }
+
+    function setInvestTipo(tipo){
+      investTipoAtual = tipo;
+      document.getElementById("btnAporte").classList.toggle("active", tipo==="Aporte");
+      document.getElementById("btnRetirada").classList.toggle("active", tipo==="Retirada");
     }
 
     function limpar(){
@@ -1469,18 +1646,22 @@
       setMsg("", "");
     }
 
-    function setMsg(kind, text){
-      const el = document.getElementById("msg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
+    function limparInvest(){
+      document.getElementById("invAtivo").value = "";
+      document.getElementById("invInstituicao").value = "";
+      document.getElementById("invDescricao").value = "";
+      document.getElementById("invValor").value = "";
+      setInvMsg("", "");
+    }
+
+    function jumpToInvestList(){
+      // Mantém dentro da aba Investimentos e só rola para a lista (fica no mesmo card)
+      const el = document.getElementById("invLista");
+      if(el) el.scrollIntoView({behavior:"smooth", block:"start"});
     }
 
     // =========================
-    // QUICK FILTERS
+    // QUICK FILTERS (LANÇAMENTOS)
     // =========================
     function setQuickThisMonth(){
       const today = isoToday();
@@ -1513,7 +1694,40 @@
     }
 
     // =========================
-    // FILTROS
+    // QUICK FILTERS (INVEST)
+    // =========================
+    function setInvestQuickThisMonth(){
+      const today = isoToday();
+      const from = isoFirstOfMonth(today);
+      document.getElementById("ifFrom").value = from;
+      document.getElementById("ifTo").value = today;
+
+      const [y,m] = today.split("-").map(Number);
+      document.getElementById("ifMonth").value = String(m);
+      document.getElementById("ifYear").value = String(y);
+
+      aplicarInvestFiltros();
+    }
+    function setInvestQuickLastDays(n){
+      const today = isoToday();
+      const from = isoAddDays(today, -(n-1));
+      document.getElementById("ifFrom").value = from;
+      document.getElementById("ifTo").value = today;
+
+      const [y,m] = today.split("-").map(Number);
+      document.getElementById("ifMonth").value = String(m);
+      document.getElementById("ifYear").value = String(y);
+
+      aplicarInvestFiltros();
+    }
+    function clearInvestQuickDates(){
+      document.getElementById("ifFrom").value = "";
+      document.getElementById("ifTo").value = "";
+      aplicarInvestFiltros();
+    }
+
+    // =========================
+    // FILTROS (LANÇAMENTOS)
     // =========================
     function fillMonthYear(){
       const mSel = document.getElementById("fMonth");
@@ -1590,7 +1804,86 @@
     }
 
     // =========================
-    // PAGINAÇÃO
+    // FILTROS (INVEST)
+    // =========================
+    function fillInvestMonthYear(){
+      const mSel = document.getElementById("ifMonth");
+      const ySel = document.getElementById("ifYear");
+
+      const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      mSel.innerHTML = monthNames.map((n,i)=> `<option value="${i+1}">${String(i+1).padStart(2,"0")} - ${n}</option>`).join("");
+
+      const now = new Date();
+      const y = now.getFullYear();
+      const years = [];
+      for(let i=y-5;i<=y+2;i++) years.push(i);
+      ySel.innerHTML = years.map(v=> `<option value="${v}">${v}</option>`).join("");
+
+      investFiltros.month = now.getMonth()+1;
+      investFiltros.year = now.getFullYear();
+      investFiltros.tipo = "Todos";
+      investFiltros.ativo = "";
+      investFiltros.q = "";
+      investFiltros.order = "recent";
+      investFiltros.date_from = "";
+      investFiltros.date_to = "";
+      investFiltros.value_min = "";
+      investFiltros.value_max = "";
+      investFiltros.limit = 10;
+      investFiltros.page = 1;
+
+      mSel.value = String(investFiltros.month);
+      ySel.value = String(investFiltros.year);
+
+      document.getElementById("ifTipo").value = investFiltros.tipo;
+      document.getElementById("ifOrder").value = investFiltros.order;
+      document.getElementById("ifAtivo").value = "";
+      document.getElementById("ifSearch").value = "";
+      document.getElementById("ifFrom").value = "";
+      document.getElementById("ifTo").value = "";
+      document.getElementById("ifMin").value = "";
+      document.getElementById("ifMax").value = "";
+      document.getElementById("ifLimit").value = String(investFiltros.limit);
+
+      setInvestTitle();
+    }
+
+    function setInvestTitle(){
+      const m = investFiltros.month;
+      const y = investFiltros.year;
+      const t = investFiltros.tipo === "Todos" ? "Todos" : (investFiltros.tipo === "Aporte" ? "Aportes" : "Retiradas");
+      const a = investFiltros.ativo ? ` • ${investFiltros.ativo}` : "";
+      document.getElementById("invTitle").textContent = `Investimentos (${String(m).padStart(2,"0")}/${y}) — ${t}${a}`;
+    }
+
+    function aplicarInvestFiltros(){
+      investFiltros.month = Number(document.getElementById("ifMonth").value);
+      investFiltros.year = Number(document.getElementById("ifYear").value);
+      investFiltros.tipo = document.getElementById("ifTipo").value;
+      investFiltros.order = document.getElementById("ifOrder").value;
+      investFiltros.ativo = (document.getElementById("ifAtivo").value || "").trim();
+      investFiltros.q = (document.getElementById("ifSearch").value || "").trim();
+      investFiltros.limit = Number(document.getElementById("ifLimit").value) || 10;
+
+      investFiltros.date_from = (document.getElementById("ifFrom").value || "").trim();
+      investFiltros.date_to = (document.getElementById("ifTo").value || "").trim();
+      investFiltros.value_min = (document.getElementById("ifMin").value || "").trim();
+      investFiltros.value_max = (document.getElementById("ifMax").value || "").trim();
+
+      investFiltros.page = 1;
+      setInvestTitle();
+      closeInvestFilters();
+      carregarInvestTudo();
+    }
+
+    function limparInvestFiltros(){
+      fillInvestMonthYear();
+      closeInvestFilters();
+      carregarInvestTudo();
+    }
+
+    // =========================
+    // PAGINAÇÃO (LANÇAMENTOS)
     // =========================
     function updatePager(){
       const page = filtros.page;
@@ -1621,7 +1914,38 @@
     }
 
     // =========================
-    // ENVIAR (LANÇAR)
+    // PAGINAÇÃO (INVEST)
+    // =========================
+    function updateInvestPager(){
+      const page = investFiltros.page;
+      const limit = investFiltros.limit;
+      const total = investFiltros.total;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+
+      const pager = document.getElementById("invPager");
+      if(totalPages <= 1){
+        pager.style.display = "none";
+        return;
+      }
+      pager.style.display = "flex";
+      document.getElementById("invPagerPage").textContent = `Página ${page} / ${totalPages}`;
+      document.getElementById("invPagerInfo").textContent = `Total: ${total} • ${limit} por página`;
+    }
+
+    function prevInvestPage(){
+      if(investFiltros.page <= 1) return;
+      investFiltros.page -= 1;
+      carregarInvestimentos();
+    }
+    function nextInvestPage(){
+      const totalPages = Math.max(1, Math.ceil((investFiltros.total || 0) / (investFiltros.limit || 10)));
+      if(investFiltros.page >= totalPages) return;
+      investFiltros.page += 1;
+      carregarInvestimentos();
+    }
+
+    // =========================
+    // ENVIAR (LANÇAMENTOS)
     // =========================
     async function enviar(){
       setMsg("", "");
@@ -1645,7 +1969,7 @@
         tipo: tipoAtual,
         categoria,
         descricao,
-        valor: valorNum,
+        valor: valorNum,              // ✅ número
         data: formatBRfromISO(dataISO)
       };
 
@@ -1671,7 +1995,59 @@
     }
 
     // =========================
-    // MOVIMENTO + PIZZAS
+    // ENVIAR (INVESTIMENTOS)
+    // =========================
+    async function enviarInvest(){
+      setInvMsg("", "");
+      const ativo = document.getElementById("invAtivo").value.trim();
+      const instituicao = document.getElementById("invInstituicao").value.trim();
+      const descricao = document.getElementById("invDescricao").value.trim();
+      const valorTxt = document.getElementById("invValor").value;
+      const dataISO = document.getElementById("invData").value;
+
+      if(!ativo || !valorTxt){
+        setInvMsg("err", "Preencha ativo e valor.");
+        return;
+      }
+
+      const valorNum = parseMoneyBR(valorTxt);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        setInvMsg("err", "Valor inválido. Ex: 500,00");
+        return;
+      }
+
+      const payload = {
+        tipo: investTipoAtual,         // Aporte/Retirada
+        ativo,
+        instituicao,
+        descricao,
+        valor: valorNum,              // ✅ número
+        data: formatBRfromISO(dataISO)
+      };
+
+      try{
+        const r = await apiFetch("/investir", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if(r.status === 401){ mustLogin(); return; }
+
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok || !j.ok) throw new Error(j?.msg || "Erro ao salvar investimento");
+
+        setInvMsg("ok", "✅ Investimento salvo!");
+        document.getElementById("invDescricao").value = "";
+        document.getElementById("invValor").value = "";
+        await carregarInvestTudo();
+      }catch(e){
+        setInvMsg("err", "❌ " + e.message);
+      }
+    }
+
+    // =========================
+    // MOVIMENTO (LANÇAMENTOS)
     // =========================
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
@@ -1729,6 +2105,9 @@
       });
     }
 
+    // =========================
+    // PIZZAS (LANÇAMENTOS)
+    // =========================
     function donutOptions(){
       return {
         responsive:true,
@@ -1843,6 +2222,7 @@
     function closeAllItemMenus(){
       document.querySelectorAll(".menu").forEach(m=> m.style.display="none");
     }
+
     function toggleMenu(id){
       const el = document.getElementById(id);
       if(!el) return;
@@ -1900,11 +2280,11 @@
       }
 
       arr.forEach((item, idx) => {
-        const tipo = item.Tipo || "";
-        const categoria = item.Categoria || "";
-        const descricao = item["Descrição"] || "";
-        const data = item.Data || "";
-        const valor = item.Valor || "";
+        const tipo = getField(item, ["Tipo"]);
+        const categoria = getField(item, ["Categoria"]);
+        const descricao = getField(item, ["Descrição"]);
+        const data = getField(item, ["Data"]);
+        const valor = getField(item, ["Valor"]);
         const row = item._row;
 
         const vnum = parseMoneyBR(valor);
@@ -1913,14 +2293,10 @@
         const encoded = encodeURIComponent(JSON.stringify(item));
         const menuId = `m_${row}_${idx}`;
 
-        const tLower = String(tipo).toLowerCase();
-        const icon = tLower.includes("rece") ? "⬆" : "⬇";
-        const vClass = tLower.includes("rece") ? "green" : "red";
-
         lista.innerHTML += `
           <div class="item">
             <div class="itemLeft">
-              <div class="icon">${icon}</div>
+              <div class="icon">${iconFor(item)}</div>
               <div class="meta">
                 <b>${tipo} • ${categoria}</b>
                 <span>${descricao} • ${data}</span>
@@ -1928,7 +2304,7 @@
             </div>
 
             <div style="display:flex; align-items:center;">
-              <div class="value ${vClass}">${showVal}</div>
+              <div class="value ${valueClass(item)}">${showVal}</div>
               <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
             </div>
 
@@ -1947,18 +2323,132 @@
     }
 
     // =========================
-    // EDIT (LANÇAMENTOS)
+    // INVEST: RESUMO + LISTA
     // =========================
-    function setEditMsg(kind, text){
-      const el = document.getElementById("editMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
+    function renderTabelaAtivos(arr){
+      const wrap = document.getElementById("invAtivosWrap");
+      const tbody = document.getElementById("invAtivosBody");
+      if(!Array.isArray(arr) || arr.length === 0){
+        wrap.style.display = "none";
+        tbody.innerHTML = "";
+        return;
+      }
+      wrap.style.display = "block";
+      tbody.innerHTML = arr.slice(0, 20).map(x => {
+        const ativo = (x.ativo || "Sem ativo");
+        const saldo = Number(x.saldo || 0);
+        const cls = saldo >= 0 ? "green" : "red";
+        return `<tr><td>${ativo}</td><td class="${cls}">${brl(saldo)}</td></tr>`;
+      }).join("");
     }
 
+    async function carregarInvestResumo(){
+      const params = {
+        month: investFiltros.month,
+        year: investFiltros.year,
+        q: investFiltros.q
+      };
+
+      const r = await apiFetch("/invest_resumo" + qs(params));
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
+      if(!r.ok) throw new Error("Falha em /invest_resumo");
+
+      const j = await r.json().catch(()=> ({}));
+      document.getElementById("invAportes").innerText = brl(j.aportes || 0);
+      document.getElementById("invRetiradas").innerText = brl(j.retiradas || 0);
+      document.getElementById("invSaldo").innerText = brl(j.saldo || 0);
+
+      renderTabelaAtivos(j.por_ativo || []);
+      return j;
+    }
+
+    async function carregarInvestimentos(){
+      const lista = document.getElementById("invLista");
+      lista.innerHTML = `
+        <div class="item">
+          <div class="itemLeft">
+            <div class="icon">…</div>
+            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
+          </div>
+          <div class="value"> </div>
+        </div>`;
+
+      const params = {
+        month: investFiltros.month,
+        year: investFiltros.year,
+        tipo: investFiltros.tipo,
+        ativo: investFiltros.ativo,
+        q: investFiltros.q,
+        order: investFiltros.order,
+        date_from: investFiltros.date_from,
+        date_to: investFiltros.date_to,
+        value_min: investFiltros.value_min,
+        value_max: investFiltros.value_max,
+        page: investFiltros.page,
+        limit: investFiltros.limit
+      };
+
+      const r = await apiFetch("/investimentos" + qs(params));
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
+      if(!r.ok) throw new Error("Falha em /investimentos");
+
+      const payload = await r.json().catch(()=> ({}));
+      const arr = payload.items || [];
+      investFiltros.total = Number(payload.total || 0);
+
+      updateInvestPager();
+
+      lista.innerHTML = "";
+      if(!Array.isArray(arr) || arr.length === 0){
+        lista.innerHTML = `
+          <div class="item">
+            <div class="itemLeft">
+              <div class="icon">∅</div>
+              <div class="meta"><b>Nenhum investimento</b><span>Não há dados nesse filtro</span></div>
+            </div>
+            <div class="value"></div>
+          </div>`;
+        return;
+      }
+
+      arr.forEach((item) => {
+        const tipo = getField(item, ["Tipo"]);
+        const ativo = getField(item, ["Ativo"]);
+        const inst = getField(item, ["Instituicao", "Instituição"]);
+        const desc = getField(item, ["Descricao", "Descrição", "Descrição"]);
+        const data = getField(item, ["Data"]);
+        const valor = getField(item, ["Valor"]);
+
+        const vnum = parseMoneyBR(valor);
+        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
+
+        lista.innerHTML += `
+          <div class="item">
+            <div class="itemLeft">
+              <div class="icon">${iconForInvest(item)}</div>
+              <div class="meta">
+                <b>${tipo} • ${ativo}</b>
+                <span>${(inst||"").trim()}${inst && desc ? " • " : ""}${(desc||"").trim()} • ${data}</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center;">
+              <div class="value ${valueClassInvest(item)}">${showVal}</div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function carregarInvestTudo(){
+      setInvestTitle();
+      try{ await carregarInvestResumo(); }catch(e){}
+      try{ await carregarInvestimentos(); }catch(e){}
+    }
+
+    // =========================
+    // EDIT (LANÇAMENTOS)
+    // =========================
     function openEdit(encoded){
       try{
         const item = JSON.parse(decodeURIComponent(encoded));
@@ -2041,7 +2531,7 @@
     }
 
     // =========================
-    // EXPORT
+    // EXPORT (LANÇAMENTOS)
     // =========================
     async function exportar(tipo){
       try{
@@ -2156,7 +2646,7 @@
 
     async function atualizarDashboard(){
       try{
-        const j = await carregarResumo();
+        const j = await carregarResumo(); // reaproveita o /resumo
         document.getElementById("dashReceitas").innerText = brl(j.entradas);
         document.getElementById("dashGastos").innerText   = brl(j.saidas);
         document.getElementById("dashSaldo").innerText    = brl(j.saldo);
@@ -2171,330 +2661,19 @@
     }
 
     // =========================
-    // INVESTIMENTOS (MODELO A)
-    // =========================
-    function setInvMsg(kind, text){
-      const el = document.getElementById("invMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    function setInvTipo(t){
-      invTipoAtual = t;
-      document.getElementById("btnAporte").classList.toggle("active", t==="Aporte");
-      document.getElementById("btnRetirada").classList.toggle("active", t==="Retirada");
-    }
-
-    function limparInvestimento(){
-      document.getElementById("invAtivo").value = "";
-      document.getElementById("invDesc").value = "";
-      document.getElementById("invValor").value = "";
-      setInvMsg("", "");
-    }
-
-    function invIcon(tipo){
-      return String(tipo||"").toLowerCase().includes("ap") ? "⬆" : "⬇";
-    }
-    function invValueClass(tipo){
-      return String(tipo||"").toLowerCase().includes("ap") ? "green" : "red";
-    }
-
-    async function enviarInvestimento(){
-      setInvMsg("", "");
-      const ativo = (document.getElementById("invAtivo").value || "").trim();
-      const descricao = (document.getElementById("invDesc").value || "").trim();
-      const valorTxt = (document.getElementById("invValor").value || "").trim();
-      const dataISO = (document.getElementById("invData").value || "").trim();
-
-      if(!ativo || !valorTxt){
-        setInvMsg("err", "Preencha ativo e valor.");
-        return;
-      }
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setInvMsg("err", "Valor inválido. Ex: 200,00");
-        return;
-      }
-      const data = dataISO || isoToday();
-
-      const payload = { ativo, tipo: invTipoAtual, descricao, valor: valorNum, data };
-
-      try{
-        const r = await apiFetch("/investir", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify(payload)
-        });
-        if(r.status === 401){ mustLogin(); return; }
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao salvar investimento");
-
-        setInvMsg("ok", "✅ Investimento salvo!");
-        document.getElementById("invDesc").value = "";
-        document.getElementById("invValor").value = "";
-        await carregarInvestimentosTudo();
-      }catch(e){
-        setInvMsg("err", "❌ " + e.message);
-      }
-    }
-
-    function renderInvTabela(saldoPorAtivo){
-      const wrap = document.getElementById("tblInvWrap");
-      const tbody = document.getElementById("tblInv");
-      const entries = Object.entries(saldoPorAtivo || {}).sort((a,b)=> (Number(b[1]||0)-Number(a[1]||0)));
-
-      if(!entries.length){
-        wrap.style.display = "none";
-        tbody.innerHTML = "";
-        return;
-      }
-
-      wrap.style.display = "block";
-      tbody.innerHTML = entries.slice(0, 30).map(([ativo, saldo])=>{
-        return `<tr><td>${ativo}</td><td>${brl(saldo)}</td></tr>`;
-      }).join("");
-    }
-
-    function updateInvChart(saldoPorAtivo){
-      const canvas = document.getElementById("invPizza");
-      if(!canvas) return;
-      const ctx = canvas.getContext("2d");
-
-      const entries = Object.entries(saldoPorAtivo || {}).filter(([,v])=> Number(v||0) !== 0);
-      const labels = entries.map(([k])=>k);
-      const values = entries.map(([,v])=> Math.abs(Number(v||0)));
-
-      if(invChart) invChart.destroy();
-
-      invChart = new Chart(ctx, {
-        type:"doughnut",
-        data:{
-          labels: labels.length ? labels : ["Sem dados"],
-          datasets:[{
-            data: values.length ? values : [1],
-            backgroundColor: labels.length ? getColors("62,226,155", labels.length) : ["rgba(62,226,155,0.18)"],
-            borderColor:"rgba(255,255,255,0.08)",
-            borderWidth:1
-          }]
-        },
-        options: donutOptions()
-      });
-    }
-
-    function closeAllInvMenus(){
-      document.querySelectorAll(".invMenu").forEach(m=> m.style.display="none");
-    }
-    function toggleInvMenu(id){
-      const el = document.getElementById(id);
-      if(!el) return;
-      const isOn = el.style.display === "block";
-      closeAllInvMenus();
-      el.style.display = isOn ? "none" : "block";
-    }
-
-    async function carregarInvestResumo(){
-      const r = await apiFetch("/invest_resumo");
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /invest_resumo");
-      const j = await r.json().catch(()=> ({}));
-
-      document.getElementById("invTotal").innerText = brl(j.total_investido || 0);
-      document.getElementById("invAportes").innerText = brl(j.total_aportes || 0);
-      document.getElementById("invRetiradas").innerText = brl(j.total_retiradas || 0);
-
-      renderInvTabela(j.saldo_por_ativo || {});
-      updateInvChart(j.saldo_por_ativo || {});
-      return j;
-    }
-
-    async function carregarInvestLista(){
-      const lista = document.getElementById("invLista");
-      lista.innerHTML = `
-        <div class="item">
-          <div class="itemLeft">
-            <div class="icon">…</div>
-            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
-          </div>
-          <div class="value"> </div>
-        </div>`;
-
-      const r = await apiFetch("/investimentos");
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /investimentos");
-
-      const payload = await r.json().catch(()=> ({}));
-      const arr = payload.items || [];
-
-      lista.innerHTML = "";
-      if(!Array.isArray(arr) || arr.length === 0){
-        lista.innerHTML = `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum investimento</b><span>Cadastre seu primeiro aporte</span></div>
-            </div>
-            <div class="value"></div>
-          </div>`;
-        return;
-      }
-
-      // mais recente primeiro (se tiver CreatedAt)
-      arr.sort((a,b)=> String(b.CreatedAt||"").localeCompare(String(a.CreatedAt||"")));
-
-      arr.forEach((it, idx)=>{
-        const row = it._row;
-        const ativo = it.Ativo || it.ativo || "Ativo";
-        const tipo = it.Tipo || it.tipo || "Aporte";
-        const desc = it["Descrição"] || it.descricao || "";
-        const data = it.Data || it.data || "";
-        const valor = it.Valor || it.valor || "";
-
-        const vnum = parseMoneyBR(valor);
-        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
-
-        const encoded = encodeURIComponent(JSON.stringify(it));
-        const menuId = `inv_m_${row}_${idx}`;
-
-        lista.innerHTML += `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">${invIcon(tipo)}</div>
-              <div class="meta">
-                <b>${ativo} • ${tipo}</b>
-                <span>${desc ? desc + " • " : ""}${data}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; align-items:center;">
-              <div class="value ${invValueClass(tipo)}">${showVal}</div>
-              <button class="kebab" onclick="toggleInvMenu('${menuId}')">⋯</button>
-            </div>
-
-            <div class="menu invMenu" id="${menuId}">
-              <button onclick='openInvEdit("${encoded}"); closeAllInvMenus();'>✏️ Editar</button>
-              <button class="dangerItem" onclick="excluirInvestimento(${row}); closeAllInvMenus();">🗑 Excluir</button>
-            </div>
-          </div>
-        `;
-      });
-    }
-
-    async function carregarInvestimentosTudo(){
-      setInvMsg("", "");
-      try{ await carregarInvestResumo(); }catch(e){
-        // Se rota não existir ainda, avisa bonito
-        if(String(e.message||"").includes("Falha")){
-          setInvMsg("err", "❌ Rotas de investimentos ainda não estão no backend. Cole o app.py com /investir, /investimentos e /invest_resumo.");
-        }
-      }
-      try{ await carregarInvestLista(); }catch(e){}
-    }
-
-    // ===== EDIT INVESTIMENTOS =====
-    function setInvEditMsg(kind, text){
-      const el = document.getElementById("invEditMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    function openInvEdit(encoded){
-      try{
-        const it = JSON.parse(decodeURIComponent(encoded));
-        document.getElementById("invEditRow").value = it._row || "";
-        document.getElementById("invEditTipo").value = it.Tipo || it.tipo || "Aporte";
-        document.getElementById("invEditAtivo").value = it.Ativo || it.ativo || "";
-        document.getElementById("invEditDesc").value = it["Descrição"] || it.descricao || "";
-        document.getElementById("invEditValor").value = String(it.Valor || it.valor || "");
-        // Data no backend (ideal) como YYYY-MM-DD. Se vier diferente, deixa vazio.
-        const d = String(it.Data || it.data || "");
-        document.getElementById("invEditData").value = (d.includes("-") ? d : "");
-        setInvEditMsg("", "");
-        document.getElementById("invEditBack").style.display = "flex";
-      }catch(e){
-        alert("❌ Erro ao abrir edição.");
-      }
-    }
-    function closeInvEdit(){ document.getElementById("invEditBack").style.display = "none"; }
-
-    async function salvarInvEdicao(){
-      setInvEditMsg("", "");
-
-      const row = Number(document.getElementById("invEditRow").value);
-      const tipo = (document.getElementById("invEditTipo").value || "").trim();
-      const ativo = (document.getElementById("invEditAtivo").value || "").trim();
-      const descricao = (document.getElementById("invEditDesc").value || "").trim();
-      const valorTxt = (document.getElementById("invEditValor").value || "").trim();
-      const dataISO = (document.getElementById("invEditData").value || "").trim();
-
-      if(!row || row < 2){
-        setInvEditMsg("err", "Linha inválida.");
-        return;
-      }
-      if(!ativo){
-        setInvEditMsg("err", "Preencha o ativo.");
-        return;
-      }
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setInvEditMsg("err", "Valor inválido. Ex: 200,00");
-        return;
-      }
-
-      const payload = { ativo, tipo, descricao, valor: valorNum, data: dataISO || isoToday() };
-
-      const r = await apiFetch(`/investimento/${row}`, {
-        method:"PATCH",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if(r.status === 401){ mustLogin(); return; }
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok || !j.ok){
-        setInvEditMsg("err", "❌ " + (j.msg || "Erro ao editar investimento"));
-        return;
-      }
-
-      setInvEditMsg("ok", "✅ Alterações salvas!");
-      await carregarInvestimentosTudo();
-      setTimeout(()=> closeInvEdit(), 450);
-    }
-
-    async function excluirInvestimento(row){
-      if(!confirm("Excluir este investimento?")) return;
-
-      const r = await apiFetch(`/investimento/${row}`, { method:"DELETE" });
-      if(r.status === 401){ mustLogin(); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok || !j.ok){
-        alert("❌ " + (j.msg || "Erro ao excluir"));
-        return;
-      }
-
-      await carregarInvestimentosTudo();
-    }
-
-    // =========================
     // INIT
     // =========================
     (function init(){
       fillMonthYear();
+      fillInvestMonthYear();
+
       document.getElementById("data").value = isoToday();
       document.getElementById("invData").value = isoToday();
 
       wireBackdropClose("loginBack", closeLogin);
       wireBackdropClose("filtersBack", closeFilters);
+      wireBackdropClose("invFiltersBack", closeInvestFilters);
       wireBackdropClose("editBack", closeEdit);
-      wireBackdropClose("invEditBack", closeInvEdit);
 
       wirePhoneMask();
       setAuthMode("login");
@@ -2502,10 +2681,7 @@
       document.addEventListener("click", (e)=>{
         const target = e.target;
         const isMenu = target && (target.classList && (target.classList.contains("kebab") || target.closest(".menu")));
-        if(!isMenu){
-          closeAllItemMenus();
-          closeAllInvMenus();
-        }
+        if(!isMenu) closeAllItemMenus();
       });
 
       ["fSearch","fMin","fMax"].forEach(id=>{
@@ -2515,6 +2691,14 @@
         });
       });
 
+      ["ifSearch","ifMin","ifMax","ifAtivo"].forEach(id=>{
+        const el = document.getElementById(id);
+        el.addEventListener("keydown", (ev)=>{
+          if(ev.key === "Enter") aplicarInvestFiltros();
+        });
+      });
+
+      // abrir tab via URL
       const initialTab = getTabFromURL();
       if(initialTab) showTab(initialTab, {syncURL:false});
 
@@ -2522,7 +2706,7 @@
         await refreshAuthUI();
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
-        try{ await carregarInvestimentosTudo(); }catch(e){}
+        try{ await carregarInvestTudo(); }catch(e){}
       })();
     })();
   </script>
