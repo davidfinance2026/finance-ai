@@ -1,110 +1,104 @@
-// static/sw.js
-const VERSION = "v1.0.0"; // troque quando publicar update
+const VERSION = "v2.0.0"; // troque quando fizer update
 const STATIC_CACHE = `static-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 
-const PRECACHE_URLS = [
-  "/",                       // se sua rota raiz serve o index.html
+const PRECACHE = [
+  "/",                              // index
   "/static/manifest.json",
   "/static/vendor/chart.umd.min.js",
 
-  // ÍCONES (melhor listar explicitamente)
+  // ícones principais
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
   "/static/icons/maskable-192.png",
   "/static/icons/maskable-512.png",
 ];
 
+// INSTALL
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(STATIC_CACHE).then(cache => cache.addAll(PRECACHE))
   );
   self.skipWaiting();
 });
 
+// ACTIVATE
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(
       keys
-        .filter((k) => ![STATIC_CACHE, RUNTIME_CACHE].includes(k))
-        .map((k) => caches.delete(k))
+        .filter(k => ![STATIC_CACHE, RUNTIME_CACHE].includes(k))
+        .map(k => caches.delete(k))
     );
     await self.clients.claim();
   })());
 });
 
-// Estratégias simples:
-// - /static/icons/*  -> cache-first (rápido e estável)
-// - /static/*        -> stale-while-revalidate (pega cache e atualiza por trás)
-// - requests do app  -> network-first (pra não ficar "travado" offline sem querer)
+// FETCH
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
-  // só GET
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
 
-  // mesma origem
+  // Só mesma origem
   if (url.origin !== self.location.origin) return;
 
-  // ÍCONES: cache-first
+  // ÍCONES → cache first
   if (url.pathname.startsWith("/static/icons/")) {
-    event.respondWith(cacheFirst(req, RUNTIME_CACHE));
+    event.respondWith(cacheFirst(req));
     return;
   }
 
-  // vendor (ou qualquer /static): stale-while-revalidate
+  // /static → stale while revalidate
   if (url.pathname.startsWith("/static/")) {
-    event.respondWith(staleWhileRevalidate(req, STATIC_CACHE));
+    event.respondWith(staleWhileRevalidate(req));
     return;
   }
 
-  // navegação/páginas: network-first com fallback pro cache (se existir)
+  // Navegação → network first
   if (req.mode === "navigate") {
-    event.respondWith(networkFirst(req, RUNTIME_CACHE));
-    return;
+    event.respondWith(networkFirst(req));
   }
 });
 
-// ---------- helpers ----------
-async function cacheFirst(request, cacheName) {
-  const cache = await caches.open(cacheName);
+
+// =====================
+// Estratégias
+// =====================
+
+async function cacheFirst(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
 
   const fresh = await fetch(request);
-  if (fresh && fresh.ok) cache.put(request, fresh.clone());
+  if (fresh.ok) cache.put(request, fresh.clone());
   return fresh;
 }
 
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
 
-  const fetchPromise = fetch(request)
-    .then((fresh) => {
-      if (fresh && fresh.ok) cache.put(request, fresh.clone());
-      return fresh;
-    })
-    .catch(() => null);
+  const fetchPromise = fetch(request).then(response => {
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  });
 
-  return cached || (await fetchPromise) || new Response("", { status: 504 });
+  return cached || fetchPromise;
 }
 
-async function networkFirst(request, cacheName) {
-  const cache = await caches.open(cacheName);
+async function networkFirst(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
   try {
     const fresh = await fetch(request);
-    if (fresh && fresh.ok) cache.put(request, fresh.clone());
+    if (fresh.ok) cache.put(request, fresh.clone());
     return fresh;
-  } catch (e) {
+  } catch {
     const cached = await cache.match(request);
     return cached || new Response("Offline", { status: 503 });
   }
 }
-
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
-});
