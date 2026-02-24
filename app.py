@@ -14,6 +14,7 @@ from google.oauth2.service_account import Credentials
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
 # =========================
 # CONFIG
 # =========================
@@ -25,22 +26,19 @@ SCOPES = [
 SHEET_ID = os.getenv("SHEET_ID", "").strip()
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
-
-# ✅ Metas mensais (dashboard)
 METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
-# Admin via env (bootstrap)
+# Admin bootstrap via env
 APP_EMAIL = os.getenv("APP_EMAIL", "").strip()
 APP_PASSWORD_HASH = os.getenv("APP_PASSWORD_HASH", "").strip()
 
-# credencial: 1) JSON no env 2) secret file /etc/secrets/google_creds.json
+# credentials: 1) JSON env 2) secret file 3) local file
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
 SECRET_FILE_PATH = "/etc/secrets/google_creds.json"
 
-# ✅ Em localhost (http), SESSION_COOKIE_SECURE=True quebra login.
-# No Render/HTTPS pode ficar "1". Em dev local, use COOKIE_SECURE=0.
+# IMPORTANT: in localhost (http), secure cookie breaks sessions
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1").strip().lower() in ("1", "true", "sim", "yes")
 
 _client_cached: Optional[gspread.Client] = None
@@ -48,15 +46,15 @@ _client_cached: Optional[gspread.Client] = None
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = FLASK_SECRET_KEY
 
-# Render / proxy (muito importante para cookies de sessão em HTTPS)
+# Render/proxy support (fix session cookie behind HTTPS proxy)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
-# Cookies bons pro Render/HTTPS
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",   # mesmo domínio OK
+    SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=COOKIE_SECURE,
 )
+
 
 # =========================
 # GOOGLE CLIENT
@@ -73,18 +71,16 @@ def get_client() -> gspread.Client:
     elif os.path.exists(SECRET_FILE_PATH):
         creds = Credentials.from_service_account_file(SECRET_FILE_PATH, scopes=SCOPES)
     else:
-        # fallback local
         creds = Credentials.from_service_account_file("google_creds.json", scopes=SCOPES)
 
     _client_cached = gspread.authorize(creds)
     return _client_cached
 
 
-def open_ws():
+def open_spread():
     if not SHEET_ID:
         raise RuntimeError("SHEET_ID não configurado.")
-    client = get_client()
-    return client.open_by_key(SHEET_ID)
+    return get_client().open_by_key(SHEET_ID)
 
 
 def ensure_worksheet(spread, title: str, headers: List[str]):
@@ -93,7 +89,6 @@ def ensure_worksheet(spread, title: str, headers: List[str]):
     except gspread.WorksheetNotFound:
         ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
 
-    # garante cabeçalho
     existing = ws.row_values(1)
     if [h.strip() for h in existing] != headers:
         ws.clear()
@@ -125,7 +120,6 @@ def require_login() -> Optional[Tuple[Dict[str, Any], int]]:
 
 
 def parse_date_br(s: str) -> Optional[date]:
-    # aceita "dd/mm/aaaa"
     try:
         d, m, y = s.strip().split("/")
         return date(int(y), int(m), int(d))
@@ -134,7 +128,6 @@ def parse_date_br(s: str) -> Optional[date]:
 
 
 def money_to_float(v: Any) -> float:
-    # backend defensivo (mesmo que o front mande número)
     if v is None:
         return 0.0
     if isinstance(v, (int, float)):
@@ -171,6 +164,11 @@ def to_int(v: Any, default: int = 0) -> int:
         return int(str(v).strip())
     except Exception:
         return default
+
+
+def current_month_year() -> Tuple[int, int]:
+    today = date.today()
+    return today.month, today.year
 
 
 def get_records(ws) -> List[Dict[str, Any]]:
@@ -211,13 +209,8 @@ def item_date_num(item: Dict[str, Any]) -> int:
     return int(d.strftime("%Y%m%d"))
 
 
-def current_month_year() -> Tuple[int, int]:
-    today = date.today()
-    return today.month, today.year
-
-
 # =========================
-# STATIC (PWA) - MIME OK
+# STATIC (PWA) - correct MIME
 # =========================
 @app.route("/static/<path:filename>")
 def static_files(filename):
@@ -232,19 +225,12 @@ def static_files(filename):
     return resp
 
 
-# ✅ ROTA CERTA DO SERVICE WORKER (root)
+# ✅ route /sw.js at root (best practice for PWA scope)
 @app.route("/sw.js")
 def sw_root():
     resp = send_from_directory(app.static_folder, "sw.js")
     resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
-
-
-# ✅ compatibilidade: se em algum lugar ainda estiver registrando /static/sw.js
-@app.route("/static/sw.js")
-def sw_static():
-    return sw_root()
 
 
 # =========================
@@ -253,11 +239,6 @@ def sw_static():
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-@app.route("/offline.html")
-def offline():
-    return render_template("offline.html")
 
 
 @app.route("/health")
@@ -269,37 +250,33 @@ def health():
 # WORKSHEETS
 # =========================
 def users_ws():
-    spread = open_ws()
-    ws = ensure_worksheet(
+    spread = open_spread()
+    return ensure_worksheet(
         spread,
         USERS_TAB,
         headers=["Email", "PasswordHash", "Ativo", "CreatedAt"]
     )
-    return ws
 
 
 def lanc_ws():
-    spread = open_ws()
-    ws = ensure_worksheet(
+    spread = open_spread()
+    return ensure_worksheet(
         spread,
         SHEET_TAB,
         headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
     )
-    return ws
 
 
 def metas_ws():
-    spread = open_ws()
-    ws = ensure_worksheet(
+    spread = open_spread()
+    return ensure_worksheet(
         spread,
         METAS_TAB,
         headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
     )
-    return ws
 
 
 def ensure_admin_bootstrap():
-    # Se APP_EMAIL e APP_PASSWORD_HASH existirem, garante admin na aba Usuarios
     if not APP_EMAIL or not APP_PASSWORD_HASH:
         return
     ws = users_ws()
@@ -317,11 +294,7 @@ def ensure_admin_bootstrap():
 def me():
     email = session.get("user_email")
     if email:
-        return jsonify({
-            "ok": True,
-            "email": email,
-            "is_admin": is_admin_email(email)
-        })
+        return jsonify({"ok": True, "email": email, "is_admin": is_admin_email(email)})
     return jsonify({"ok": False}), 401
 
 
@@ -349,7 +322,7 @@ def login():
         return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     ativo = str(user.get("Ativo", "1")).strip()
-    if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "YES"):
+    if ativo not in ("1", "true", "True", "SIM", "sim"):
         return jsonify({"ok": False, "msg": "Usuário inativo"}), 403
 
     ph = str(user.get("PasswordHash", "")).strip()
@@ -374,7 +347,6 @@ def _create_user_impl():
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    # Apenas admin (APP_EMAIL)
     if not is_admin_email(session.get("user_email", "")):
         return jsonify({"ok": False, "msg": "Apenas admin"}), 403
 
@@ -393,7 +365,6 @@ def _create_user_impl():
 
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
     ws.append_row([email, ph, "1", now_str()], value_input_option="RAW")
-
     return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
 
 
@@ -408,7 +379,7 @@ def admin_create_user():
 
 
 # =========================
-# METAS MENSAIS
+# METAS
 # =========================
 def _find_meta_row(ws, email: str, mes: int, ano: int) -> Optional[int]:
     recs = get_records(ws)
@@ -440,13 +411,13 @@ def metas_get():
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    user_email = session["user_email"]
+    email = session["user_email"]
     mes = request.args.get("month", type=int)
     ano = request.args.get("year", type=int)
     if not mes or not ano:
         mes, ano = current_month_year()
 
-    meta = _get_meta(user_email, int(mes), int(ano))
+    meta = _get_meta(email, int(mes), int(ano))
     return jsonify({"ok": True, **meta})
 
 
@@ -456,7 +427,7 @@ def metas_set():
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    user_email = session["user_email"]
+    email = session["user_email"]
     dataj = request.get_json(silent=True) or {}
 
     mes = to_int(dataj.get("month"), 0)
@@ -473,14 +444,14 @@ def metas_set():
     headers = ws.row_values(1)
     col = {h: idx + 1 for idx, h in enumerate(headers)}
 
-    row = _find_meta_row(ws, user_email, mes, ano)
+    row = _find_meta_row(ws, email, mes, ano)
     if row:
         ws.update_cell(row, col["MetaReceitas"], f"{meta_receitas:.2f}")
         ws.update_cell(row, col["MetaGastos"], f"{meta_gastos:.2f}")
         ws.update_cell(row, col["UpdatedAt"], now_str())
     else:
         ws.append_row(
-            [user_email, str(mes), str(ano), f"{meta_receitas:.2f}", f"{meta_gastos:.2f}", now_str(), now_str()],
+            [email, str(mes), str(ano), f"{meta_receitas:.2f}", f"{meta_gastos:.2f}", now_str(), now_str()],
             value_input_option="RAW"
         )
 
@@ -497,17 +468,16 @@ def lancar():
         return jsonify(guard[0]), guard[1]
 
     user_email = session["user_email"]
-
     dataj = request.get_json(silent=True) or {}
+
     tipo = str(dataj.get("tipo", "")).strip()
     categoria = str(dataj.get("categoria", "")).strip()
     descricao = str(dataj.get("descricao", "")).strip()
     valor = money_to_float(dataj.get("valor"))
-    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa ou vazio
+    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa or ""
 
     if not tipo or not categoria or not descricao:
         return jsonify({"ok": False, "msg": "Campos obrigatórios: tipo, categoria, descricao"}), 400
-
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido"}), 400
 
@@ -516,20 +486,18 @@ def lancar():
         if not d:
             return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
     else:
-        today = date.today()
-        data_br = today.strftime("%d/%m/%Y")
+        data_br = date.today().strftime("%d/%m/%Y")
 
     ws = lanc_ws()
     ws.append_row(
         [user_email, tipo, categoria, descricao, f"{valor:.2f}", data_br, now_str()],
         value_input_option="RAW"
     )
-
     return jsonify({"ok": True})
 
 
 # =========================
-# LISTAGEM + FILTROS
+# FILTERS
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
@@ -599,7 +567,6 @@ def ultimos():
     user_email = session["user_email"]
     ws = lanc_ws()
     items = get_records(ws)
-
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
 
     month = request.args.get("month", type=int)
@@ -639,25 +606,11 @@ def ultimos():
     return jsonify({"ok": True, "total": total, "items": page_items})
 
 
-@app.route("/resumo")
-def resumo():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    user_email = session["user_email"]
+def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], tipo: str, q: str,
+                  date_from: str, date_to: str, value_min: str, value_max: str) -> Dict[str, Any]:
     ws = lanc_ws()
     items = get_records(ws)
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
-
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    tipo = request.args.get("tipo", default="Todos", type=str)
-    q = request.args.get("q", default="", type=str)
-    date_from = request.args.get("date_from", default="", type=str)
-    date_to = request.args.get("date_to", default="", type=str)
-    value_min = request.args.get("value_min", default="", type=str)
-    value_max = request.args.get("value_max", default="", type=str)
 
     filtered = apply_filters(items, {
         "month": month, "year": year, "tipo": tipo, "q": q,
@@ -709,13 +662,7 @@ def resumo():
     gastos_arr = topcats(gastos_cat)
     receitas_arr = topcats(receitas_cat)
 
-    if month and year:
-        meta = _get_meta(user_email, int(month), int(year))
-    else:
-        cm, cy = current_month_year()
-        meta = _get_meta(user_email, cm, cy)
-
-    return jsonify({
+    return {
         "ok": True,
         "entradas": entradas,
         "saidas": saidas,
@@ -732,40 +679,132 @@ def resumo():
 
         "gastos_categorias": gastos_arr,
         "receitas_categorias": receitas_arr,
-
-        "metas": meta
-    })
+    }
 
 
-@app.route("/dashboard")
-def dashboard():
+@app.route("/resumo")
+def resumo():
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
 
-    resp = resumo()
-    if isinstance(resp, tuple):
-        return resp
+    user_email = session["user_email"]
 
-    payload = resp.get_json() or {}
-    entradas = float(payload.get("entradas") or 0.0)
-    saidas = float(payload.get("saidas") or 0.0)
-    metas = payload.get("metas") or {}
-    mr = float(metas.get("meta_receitas") or 0.0)
-    mg = float(metas.get("meta_gastos") or 0.0)
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    tipo = request.args.get("tipo", default="Todos", type=str)
+    q = request.args.get("q", default="", type=str)
+    date_from = request.args.get("date_from", default="", type=str)
+    date_to = request.args.get("date_to", default="", type=str)
+    value_min = request.args.get("value_min", default="", type=str)
+    value_max = request.args.get("value_max", default="", type=str)
+
+    payload = compute_resumo(user_email, month, year, tipo, q, date_from, date_to, value_min, value_max)
+    return jsonify(payload)
+
+
+@app.route("/dashboard")
+def dashboard():
+    """
+    Dashboard completo: resumo + metas + progresso + insights + alertas.
+    """
+    guard = require_login()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+
+    user_email = session["user_email"]
+
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    tipo = request.args.get("tipo", default="Todos", type=str)
+    q = request.args.get("q", default="", type=str)
+    date_from = request.args.get("date_from", default="", type=str)
+    date_to = request.args.get("date_to", default="", type=str)
+    value_min = request.args.get("value_min", default="", type=str)
+    value_max = request.args.get("value_max", default="", type=str)
+
+    if not month or not year:
+        month, year = current_month_year()
+
+    base = compute_resumo(user_email, month, year, tipo, q, date_from, date_to, value_min, value_max)
+    meta = _get_meta(user_email, int(month), int(year))
+
+    entradas = float(base.get("entradas") or 0.0)
+    saidas = float(base.get("saidas") or 0.0)
+    saldo = float(base.get("saldo") or 0.0)
+
+    mr = float(meta.get("meta_receitas") or 0.0)
+    mg = float(meta.get("meta_gastos") or 0.0)
 
     def pct(val: float, target: float) -> float:
         if target <= 0:
             return 0.0
         return round((val / target) * 100.0, 2)
 
-    payload["progresso"] = {
+    progresso = {
         "receitas_pct": pct(entradas, mr),
         "gastos_pct": pct(saidas, mg),
         "receitas_restante": max(0.0, mr - entradas),
         "gastos_restante": max(0.0, mg - saidas),
     }
-    return jsonify(payload)
+
+    # simple insights (server-side)
+    top_gasto = base.get("gastos_categorias", [])[:1]
+    top_receita = base.get("receitas_categorias", [])[:1]
+
+    insights = []
+    if top_gasto:
+        insights.append({
+            "title": "Maior gasto do mês",
+            "desc": f"{top_gasto[0]['categoria']}: R$ {top_gasto[0]['total']:.2f}"
+        })
+    if top_receita:
+        insights.append({
+            "title": "Maior receita do mês",
+            "desc": f"{top_receita[0]['categoria']}: R$ {top_receita[0]['total']:.2f}"
+        })
+    if saldo < 0:
+        insights.append({
+            "title": "Atenção ao saldo",
+            "desc": "Seu saldo está negativo neste período. Revise categorias e metas."
+        })
+
+    # alerts (server-side simple)
+    alerts = []
+    if mg > 0 and saidas > mg:
+        alerts.append({
+            "level": "danger",
+            "title": "Meta de gastos estourada",
+            "desc": f"Você gastou R$ {saidas:.2f} e a meta era R$ {mg:.2f}."
+        })
+    elif mg > 0 and progresso["gastos_pct"] >= 85:
+        alerts.append({
+            "level": "warn",
+            "title": "Você está perto do limite de gastos",
+            "desc": f"Você já usou {progresso['gastos_pct']:.0f}% do limite."
+        })
+
+    if mr > 0 and entradas >= mr:
+        alerts.append({
+            "level": "ok",
+            "title": "Meta de receitas batida",
+            "desc": f"Você fez R$ {entradas:.2f} e a meta era R$ {mr:.2f}."
+        })
+
+    if saldo < 0:
+        alerts.append({
+            "level": "warn",
+            "title": "Saldo negativo no período",
+            "desc": f"Saldo: R$ {saldo:.2f}. Ajuste metas e categorias."
+        })
+
+    return jsonify({
+        **base,
+        "metas": meta,
+        "progresso": progresso,
+        "insights": insights,
+        "alerts": alerts
+    })
 
 
 # =========================
@@ -778,7 +817,6 @@ def editar_lancamento(row: int):
         return jsonify(guard[0]), guard[1]
 
     user_email = session["user_email"]
-
     if row < 2:
         return jsonify({"ok": False, "msg": "Linha inválida"}), 400
 
@@ -797,7 +835,6 @@ def editar_lancamento(row: int):
         return jsonify({"ok": False, "msg": "Data inválida. Use dd/mm/aaaa"}), 400
 
     ws = lanc_ws()
-
     row_vals = ws.row_values(row)
     headers = ws.row_values(1)
     if not row_vals:
@@ -824,7 +861,6 @@ def excluir_lancamento(row: int):
         return jsonify(guard[0]), guard[1]
 
     user_email = session["user_email"]
-
     if row < 2:
         return jsonify({"ok": False, "msg": "Linha inválida"}), 400
 
@@ -845,7 +881,7 @@ def excluir_lancamento(row: int):
 
 
 # =========================
-# EXPORT CSV (PDF opcional)
+# EXPORT CSV
 # =========================
 @app.route("/export.csv")
 def export_csv():
@@ -887,13 +923,7 @@ def export_csv():
     w = csv.writer(out)
     w.writerow(["Tipo", "Categoria", "Descrição", "Valor", "Data"])
     for it in filtered:
-        w.writerow([
-            it.get("Tipo", ""),
-            it.get("Categoria", ""),
-            it.get("Descrição", ""),
-            it.get("Valor", ""),
-            it.get("Data", ""),
-        ])
+        w.writerow([it.get("Tipo", ""), it.get("Categoria", ""), it.get("Descrição", ""), it.get("Valor", ""), it.get("Data", "")])
 
     resp = make_response(out.getvalue())
     resp.headers["Content-Type"] = "text/csv; charset=utf-8"
@@ -907,5 +937,5 @@ def export_pdf():
 
 
 if __name__ == "__main__":
-    # Dica: em dev local, use COOKIE_SECURE=0 pra login funcionar no http://
+    # Local dev tip: COOKIE_SECURE=0
     app.run(host="0.0.0.0", port=5000, debug=True)
