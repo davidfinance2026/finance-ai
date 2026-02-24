@@ -25,14 +25,11 @@ SCOPES = [
 ]
 
 SHEET_ID = os.getenv("SHEET_ID", "").strip()
-
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
 RESETS_TAB = os.getenv("RESETS_TAB", "PasswordResets").strip()
-
-# ✅ NOVO: aba de investimentos
-INVEST_TAB = os.getenv("INVEST_TAB", "Investimentos").strip()
+INVEST_TAB = os.getenv("INVEST_TAB", "Investimentos").strip()  # ✅ NOVO
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
@@ -71,8 +68,16 @@ USERS_HEADERS_OLD = ["Email", "PasswordHash", "Ativo", "CreatedAt"]
 
 RESETS_HEADERS = ["Email", "CodeHash", "ExpiresAt", "CreatedAt", "UsedAt"]
 
-# ✅ NOVO: headers investimentos (modelo A)
-INVEST_HEADERS = ["Email", "Tipo", "Ativo", "Descrição", "Valor", "Data", "CreatedAt"]
+INVEST_HEADERS = [
+    "Email",
+    "Tipo",         # Aporte | Retirada
+    "Ativo",        # Ex: CDB, Tesouro Selic, PETR4, BTC...
+    "Instituicao",  # Ex: Nubank, Inter, XP...
+    "Descricao",    # livre
+    "Valor",        # sempre número string "123.45"
+    "Data",         # dd/mm/aaaa
+    "CreatedAt"
+]
 
 
 # =========================
@@ -204,27 +209,22 @@ def get_records(ws) -> List[Dict[str, Any]]:
     return out
 
 
-def match_query(item: Dict[str, Any], q: str) -> bool:
+def match_query(item: Dict[str, Any], q: str, keys: Optional[List[str]] = None) -> bool:
     if not q:
         return True
     ql = q.lower()
-    hay = " ".join([
-        str(item.get("Tipo", "")),
-        str(item.get("Categoria", "")),
-        str(item.get("Ativo", "")),
-        str(item.get("Descrição", "")),
-        str(item.get("Data", "")),
-        str(item.get("Valor", "")),
-    ]).lower()
+    if not keys:
+        keys = ["Tipo", "Categoria", "Descrição", "Data", "Valor"]
+    hay = " ".join([str(item.get(k, "")) for k in keys]).lower()
     return ql in hay
 
 
-def item_value_num(item: Dict[str, Any]) -> float:
-    return money_to_float(item.get("Valor", 0))
+def item_value_num(item: Dict[str, Any], key: str = "Valor") -> float:
+    return money_to_float(item.get(key, 0))
 
 
-def item_date_num(item: Dict[str, Any]) -> int:
-    d = parse_date_br(str(item.get("Data", "")))
+def item_date_num(item: Dict[str, Any], key: str = "Data") -> int:
+    d = parse_date_br(str(item.get(key, "")))
     if not d:
         return 0
     return int(d.strftime("%Y%m%d"))
@@ -320,7 +320,6 @@ def users_ws():
         values = ws.get_all_values()
         old_rows = values[1:] if len(values) > 1 else []
 
-        # reconstruir
         ws.clear()
         ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
 
@@ -334,10 +333,7 @@ def users_ws():
             nome_completo = ""
             telefone = "(00) 00000-0000"
 
-            ws.append_row(
-                [nome_apelido, nome_completo, telefone, email, ph, ativo, created],
-                value_input_option="RAW"
-            )
+            ws.append_row([nome_apelido, nome_completo, telefone, email, ph, ativo, created], value_input_option="RAW")
         return ws
 
     # Header “custom”: tenta mapear se tiver Email e PasswordHash
@@ -387,11 +383,7 @@ def users_ws():
 
 def lanc_ws():
     spread = open_spread()
-    ws = ensure_worksheet(
-        spread,
-        SHEET_TAB,
-        headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
-    )
+    ws = ensure_worksheet(spread, SHEET_TAB, headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"])
     existing = [h.strip() for h in (ws.row_values(1) or [])]
     if existing != ["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]:
         ws.clear()
@@ -401,11 +393,7 @@ def lanc_ws():
 
 def metas_ws():
     spread = open_spread()
-    ws = ensure_worksheet(
-        spread,
-        METAS_TAB,
-        headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
-    )
+    ws = ensure_worksheet(spread, METAS_TAB, headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"])
     existing = [h.strip() for h in (ws.row_values(1) or [])]
     if existing != ["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]:
         ws.clear()
@@ -551,10 +539,6 @@ def signup():
 # =========================
 @app.route("/forgot_password", methods=["POST"])
 def forgot_password():
-    """
-    Gera um código de 6 dígitos e salva (hash) em PasswordResets.
-    Em produção, você enviaria por email/SMS.
-    """
     ensure_admin_bootstrap()
 
     data = request.get_json(silent=True) or {}
@@ -562,7 +546,6 @@ def forgot_password():
     if not email:
         return jsonify({"ok": False, "msg": "Informe o e-mail."}), 400
 
-    # verifica se usuário existe e está ativo
     uws = users_ws()
     recs = get_records(uws)
     user = None
@@ -577,7 +560,6 @@ def forgot_password():
     if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "Yes"):
         return jsonify({"ok": False, "msg": "Usuário inativo."}), 403
 
-    # gera código
     code = f"{secrets.randbelow(10**6):06d}"
     code_hash = generate_password_hash(code, method="pbkdf2:sha256", salt_length=16)
 
@@ -587,14 +569,13 @@ def forgot_password():
 
     payload = {"ok": True, "msg": "Se o e-mail existir, enviaremos o código de redefinição."}
     if RESET_RETURN_CODE:
-        payload["dev_code"] = code  # SOMENTE DEV
+        payload["dev_code"] = code
         payload["dev_expires_at"] = expires_at
     return jsonify(payload)
 
 
 def _find_latest_valid_reset_row(ws, email: str) -> Optional[Dict[str, Any]]:
     recs = get_records(ws)
-    # mais recente primeiro
     recs.sort(key=lambda x: (str(x.get("CreatedAt", ""))), reverse=True)
     for r in recs:
         if safe_lower(r.get("Email")) != safe_lower(email):
@@ -612,9 +593,6 @@ def _find_latest_valid_reset_row(ws, email: str) -> Optional[Dict[str, Any]]:
 
 @app.route("/reset_password", methods=["POST"])
 def reset_password():
-    """
-    Valida código e troca senha do usuário.
-    """
     ensure_admin_bootstrap()
 
     data = request.get_json(silent=True) or {}
@@ -641,12 +619,10 @@ def reset_password():
     if not code_hash or not check_password_hash(code_hash, code):
         return jsonify({"ok": False, "msg": "Código inválido ou expirado."}), 400
 
-    # atualiza senha do usuário
     uws = users_ws()
     headers = uws.row_values(1)
     col = {h: i + 1 for i, h in enumerate(headers)}
 
-    # encontra a linha do usuário
     recs = get_records(uws)
     user_row = None
     for r in recs:
@@ -659,12 +635,10 @@ def reset_password():
     new_hash = generate_password_hash(new_password, method="pbkdf2:sha256", salt_length=16)
     uws.update_cell(user_row, col["PasswordHash"], new_hash)
 
-    # marca reset como usado
     used_row = int(rr.get("_row", 0)) or None
     if used_row:
-        rws.update_cell(used_row, 5, now_str())  # UsedAt col 5
+        rws.update_cell(used_row, 5, now_str())  # UsedAt
 
-    # auto-login
     session["user_email"] = email
     return jsonify({"ok": True, "msg": "Senha redefinida com sucesso!", "email": email})
 
@@ -750,7 +724,7 @@ def metas_set():
 
 
 # =========================
-# LANÇAR (Receita/Gasto)
+# LANÇAR (receitas/gastos)
 # =========================
 @app.route("/lancar", methods=["POST"])
 def lancar():
@@ -780,10 +754,7 @@ def lancar():
         data_br = date.today().strftime("%d/%m/%Y")
 
     ws = lanc_ws()
-    ws.append_row(
-        [user_email, tipo, categoria, descricao, f"{valor:.2f}", data_br, now_str()],
-        value_input_option="RAW"
-    )
+    ws.append_row([user_email, tipo, categoria, descricao, f"{valor:.2f}", data_br, now_str()], value_input_option="RAW")
     return jsonify({"ok": True})
 
 
@@ -799,18 +770,17 @@ def investir():
     user_email = session["user_email"]
     dataj = request.get_json(silent=True) or {}
 
-    tipo = str(dataj.get("tipo", "")).strip()  # Aporte | Retirada
+    tipo = str(dataj.get("tipo", "")).strip()  # Aporte / Retirada
     ativo = str(dataj.get("ativo", "")).strip()
+    instituicao = str(dataj.get("instituicao", "")).strip()
     descricao = str(dataj.get("descricao", "")).strip()
     valor = money_to_float(dataj.get("valor"))
-    data_br = str(dataj.get("data", "")).strip()  # dd/mm/aaaa or ""
+    data_br = str(dataj.get("data", "")).strip()
 
     if tipo not in ("Aporte", "Retirada"):
-        return jsonify({"ok": False, "msg": "Tipo inválido (use Aporte ou Retirada)"}), 400
+        return jsonify({"ok": False, "msg": "Tipo inválido. Use Aporte ou Retirada"}), 400
     if not ativo:
         return jsonify({"ok": False, "msg": "Ativo é obrigatório"}), 400
-    if not descricao:
-        return jsonify({"ok": False, "msg": "Descrição é obrigatória"}), 400
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor inválido"}), 400
 
@@ -823,20 +793,22 @@ def investir():
 
     ws = invest_ws()
     ws.append_row(
-        [user_email, tipo, ativo, descricao, f"{valor:.2f}", data_br, now_str()],
+        [user_email, tipo, ativo, instituicao, descricao, f"{valor:.2f}", data_br, now_str()],
         value_input_option="RAW"
     )
     return jsonify({"ok": True})
 
 
-def apply_filters_generic(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
+def apply_invest_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
     year = params.get("year")
+    tipo = params.get("tipo", "Todos")
     q = params.get("q", "")
     date_from = params.get("date_from", "")
     date_to = params.get("date_to", "")
     vmin = params.get("value_min", "")
     vmax = params.get("value_max", "")
+    ativo = params.get("ativo", "")
 
     df = None
     dt = None
@@ -856,7 +828,15 @@ def apply_filters_generic(items: List[Dict[str, Any]], params: Dict[str, Any]) -
 
     out = []
     for it in items:
-        if q and not match_query(it, q):
+        if tipo and tipo != "Todos":
+            if str(it.get("Tipo", "")).strip() != tipo:
+                continue
+
+        if ativo:
+            if safe_lower(it.get("Ativo")) != safe_lower(ativo):
+                continue
+
+        if q and not match_query(it, q, keys=["Tipo", "Ativo", "Instituicao", "Descricao", "Data", "Valor"]):
             continue
 
         d = parse_date_br(str(it.get("Data", "")))
@@ -872,7 +852,7 @@ def apply_filters_generic(items: List[Dict[str, Any]], params: Dict[str, Any]) -
         if dt and d > dt:
             continue
 
-        val = item_value_num(it)
+        val = item_value_num(it, key="Valor")
         if vmin_n is not None and val < vmin_n:
             continue
         if vmax_n is not None and val > vmax_n:
@@ -896,34 +876,32 @@ def investimentos_list():
 
     month = request.args.get("month", type=int)
     year = request.args.get("year", type=int)
+    tipo = request.args.get("tipo", default="Todos", type=str)  # Todos | Aporte | Retirada
     q = request.args.get("q", default="", type=str)
     order = request.args.get("order", default="recent", type=str)
     date_from = request.args.get("date_from", default="", type=str)
     date_to = request.args.get("date_to", default="", type=str)
     value_min = request.args.get("value_min", default="", type=str)
     value_max = request.args.get("value_max", default="", type=str)
+    ativo = request.args.get("ativo", default="", type=str)
     page = request.args.get("page", default=1, type=int)
     limit = request.args.get("limit", default=10, type=int)
 
-    filtered = apply_filters_generic(items, {
-        "month": month, "year": year, "q": q,
+    filtered = apply_invest_filters(items, {
+        "month": month, "year": year, "tipo": tipo, "q": q,
         "date_from": date_from, "date_to": date_to,
-        "value_min": value_min, "value_max": value_max
+        "value_min": value_min, "value_max": value_max,
+        "ativo": ativo
     })
 
-    def signed_value(it: Dict[str, Any]) -> float:
-        v = item_value_num(it)
-        t = str(it.get("Tipo", "")).strip()
-        return v if t == "Aporte" else -v
-
     if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
     elif order == "value_desc":
-        filtered.sort(key=lambda x: abs(signed_value(x)), reverse=True)
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
     elif order == "value_asc":
-        filtered.sort(key=lambda x: abs(signed_value(x)))
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
     else:
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
 
     total = len(filtered)
     limit = max(1, min(int(limit or 10), 200))
@@ -937,90 +915,62 @@ def investimentos_list():
 
 @app.route("/invest_resumo")
 def invest_resumo():
+    """
+    Resumo simples: total aportado, total retirado, saldo líquido e saldo por ativo.
+    """
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
 
     user_email = session["user_email"]
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    q = request.args.get("q", default="", type=str)
-    date_from = request.args.get("date_from", default="", type=str)
-    date_to = request.args.get("date_to", default="", type=str)
-    value_min = request.args.get("value_min", default="", type=str)
-    value_max = request.args.get("value_max", default="", type=str)
-
     ws = invest_ws()
     items = get_records(ws)
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
 
-    filtered = apply_filters_generic(items, {
-        "month": month, "year": year, "q": q,
-        "date_from": date_from, "date_to": date_to,
-        "value_min": value_min, "value_max": value_max
+    month = request.args.get("month", type=int)
+    year = request.args.get("year", type=int)
+    q = request.args.get("q", default="", type=str)
+
+    filtered = apply_invest_filters(items, {
+        "month": month, "year": year,
+        "tipo": "Todos",
+        "q": q,
+        "date_from": "", "date_to": "",
+        "value_min": "", "value_max": "",
+        "ativo": ""
     })
 
     aportes = 0.0
     retiradas = 0.0
-
     por_ativo: Dict[str, float] = {}
-
-    dias_labels: List[str] = []
-    serie_aporte: List[float] = []
-    serie_retirada: List[float] = []
-    serie_saldo: List[float] = []
-
-    if month and year:
-        import calendar
-        last_day = calendar.monthrange(year, month)[1]
-        dias_labels = [str(d).zfill(2) for d in range(1, last_day + 1)]
-        serie_aporte = [0.0] * last_day
-        serie_retirada = [0.0] * last_day
 
     for it in filtered:
         t = str(it.get("Tipo", "")).strip()
         ativo = str(it.get("Ativo", "")).strip() or "Sem ativo"
-        val = item_value_num(it)
-        d = parse_date_br(str(it.get("Data", "")))
+        val = item_value_num(it, "Valor")
 
         if t == "Aporte":
             aportes += val
             por_ativo[ativo] = por_ativo.get(ativo, 0.0) + val
-            if month and year and d and d.month == month and d.year == year:
-                serie_aporte[d.day - 1] += val
         else:
             retiradas += val
             por_ativo[ativo] = por_ativo.get(ativo, 0.0) - val
-            if month and year and d and d.month == month and d.year == year:
-                serie_retirada[d.day - 1] += val
 
     saldo = aportes - retiradas
-
-    # saldo acumulado por dia (se mês selecionado)
-    if month and year and dias_labels:
-        acc = 0.0
-        for i in range(len(dias_labels)):
-            acc += (serie_aporte[i] or 0.0) - (serie_retirada[i] or 0.0)
-            serie_saldo.append(acc)
-
-    ativos_arr = [{"ativo": k, "saldo": v} for k, v in por_ativo.items()]
-    ativos_arr.sort(key=lambda x: x["saldo"], reverse=True)
+    arr = [{"ativo": k, "saldo": v} for k, v in por_ativo.items()]
+    arr.sort(key=lambda x: x["saldo"], reverse=True)
 
     return jsonify({
         "ok": True,
         "aportes": aportes,
         "retiradas": retiradas,
         "saldo": saldo,
-        "dias": dias_labels,
-        "serie_aporte": serie_aporte,
-        "serie_retirada": serie_retirada,
-        "serie_saldo": serie_saldo,
-        "ativos": ativos_arr[:50],
+        "por_ativo": arr[:50]
     })
 
 
 # =========================
-# FILTERS + LIST (Receita/Gasto)
+# FILTERS + LIST (lançamentos)
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
@@ -1054,7 +1004,7 @@ def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[D
             if str(it.get("Tipo", "")).strip() != tipo:
                 continue
 
-        if q and not match_query(it, q):
+        if q and not match_query(it, q, keys=["Tipo", "Categoria", "Descrição", "Data", "Valor"]):
             continue
 
         d = parse_date_br(str(it.get("Data", "")))
@@ -1070,7 +1020,7 @@ def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[D
         if dt and d > dt:
             continue
 
-        val = item_value_num(it)
+        val = item_value_num(it, "Valor")
         if vmin_n is not None and val < vmin_n:
             continue
         if vmax_n is not None and val > vmax_n:
@@ -1111,13 +1061,13 @@ def ultimos():
     })
 
     if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
     elif order == "value_desc":
-        filtered.sort(key=lambda x: item_value_num(x), reverse=True)
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
     elif order == "value_asc":
-        filtered.sort(key=lambda x: item_value_num(x))
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
     else:
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
 
     total = len(filtered)
     limit = max(1, min(int(limit or 10), 200))
@@ -1130,7 +1080,7 @@ def ultimos():
 
 
 def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], tipo: str, q: str,
-                  date_from: str, date_to: str, value_min: str, value_max: str) -> Dict[str, Any]:
+                   date_from: str, date_to: str, value_min: str, value_max: str) -> Dict[str, Any]:
     ws = lanc_ws()
     items = get_records(ws)
     items = [i for i in items if safe_lower(i.get("Email")) == safe_lower(user_email)]
@@ -1161,7 +1111,7 @@ def compute_resumo(user_email: str, month: Optional[int], year: Optional[int], t
     for it in filtered:
         t = str(it.get("Tipo", "")).strip()
         cat = str(it.get("Categoria", "")).strip() or "Sem categoria"
-        val = item_value_num(it)
+        val = item_value_num(it, "Valor")
         d = parse_date_br(str(it.get("Data", "")))
 
         if "Rece" in t:
@@ -1227,7 +1177,7 @@ def resumo():
 
 
 # =========================
-# EDITAR / EXCLUIR (Lancamentos)
+# EDITAR / EXCLUIR (lançamentos)
 # =========================
 @app.route("/lancamento/<int:row>", methods=["PATCH"])
 def editar_lancamento(row: int):
@@ -1300,7 +1250,7 @@ def excluir_lancamento(row: int):
 
 
 # =========================
-# EXPORT CSV (Lancamentos)
+# EXPORT CSV
 # =========================
 @app.route("/export.csv")
 def export_csv():
@@ -1330,13 +1280,13 @@ def export_csv():
     })
 
     if order == "oldest":
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)))
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)))
     elif order == "value_desc":
-        filtered.sort(key=lambda x: item_value_num(x), reverse=True)
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"), reverse=True)
     elif order == "value_asc":
-        filtered.sort(key=lambda x: item_value_num(x))
+        filtered.sort(key=lambda x: item_value_num(x, "Valor"))
     else:
-        filtered.sort(key=lambda x: (item_date_num(x), x.get("_row", 0)), reverse=True)
+        filtered.sort(key=lambda x: (item_date_num(x, "Data"), x.get("_row", 0)), reverse=True)
 
     out = io.StringIO()
     w = csv.writer(out)
