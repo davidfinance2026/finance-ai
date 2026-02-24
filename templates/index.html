@@ -19,8 +19,6 @@
       --text:#f3f6ff;
       --muted:rgba(243,246,255,.62);
       --hair:rgba(255,255,255,.08);
-      --card:rgba(255,255,255,.06);
-      --card2:rgba(255,255,255,.045);
       --shadow: 0 16px 40px rgba(0,0,0,.35);
       --shadowSoft: 0 10px 24px rgba(0,0,0,.22);
       --radius:22px;
@@ -29,7 +27,6 @@
       --brandB:#4f8cff;
       --ok:#3ddc97;
       --bad:#ff5c70;
-      --warn:#ffcc66;
 
       --tap: 46px;
     }
@@ -46,16 +43,14 @@
         radial-gradient(900px 500px at 70% 90%, rgba(61,220,151,.12), transparent 55%),
         linear-gradient(180deg, var(--bg), var(--bg2));
       -webkit-font-smoothing: antialiased;
-      padding: 18px 14px 88px;
+      padding: 18px 14px 92px;
       display:flex;
       justify-content:center;
     }
 
-    .app{
-      width:min(560px, 100%);
-    }
+    .app{ width:min(560px, 100%); }
 
-    /* ===== Nubank-like header ===== */
+    /* Header */
     .header{
       padding: 10px 2px 12px;
       display:flex;
@@ -63,21 +58,9 @@
       align-items:flex-start;
       gap:12px;
     }
-    .hello{
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-    }
-    .hello h1{
-      margin:0;
-      font-size:22px;
-      letter-spacing:.2px;
-      font-weight:800;
-    }
-    .hello .sub{
-      color:var(--muted);
-      font-size:13px;
-    }
+    .hello{ display:flex; flex-direction:column; gap:6px; }
+    .hello h1{ margin:0; font-size:22px; letter-spacing:.2px; font-weight:800; }
+    .hello .sub{ color:var(--muted); font-size:13px; }
 
     .statusPill{
       height: 40px;
@@ -95,7 +78,6 @@
       font-weight:800;
       font-size:12px;
     }
-
     .adminBtn{
       height: 40px;
       padding: 0 12px;
@@ -113,7 +95,16 @@
       font-size:12px;
     }
 
-    /* ===== Balance Card ===== */
+    /* Cards */
+    .card{
+      border-radius: var(--radius);
+      border:1px solid var(--hair);
+      background: rgba(255,255,255,.05);
+      box-shadow: var(--shadowSoft);
+      padding: 16px;
+    }
+
+    /* Balance card */
     .balanceCard{
       margin-top: 2px;
       border-radius: var(--radius);
@@ -186,7 +177,7 @@
       white-space:nowrap;
     }
 
-    /* ===== Tabs (Nubank-like) ===== */
+    /* Tabs */
     .tabs{
       display:flex;
       gap:10px;
@@ -214,16 +205,7 @@
       color: rgba(243,246,255,.95);
     }
 
-    /* ===== Cards ===== */
-    .card{
-      border-radius: var(--radius);
-      border:1px solid var(--hair);
-      background: rgba(255,255,255,.05);
-      box-shadow: var(--shadowSoft);
-      padding: 16px;
-    }
-
-    /* ===== Form Nubank-like ===== */
+    /* Form */
     .seg{
       display:flex;
       gap:10px;
@@ -256,7 +238,6 @@
       letter-spacing:.25px;
       text-transform: uppercase;
     }
-
     input, select{
       width:100%;
       margin-top:8px;
@@ -273,12 +254,7 @@
     .row{ display:flex; gap:10px; }
     .row > *{ flex:1; }
 
-    .actions{
-      display:flex;
-      gap:10px;
-      margin-top: 14px;
-      flex-wrap:wrap;
-    }
+    .actions{ display:flex; gap:10px; margin-top: 14px; flex-wrap:wrap; }
     .btn{
       height: var(--tap);
       border-radius: 16px;
@@ -325,13 +301,9 @@
     .msg.ok{ display:block; border-color: rgba(61,220,151,.35); }
     .msg.err{ display:block; border-color: rgba(255,92,112,.35); }
 
-    .hint{
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 12px;
-    }
+    .hint{ margin-top: 10px; color: var(--muted); font-size: 12px; }
 
-    /* ===== Filters: chips row ===== */
+    /* Chips row */
     .chipsRow{
       display:flex;
       gap:10px;
@@ -363,7 +335,7 @@
       color: rgba(243,246,255,.95);
     }
 
-    /* ===== Charts ===== */
+    /* Charts */
     .chartCard{ margin-top: 12px; }
     .chartTitle{
       margin:0 0 10px;
@@ -374,7 +346,9 @@
       text-transform: uppercase;
     }
     .chartWrap{ height: 240px; }
+    .chartWrap.small{ height: 160px; }
 
+    /* Table */
     .tableWrap{
       margin-top: 10px;
       border-radius: 18px;
@@ -402,13 +376,8 @@
     }
     tr:last-child td{ border-bottom:none; }
 
-    /* ===== Transaction list (Nubank-like) ===== */
-    .list{
-      margin-top: 12px;
-      display:flex;
-      flex-direction:column;
-      gap: 10px;
-    }
+    /* Transaction list */
+    .list{ margin-top: 12px; display:flex; flex-direction:column; gap: 10px; }
     .tx{
       border-radius: 20px;
       border:1px solid rgba(255,255,255,.08);
@@ -424,77 +393,36 @@
     }
     .tx:active{ transform: scale(.99); }
     .tx:hover{ background: rgba(255,255,255,.065); }
-
     @keyframes fadeUp{
       from{ opacity:0; transform: translateY(6px); }
       to{ opacity:1; transform: translateY(0); }
     }
-
-    .txLeft{
-      display:flex;
-      align-items:center;
-      gap: 12px;
-      min-width:0;
-      flex:1;
-    }
+    .txLeft{ display:flex; align-items:center; gap: 12px; min-width:0; flex:1; }
     .txIcon{
-      width: 42px;
-      height: 42px;
-      border-radius: 16px;
+      width: 42px; height: 42px; border-radius: 16px;
       border:1px solid rgba(255,255,255,.10);
       background: rgba(15,23,48,.40);
-      display:grid;
-      place-items:center;
-      font-weight:900;
-      flex: 0 0 auto;
+      display:grid; place-items:center;
+      font-weight:900; flex: 0 0 auto;
     }
-    .txMeta{
-      min-width:0;
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-    }
+    .txMeta{ min-width:0; display:flex; flex-direction:column; gap:4px; }
     .txTitle{
-      font-size: 15px;
-      font-weight: 900;
-      letter-spacing:.15px;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      font-size: 15px; font-weight: 900; letter-spacing:.15px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       max-width: 320px;
     }
     .txSub{
-      font-size: 12px;
-      color: var(--muted);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      font-size: 12px; color: var(--muted);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       max-width: 320px;
     }
-    .txRight{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .txValue{
-      font-size: 16px;
-      font-weight: 950;
-      letter-spacing:.15px;
-      white-space:nowrap;
-    }
+    .txRight{ display:flex; flex-direction:column; align-items:flex-end; gap: 8px; flex: 0 0 auto; }
+    .txValue{ font-size: 16px; font-weight: 950; letter-spacing:.15px; white-space:nowrap; }
     .txValue.green{ color: var(--ok); }
     .txValue.red{ color: var(--bad); }
+    .txBtns{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 
-    .txBtns{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-
-    /* ===== Pager ===== */
+    /* Pager */
     .pager{
       margin-top: 12px;
       border-radius: var(--radius);
@@ -507,31 +435,20 @@
       gap: 10px;
       flex-wrap:wrap;
     }
-    .pager .info{
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-    }
-    .pager .controls{
-      display:flex;
-      align-items:center;
-      gap:8px;
-    }
+    .pager .info{ color: var(--muted); font-size: 12px; font-weight: 800; }
+    .pager .controls{ display:flex; align-items:center; gap:8px; }
     .pillSmall{
-      height: 34px;
-      padding: 0 10px;
+      height: 34px; padding: 0 10px;
       border-radius: 999px;
       border:1px solid var(--hair);
       background: rgba(255,255,255,.05);
       color: rgba(243,246,255,.72);
-      display:flex;
-      align-items:center;
-      font-size: 12px;
-      font-weight: 900;
+      display:flex; align-items:center;
+      font-size: 12px; font-weight: 900;
       user-select:none;
     }
 
-    /* ===== Modals ===== */
+    /* Modals */
     .modalBack{
       position:fixed; inset:0;
       background: rgba(0,0,0,.55);
@@ -569,12 +486,10 @@
       font-weight: 900;
     }
 
-    /* ===== Bottom bar ===== */
+    /* Bottom bar */
     .bottomBar{
       position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      left: 0; right: 0; bottom: 0;
       padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
       background: linear-gradient(180deg, rgba(11,16,32,0), rgba(11,16,32,.75) 25%, rgba(11,16,32,.92));
       backdrop-filter: blur(10px);
@@ -582,11 +497,7 @@
       justify-content:center;
       z-index: 999;
     }
-    .bottomInner{
-      width: min(560px, 100%);
-      display:flex;
-      gap:10px;
-    }
+    .bottomInner{ width: min(560px, 100%); display:flex; gap:10px; }
     .navBtn{
       flex:1;
       height: 52px;
@@ -605,6 +516,45 @@
       background: linear-gradient(135deg, rgba(123,92,255,.95), rgba(79,140,255,.95));
       border-color: rgba(123,92,255,.28);
       color: #08102a;
+    }
+
+    /* Dashboard extras */
+    .dashGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+      margin-top:12px;
+    }
+    .dashMini{
+      border-radius: 18px;
+      border:1px solid var(--hair);
+      background: rgba(15,23,48,.40);
+      padding: 12px;
+      min-height: 86px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .dashMini .k{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .25px;
+      text-transform: uppercase;
+    }
+    .dashMini .v{
+      font-size: 16px;
+      font-weight: 950;
+      letter-spacing: .2px;
+    }
+    .dashMini .sub{
+      color: rgba(243,246,255,.55);
+      font-size: 12px;
+      margin-top:auto;
+    }
+
+    .dashTopCats{
+      margin-top: 12px;
     }
   </style>
 </head>
@@ -652,12 +602,62 @@
 
     <!-- Tabs -->
     <div class="tabs">
-      <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
+      <button class="tab active" id="tab0" onclick="showTab('dashboard')">Dashboard</button>
+      <button class="tab" id="tab1" onclick="showTab('lancar')">Lançar</button>
       <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
     </div>
 
+    <!-- Screen: Dashboard -->
+    <div class="card" id="screen-dashboard">
+      <div class="chartTitle" id="dashTitle">Visão geral</div>
+      <div class="chartWrap small"><canvas id="graficoDash"></canvas></div>
+
+      <div class="dashGrid">
+        <div class="dashMini">
+          <div class="k">Saldo</div>
+          <div class="v" id="dashSaldo">R$ 0,00</div>
+          <div class="sub">no período selecionado</div>
+        </div>
+        <div class="dashMini">
+          <div class="k">Movimento</div>
+          <div class="v" id="dashMov">R$ 0,00</div>
+          <div class="sub">entradas + saídas</div>
+        </div>
+        <div class="dashMini">
+          <div class="k">Entradas</div>
+          <div class="v" id="dashEntradas">R$ 0,00</div>
+          <div class="sub">somatório</div>
+        </div>
+        <div class="dashMini">
+          <div class="k">Saídas</div>
+          <div class="v" id="dashSaidas">R$ 0,00</div>
+          <div class="sub">somatório</div>
+        </div>
+      </div>
+
+      <div class="dashTopCats">
+        <div class="chartTitle">Top gastos por categoria</div>
+        <div class="tableWrap" id="dashCatsWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Categoria</th><th>Total</th></tr></thead>
+            <tbody id="dashCats"></tbody>
+          </table>
+        </div>
+        <div class="hint" id="dashCatsHint">Carregando categorias…</div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <div class="chartTitle">Últimos lançamentos</div>
+        <div class="list" id="dashLast"></div>
+        <div class="actions">
+          <button class="btn secondary" onclick="showTab('ultimos')">Ver extrato completo</button>
+          <button class="btn" onclick="showTab('lancar')">Novo lançamento</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Screen: Lançar -->
-    <div class="card" id="screen-lancar">
+    <div class="card" id="screen-lancar" style="display:none;">
       <div class="seg">
         <button id="btnGasto" class="active" onclick="setTipo('Gasto')">Gasto</button>
         <button id="btnReceita" onclick="setTipo('Receita')">Receita</button>
@@ -686,13 +686,13 @@
       </div>
 
       <div id="msg" class="msg"></div>
-      <div class="hint">Dica: depois de salvar, vá em “Últimos” para ver a lista e os gráficos.</div>
+      <div class="hint">Dica: depois de salvar, vá em “Últimos” para ver o extrato e os gráficos.</div>
     </div>
 
     <!-- Screen: Últimos -->
     <div class="card" id="screen-ultimos" style="display:none;">
 
-      <!-- Chips (Nubank-like quick filters) -->
+      <!-- Chips quick filters -->
       <div class="chipsRow" style="margin-top:-6px;">
         <div class="chip active" id="chipTodos" onclick="setChipTipo('Todos')">✨ Todos</div>
         <div class="chip" id="chipGasto" onclick="setChipTipo('Gasto')">⬇ Gastos</div>
@@ -704,7 +704,6 @@
         <div class="chip" onclick="clearQuickDates()">🧼 Limpar datas</div>
       </div>
 
-      <!-- Compact filters -->
       <div class="row">
         <div>
           <label>Mês</label>
@@ -762,7 +761,6 @@
         <button class="btn secondary" onclick="exportar('pdf')">⬇ Exportar PDF</button>
       </div>
 
-      <!-- Charts -->
       <div class="card chartCard">
         <div class="chartTitle" id="titleMov">Movimento</div>
         <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
@@ -790,7 +788,6 @@
         </div>
       </div>
 
-      <!-- Pager -->
       <div class="pager">
         <div class="info" id="pagerInfo">Carregando…</div>
         <div class="controls">
@@ -800,9 +797,8 @@
         </div>
       </div>
 
-      <!-- List -->
       <div class="list" id="lista"></div>
-      <div class="hint">Dica: use os chips para filtrar rápido, e toque em editar/excluir no item.</div>
+      <div class="hint">Dica: use os chips para filtrar rápido.</div>
     </div>
 
   </div>
@@ -810,9 +806,9 @@
   <!-- Bottom Bar -->
   <div class="bottomBar">
     <div class="bottomInner">
-      <button class="navBtn" onclick="showTab('ultimos')">📊 Resumo</button>
+      <button class="navBtn" onclick="showTab('dashboard')">🏠 Home</button>
       <button class="navBtn primary" onclick="showTab('lancar')">➕ Lançar</button>
-      <button class="navBtn" onclick="openLogin()">🔒 Conta</button>
+      <button class="navBtn" onclick="showTab('ultimos')">📄 Extrato</button>
     </div>
   </div>
 
@@ -1061,6 +1057,7 @@
     // =========================
     let tipoAtual = "Gasto";
     let chartMov = null;
+    let chartDash = null;
     let chartPizzaGastos = null;
     let chartPizzaReceitas = null;
 
@@ -1134,16 +1131,6 @@
       return Number.isFinite(n) ? n : NaN;
     }
 
-    function setMsg(kind, text){
-      const el = document.getElementById("msg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
     function qs(params){
       const u = new URLSearchParams();
       for(const [k,v] of Object.entries(params)){
@@ -1168,10 +1155,15 @@
     // UI
     // =========================
     function showTab(tab){
+      document.getElementById("tab0").classList.toggle("active", tab==="dashboard");
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
+
+      document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
       document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
+
+      if(tab==="dashboard") carregarDashboard();
       if(tab==="ultimos") carregarTudo();
     }
 
@@ -1185,10 +1177,13 @@
       document.getElementById("categoria").value = "";
       document.getElementById("descricao").value = "";
       document.getElementById("valor").value = "";
-      setMsg("", "");
+      const el = document.getElementById("msg");
+      el.className = "msg";
+      el.style.display = "none";
+      el.textContent = "";
     }
 
-    // Chips type (sync with filtros.tipo)
+    // Chips tipo
     function syncTipoChips(){
       const t = filtros.tipo || "Todos";
       document.getElementById("chipTodos").classList.toggle("active", t==="Todos");
@@ -1268,6 +1263,7 @@
 
       mSel.value = String(filtros.month);
       ySel.value = String(filtros.year);
+
       document.getElementById("fOrder").value = filtros.order;
       document.getElementById("fSearch").value = "";
       document.getElementById("fFrom").value = "";
@@ -1285,6 +1281,7 @@
       const mm = String(filtros.month).padStart(2,"0");
       const yy = String(filtros.year);
       document.getElementById("mesAnoLabel").textContent = `${mm}/${yy}`;
+      document.getElementById("dashTitle").textContent = `Visão geral (${mm}/${yy})`;
     }
 
     function setTitleMov(){
@@ -1310,11 +1307,13 @@
       filtros.page = 1;
       setTitleMov();
       carregarTudo();
+      carregarDashboard(); // mantém home sempre coerente
     }
 
     function limparFiltros(){
       fillMonthYear();
       carregarTudo();
+      carregarDashboard();
     }
 
     // =========================
@@ -1346,6 +1345,16 @@
     // =========================
     // ENVIAR
     // =========================
+    function setMsg(kind, text){
+      const el = document.getElementById("msg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
     async function enviar(){
       setMsg("", "");
       const categoria = document.getElementById("categoria").value.trim();
@@ -1387,15 +1396,24 @@
         setMsg("ok", "✅ Lançamento salvo!");
         document.getElementById("descricao").value = "";
         document.getElementById("valor").value = "";
-        showTab("ultimos");
+
+        await carregarDashboard();
+        showTab("dashboard");
       }catch(e){
         setMsg("err", "❌ " + e.message);
       }
     }
 
     // =========================
-    // MOVIMENTO (Chart)
+    // Charts
     // =========================
+    function makeGrad(ctx, a, b){
+      const g = ctx.createLinearGradient(0, 0, 0, 220);
+      g.addColorStop(0, a);
+      g.addColorStop(1, b);
+      return g;
+    }
+
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
       if(!canvas) return;
@@ -1412,22 +1430,14 @@
         return acc;
       });
 
-      const gradRec = ctx.createLinearGradient(0, 0, 0, 260);
-      gradRec.addColorStop(0, "rgba(79,140,255,0.70)");
-      gradRec.addColorStop(1, "rgba(79,140,255,0.12)");
-
-      const gradGas = ctx.createLinearGradient(0, 0, 0, 260);
-      gradGas.addColorStop(0, "rgba(255,92,112,0.60)");
-      gradGas.addColorStop(1, "rgba(255,92,112,0.10)");
-
       if(chartMov) chartMov.destroy();
 
       chartMov = new Chart(ctx, {
         data: {
           labels: dias,
           datasets: [
-            { type:"bar", label:"Receitas", data: rec, backgroundColor: gradRec, borderRadius: 10 },
-            { type:"bar", label:"Gastos",   data: gas, backgroundColor: gradGas, borderRadius: 10 },
+            { type:"bar", label:"Receitas", data: rec, backgroundColor: makeGrad(ctx, "rgba(79,140,255,.70)", "rgba(79,140,255,.12)"), borderRadius: 10 },
+            { type:"bar", label:"Gastos",   data: gas, backgroundColor: makeGrad(ctx, "rgba(255,92,112,.60)", "rgba(255,92,112,.10)"), borderRadius: 10 },
             { type:"line", label:"Saldo acumulado", data: saldoAcum, borderWidth:2, tension:0.35, pointRadius:2, fill:false,
               borderColor:"rgba(61,220,151,1)" }
           ]
@@ -1460,9 +1470,53 @@
       });
     }
 
-    // =========================
-    // PIZZAS
-    // =========================
+    function atualizarDashChart(j){
+      const canvas = document.getElementById("graficoDash");
+      if(!canvas) return;
+      const ctx = canvas.getContext("2d");
+
+      const dias = (j.dias || []);
+      const rec  = (j.serie_receita || []).map(v => Number(v || 0));
+      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
+      const saldoDia = dias.map((_, i) => (rec[i]||0) - (gasP[i]||0));
+
+      if(chartDash) chartDash.destroy();
+
+      chartDash = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: dias,
+          datasets: [{
+            label: "Saldo do dia",
+            data: saldoDia,
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 0,
+            fill: true,
+            borderColor: "rgba(123,92,255,1)",
+            backgroundColor: makeGrad(ctx, "rgba(123,92,255,.25)", "rgba(123,92,255,0)")
+          }]
+        },
+        options: {
+          responsive:true,
+          maintainAspectRatio:false,
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              callbacks:{
+                label:(tt)=> `Saldo do dia: ${brl(Number(tt.parsed.y||0))}`
+              }
+            }
+          },
+          scales:{
+            x:{ display:false },
+            y:{ display:false }
+          }
+        }
+      });
+    }
+
+    // Pizzas
     const PIE_REDS = [
       "rgba(255,92,112,0.92)","rgba(255,92,112,0.78)","rgba(255,92,112,0.62)",
       "rgba(255,92,112,0.48)","rgba(255,92,112,0.34)","rgba(255,92,112,0.22)"
@@ -1530,7 +1584,7 @@
       }
     }
 
-    function renderTabelaCategorias(idWrap, idBody, arr){
+    function renderTabelaCategorias(idWrap, idBody, arr, max=20){
       const wrap = document.getElementById(idWrap);
       const tbody = document.getElementById(idBody);
       if(!Array.isArray(arr) || arr.length === 0){
@@ -1539,7 +1593,7 @@
         return;
       }
       wrap.style.display = "block";
-      tbody.innerHTML = arr.slice(0, 20).map(x => {
+      tbody.innerHTML = arr.slice(0, max).map(x => {
         const cat = (x.categoria || "Sem categoria");
         const tot = brl(x.total || 0);
         return `<tr><td>${cat}</td><td>${tot}</td></tr>`;
@@ -1566,15 +1620,37 @@
       if(!r.ok) throw new Error("Falha em /resumo");
 
       const j = await r.json();
+
       document.getElementById("entradas").innerText = brl(j.entradas);
       document.getElementById("saidas").innerText   = brl(j.saidas);
       document.getElementById("saldoBig").innerText = brl(j.saldo);
 
       atualizarMovimento(j);
+      atualizarDashChart(j);
       atualizarPizzas(j);
 
       renderTabelaCategorias("tblGastosWrap","tblGastos", j.gastos_categorias || []);
       renderTabelaCategorias("tblReceitasWrap","tblReceitas", j.receitas_categorias || []);
+
+      // dashboard cards
+      document.getElementById("dashSaldo").innerText = brl(j.saldo);
+      document.getElementById("dashEntradas").innerText = brl(j.entradas);
+      document.getElementById("dashSaidas").innerText = brl(j.saidas);
+      document.getElementById("dashMov").innerText = brl(Number(j.entradas||0) + Number(j.saidas||0));
+
+      // dashboard top cats
+      const cats = (j.gastos_categorias || []);
+      const hint = document.getElementById("dashCatsHint");
+      if(cats.length){
+        hint.style.display = "none";
+        renderTabelaCategorias("dashCatsWrap","dashCats", cats, 6);
+      }else{
+        document.getElementById("dashCatsWrap").style.display = "none";
+        hint.style.display = "block";
+        hint.textContent = "Sem dados de gastos por categoria nesse período.";
+      }
+
+      return j;
     }
 
     async function carregarUltimos(){
@@ -1588,9 +1664,7 @@
               <div class="txSub">Aguarde</div>
             </div>
           </div>
-          <div class="txRight">
-            <div class="txValue">—</div>
-          </div>
+          <div class="txRight"><div class="txValue">—</div></div>
         </div>`;
 
       const params = {
@@ -1667,9 +1741,88 @@
       });
     }
 
+    async function carregarUltimosDashboard(){
+      const box = document.getElementById("dashLast");
+      box.innerHTML = `
+        <div class="tx">
+          <div class="txLeft">
+            <div class="txIcon">…</div>
+            <div class="txMeta">
+              <div class="txTitle">Carregando</div>
+              <div class="txSub">Aguarde</div>
+            </div>
+          </div>
+          <div class="txRight"><div class="txValue">—</div></div>
+        </div>`;
+
+      const params = {
+        month: filtros.month,
+        year: filtros.year,
+        tipo: "Todos",
+        order: "recent",
+        page: 1,
+        limit: 5
+      };
+
+      const r = await apiFetch("/ultimos" + qs(params));
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
+      if(!r.ok) throw new Error("Falha em /ultimos");
+
+      const payload = await r.json().catch(()=> ({}));
+      const arr = payload.items || [];
+
+      box.innerHTML = "";
+      if(!arr.length){
+        box.innerHTML = `
+          <div class="tx">
+            <div class="txLeft">
+              <div class="txIcon">∅</div>
+              <div class="txMeta">
+                <div class="txTitle">Sem lançamentos</div>
+                <div class="txSub">Crie seu primeiro lançamento</div>
+              </div>
+            </div>
+            <div class="txRight"><div class="txValue">—</div></div>
+          </div>`;
+        return;
+      }
+
+      arr.forEach((item, idx) => {
+        const tipo = (item.Tipo || "");
+        const categoria = (item.Categoria || "");
+        const descricao = (item["Descrição"] || "");
+        const data = (item.Data || "");
+        const valor = (item.Valor || "");
+
+        const vnum = parseMoneyBR(valor);
+        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
+
+        const delay = Math.min(120, idx * 18);
+        box.innerHTML += `
+          <div class="tx" style="animation-delay:${delay}ms">
+            <div class="txLeft">
+              <div class="txIcon">${iconFor(item)}</div>
+              <div class="txMeta">
+                <div class="txTitle">${tipo} • ${categoria}</div>
+                <div class="txSub">${descricao} • ${data}</div>
+              </div>
+            </div>
+            <div class="txRight">
+              <div class="txValue ${valueClass(item)}">${showVal}</div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
     async function carregarTudo(){
       try{ await carregarResumo(); }catch(e){}
       try{ await carregarUltimos(); }catch(e){}
+    }
+
+    async function carregarDashboard(){
+      try{ await carregarResumo(); }catch(e){}
+      try{ await carregarUltimosDashboard(); }catch(e){}
     }
 
     // =========================
@@ -1701,9 +1854,7 @@
       }
     }
 
-    function closeEdit(){
-      document.getElementById("editBack").style.display = "none";
-    }
+    function closeEdit(){ document.getElementById("editBack").style.display = "none"; }
 
     async function salvarEdicao(){
       setEditMsg("", "");
@@ -1715,19 +1866,11 @@
       const valorTxt = document.getElementById("editValor").value;
       const dataStr = document.getElementById("editData").value.trim();
 
-      if(!row || row < 2){
-        setEditMsg("err", "Linha inválida.");
-        return;
-      }
-      if(!categoria || !descricao || !dataStr){
-        setEditMsg("err", "Preencha categoria, descrição e data.");
-        return;
-      }
+      if(!row || row < 2){ setEditMsg("err", "Linha inválida."); return; }
+      if(!categoria || !descricao || !dataStr){ setEditMsg("err", "Preencha categoria, descrição e data."); return; }
+
       const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setEditMsg("err", "Valor inválido. Ex: 360,00");
-        return;
-      }
+      if(!Number.isFinite(valorNum) || valorNum <= 0){ setEditMsg("err", "Valor inválido. Ex: 360,00"); return; }
 
       const payload = { tipo, categoria, descricao, valor: valorNum, data: dataStr };
 
@@ -1740,13 +1883,11 @@
       if(r.status === 401){ mustLogin(); return; }
 
       const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        setEditMsg("err", "❌ " + (j.msg || "Erro ao editar"));
-        return;
-      }
+      if(!r.ok){ setEditMsg("err", "❌ " + (j.msg || "Erro ao editar")); return; }
 
       setEditMsg("ok", "✅ Alterações salvas!");
       await carregarTudo();
+      await carregarDashboard();
       setTimeout(()=> closeEdit(), 450);
     }
 
@@ -1760,11 +1901,10 @@
       if(r.status === 401){ mustLogin(); return; }
 
       const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        alert("❌ " + (j.msg || "Erro ao excluir"));
-        return;
-      }
+      if(!r.ok){ alert("❌ " + (j.msg || "Erro ao excluir")); return; }
+
       await carregarTudo();
+      await carregarDashboard();
     }
 
     // =========================
@@ -1817,7 +1957,6 @@
       fillMonthYear();
       document.getElementById("data").value = isoToday();
 
-      // Enter triggers apply
       document.getElementById("fSearch").addEventListener("keydown", (ev)=>{
         if(ev.key === "Enter") aplicarFiltros();
       });
@@ -1828,22 +1967,20 @@
         if(ev.key === "Enter") aplicarFiltros();
       });
 
-      // On month/year change, apply quickly
       document.getElementById("fMonth").addEventListener("change", aplicarFiltros);
       document.getElementById("fYear").addEventListener("change", aplicarFiltros);
 
       (async ()=>{
         await refreshAuthUI();
-        try{ await carregarTudo(); }catch(e){}
+        try{ await carregarDashboard(); }catch(e){}
       })();
     })();
   </script>
 
-  <!-- Service Worker (apenas 1 vez, no caminho certo: /sw.js) -->
+  <!-- Service Worker (apenas 1 vez) -->
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
-
       window.addEventListener("load", async () => {
         try {
           const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
