@@ -12,6 +12,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
+  <!-- Evita cache agressivo (especialmente iOS/PWA) -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
   <style>
     :root{
       --bg0:#070b16;
@@ -676,7 +681,7 @@
       <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
     </div>
 
-    <!-- ===== SCREEN: DASHBOARD (simples e útil) ===== -->
+    <!-- ===== SCREEN: DASHBOARD ===== -->
     <div class="card" id="screen-dashboard" style="display:none;">
       <div class="title">Dashboard do mês</div>
 
@@ -1055,7 +1060,6 @@
     // =========================
     function openFilters(fromDashboard=false){
       document.getElementById("filtersBack").style.display = "flex";
-      // se veio do dashboard, só deixa claro pra pessoa
       if(fromDashboard) setTitleMov();
     }
     function closeFilters(){
@@ -1335,7 +1339,7 @@
     }
 
     // =========================
-    // PAGINAÇÃO (só aparece se precisar)
+    // PAGINAÇÃO
     // =========================
     function updatePager(){
       const page = filtros.page;
@@ -1891,7 +1895,7 @@
 
     async function atualizarDashboard(){
       try{
-        const j = await carregarResumo(); // reaproveita o /resumo
+        const j = await carregarResumo();
         document.getElementById("dashReceitas").innerText = brl(j.entradas);
         document.getElementById("dashGastos").innerText   = brl(j.saidas);
         document.getElementById("dashSaldo").innerText    = brl(j.saldo);
@@ -1900,7 +1904,6 @@
         document.getElementById("alertsBox").innerHTML = buildAlerts(j);
         updateSaldoChart(j);
       }catch(e){
-        // se não estiver logado ou falhar
         document.getElementById("insightsBox").innerText = "Faça login para ver insights.";
         document.getElementById("alertsBox").innerText = "Faça login para ver alertas.";
       }
@@ -1919,13 +1922,11 @@
       wireBackdropClose("editBack", closeEdit);
 
       document.addEventListener("click", (e)=>{
-        // fecha menus se clicar fora do kebab/menu
         const target = e.target;
         const isMenu = target && (target.classList && (target.classList.contains("kebab") || target.closest(".menu")));
         if(!isMenu) closeAllItemMenus();
       });
 
-      // ENTER nos filtros
       ["fSearch","fMin","fMax"].forEach(id=>{
         const el = document.getElementById(id);
         el.addEventListener("keydown", (ev)=>{
@@ -1945,11 +1946,13 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
-        try{
-          const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-          if(reg && reg.update) reg.update();
-        }catch(e){
-          console.error("SW register failed", e);
+        try {
+          // ✅ Seu SW está em /static/sw.js (e não /sw.js)
+          const reg = await navigator.serviceWorker.register("/static/sw.js", { scope: "/" });
+          if (reg && reg.update) reg.update();
+          console.log("✅ SW registrado:", reg.scope);
+        } catch (e) {
+          console.error("❌ SW register failed", e);
         }
       });
     }
