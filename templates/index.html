@@ -22,7 +22,7 @@
       --text:#eef3ff;
       --muted:#aebad9;
 
-      --primary:#6aa2ff;     /* azul elegante */
+      --primary:#6aa2ff;
       --primary2:#4f8cff;
       --danger:#ff6b7a;
       --success:#3ee29b;
@@ -72,9 +72,7 @@
       font-size:13px;
     }
 
-    .top-actions{
-      display:flex; gap:10px; align-items:center;
-    }
+    .top-actions{ display:flex; gap:10px; align-items:center; }
 
     .pill{
       padding:10px 12px;
@@ -120,6 +118,7 @@
       color: var(--muted);
       background: transparent;
       transition: .15s ease;
+      white-space:nowrap;
     }
     .tab:active{ transform: scale(.98); background: rgba(255,255,255,.04); }
     .tab.active{
@@ -181,6 +180,7 @@
       color:var(--muted);
       font-weight:900;
       cursor:pointer;
+      white-space:nowrap;
     }
     .seg button.active{
       background: rgba(106,162,255,.18);
@@ -262,14 +262,12 @@
       white-space:nowrap;
     }
 
-    /* HEADER ACTIONS (Ultimos) */
+    /* HEADER ACTIONS */
     .barRow{
       display:flex; gap:10px; align-items:center; justify-content:space-between;
       margin:10px 0 0 0;
     }
-    .barRow .left{
-      display:flex; gap:10px; align-items:center;
-    }
+    .barRow .left{ display:flex; gap:10px; align-items:center; }
 
     .chipBtn{
       border:1px solid var(--border);
@@ -282,6 +280,7 @@
       display:flex; gap:8px; align-items:center;
       transition:.12s ease;
       user-select:none;
+      white-space:nowrap;
     }
     .chipBtn:active{ transform: scale(.985); background: rgba(255,255,255,.07); }
 
@@ -297,6 +296,7 @@
       font-size:12px;
     }
 
+    /* TABLE */
     .tableWrap{
       margin-top:10px;
       border:1px solid rgba(255,255,255,.07);
@@ -331,7 +331,6 @@
       flex-direction:column;
       gap:10px;
     }
-
     .item{
       background: rgba(10,16,32,.48);
       border:1px solid rgba(255,255,255,.07);
@@ -343,7 +342,6 @@
       gap:10px;
       position:relative;
     }
-
     .itemLeft{
       display:flex; gap:10px; align-items:center;
       flex:1;
@@ -374,7 +372,6 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
-
     .value{
       font-weight:900;
       font-size:14px;
@@ -397,7 +394,6 @@
       user-select:none;
     }
     .kebab:active{ transform: scale(.985); background: rgba(255,255,255,.06); }
-
     .menu{
       position:absolute;
       right:12px;
@@ -432,7 +428,7 @@
     /* PAGER */
     .pager{
       margin-top:12px;
-      display:none; /* só aparece se precisar */
+      display:none;
       justify-content:space-between;
       align-items:center;
       gap:10px;
@@ -481,7 +477,6 @@
       padding:16px;
       z-index:9999;
     }
-
     .sheet{
       width:min(560px, 100%);
       background: rgba(10,16,32,.92);
@@ -494,20 +489,13 @@
       max-height: 86vh;
       overflow:auto;
     }
-
     .sheetTop{
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       margin-bottom:8px;
     }
-    .sheetTop h2{
-      margin:0;
-      font-size:16px;
-    }
-    .sheetTop p{
-      margin:4px 0 0 0;
-      color: var(--muted);
-      font-size:13px;
-    }
+    .sheetTop h2{ margin:0; font-size:16px; }
+    .sheetTop p{ margin:4px 0 0 0; color: var(--muted); font-size:13px; }
+
     .xBtn{
       border:1px solid rgba(255,255,255,.10);
       background:rgba(255,255,255,.05);
@@ -527,13 +515,7 @@
       gap:10px;
     }
     .filtersGrid .full{ grid-column: 1 / -1; }
-
-    .quickRow{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      margin-top:8px;
-    }
+    .quickRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .chip{
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.05);
@@ -545,10 +527,7 @@
       font-size:12px;
       user-select:none;
     }
-    .chip.secondary{
-      background:rgba(255,255,255,.035);
-      color:var(--muted);
-    }
+    .chip.secondary{ background:rgba(255,255,255,.035); color:var(--muted); }
     .chip:active{ transform: scale(.985); }
 
     .linkBtn{
@@ -582,10 +561,12 @@
       </div>
     </div>
 
+    <!-- TABS -->
     <div class="tabsWrap">
       <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
       <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
       <button class="tab" id="tab3" onclick="showTab('dashboard')">Dashboard</button>
+      <button class="tab" id="tab4" onclick="showTab('investimentos')">Invest.</button>
     </div>
 
     <!-- ===== SCREEN: LANÇAR ===== -->
@@ -715,6 +696,61 @@
         <div class="title">Alertas</div>
         <div id="alertsBox" class="hint">Carregando…</div>
       </div>
+    </div>
+
+    <!-- ===== SCREEN: INVESTIMENTOS ===== -->
+    <div class="card" id="screen-investimentos" style="display:none;">
+      <div class="title">Investimentos</div>
+
+      <div class="summaryGrid" style="margin-bottom:8px;">
+        <div class="sumRow"><div class="k">Total investido</div><div class="v" id="invTotal">R$ 0,00</div></div>
+        <div class="sumRow"><div class="k">Aportes</div><div class="v" id="invAportes">R$ 0,00</div></div>
+        <div class="sumRow"><div class="k">Retiradas</div><div class="v" id="invRetiradas">R$ 0,00</div></div>
+      </div>
+
+      <div class="card chartCard" style="margin-top:0;">
+        <div class="title">Distribuição por ativo</div>
+        <div class="chartWrap"><canvas id="invPizza"></canvas></div>
+        <div class="tableWrap" id="tblInvWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Ativo</th><th>Saldo</th></tr></thead>
+            <tbody id="tblInv"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="seg" style="margin-top:12px;">
+        <button id="btnAporte" class="active" onclick="setInvTipo('Aporte')">Aporte</button>
+        <button id="btnRetirada" onclick="setInvTipo('Retirada')">Retirada</button>
+      </div>
+
+      <label>Ativo</label>
+      <input id="invAtivo" placeholder="Ex: Tesouro Selic, BTC, IVVB11" />
+
+      <label>Descrição (opcional)</label>
+      <input id="invDesc" placeholder="Ex: aporte mensal" />
+
+      <div class="row">
+        <div>
+          <label>Valor</label>
+          <input id="invValor" type="text" inputmode="decimal" placeholder="Ex: 200,00" />
+        </div>
+        <div>
+          <label>Data</label>
+          <input id="invData" type="date" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="enviarInvestimento()">Salvar</button>
+        <button class="btn secondary" onclick="limparInvestimento()">Limpar</button>
+        <button class="btn secondary" onclick="carregarInvestimentosTudo()">⟳ Atualizar</button>
+      </div>
+
+      <div id="invMsg" class="msg"></div>
+
+      <div class="list" id="invLista"></div>
+      <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
     </div>
 
   </div>
@@ -889,7 +925,7 @@
     </div>
   </div>
 
-  <!-- EDIT SHEET -->
+  <!-- EDIT SHEET (LANÇAMENTOS) -->
   <div class="backdrop" id="editBack">
     <div class="sheet">
       <div class="sheetTop">
@@ -931,6 +967,51 @@
       </div>
 
       <div id="editMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- EDIT SHEET (INVESTIMENTOS) -->
+  <div class="backdrop" id="invEditBack">
+    <div class="sheet">
+      <div class="sheetTop">
+        <div>
+          <h2>✏️ Editar investimento</h2>
+          <p>Altere e salve.</p>
+        </div>
+        <button class="xBtn" onclick="closeInvEdit()">✕</button>
+      </div>
+
+      <input type="hidden" id="invEditRow" />
+
+      <label>Tipo</label>
+      <select id="invEditTipo">
+        <option value="Aporte">Aporte</option>
+        <option value="Retirada">Retirada</option>
+      </select>
+
+      <label>Ativo</label>
+      <input id="invEditAtivo" placeholder="Ex: IVVB11" />
+
+      <label>Descrição</label>
+      <input id="invEditDesc" placeholder="Opcional" />
+
+      <div class="row">
+        <div>
+          <label>Valor</label>
+          <input id="invEditValor" type="text" inputmode="decimal" placeholder="Ex: 200,00" />
+        </div>
+        <div>
+          <label>Data (YYYY-MM-DD)</label>
+          <input id="invEditData" type="date" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" onclick="salvarInvEdicao()">Salvar</button>
+        <button class="btn secondary" onclick="closeInvEdit()">Cancelar</button>
+      </div>
+
+      <div id="invEditMsg" class="msg"></div>
     </div>
   </div>
 
@@ -1074,9 +1155,9 @@
         await refreshAuthUI();
         closeLogin();
 
-        // carregar dados (se estiver na aba ultimos/dashboard)
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
+        try{ await carregarInvestimentosTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1122,7 +1203,6 @@
         await refreshAuthUI();
         closeLogin();
 
-        // limpar
         document.getElementById("suNick").value = "";
         document.getElementById("suFull").value = "";
         document.getElementById("suPhone").value = "";
@@ -1130,6 +1210,7 @@
 
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
+        try{ await carregarInvestimentosTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1199,6 +1280,7 @@
 
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
+        try{ await carregarInvestimentosTudo(); }catch(e){}
       }catch(e){
         setLoginMsg("err", "❌ " + e.message);
       }
@@ -1221,13 +1303,8 @@
     // =========================
     // FILTERS SHEET
     // =========================
-    function openFilters(fromDashboard=false){
-      document.getElementById("filtersBack").style.display = "flex";
-      if(fromDashboard) setTitleMov();
-    }
-    function closeFilters(){
-      document.getElementById("filtersBack").style.display = "none";
-    }
+    function openFilters(){ document.getElementById("filtersBack").style.display = "flex"; }
+    function closeFilters(){ document.getElementById("filtersBack").style.display = "none"; }
 
     // fechar sheets tocando fora
     function wireBackdropClose(id, closeFn){
@@ -1238,7 +1315,7 @@
     }
 
     // =========================
-    // ESTADO
+    // ESTADO (LANÇAMENTOS)
     // =========================
     let tipoAtual = "Gasto";
     let chartMov = null;
@@ -1260,6 +1337,12 @@
       page: 1,
       total: 0
     };
+
+    // =========================
+    // ESTADO (INVESTIMENTOS)
+    // =========================
+    let invTipoAtual = "Aporte";
+    let invChart = null;
 
     // =========================
     // HELPERS
@@ -1293,12 +1376,9 @@
       if(str == null) return NaN;
       let s = String(str).trim();
       if(!s) return NaN;
-
       s = s.replace("R$", "").trim();
-
       const hasComma = s.includes(",");
       const hasDot = s.includes(".");
-
       if(hasComma && hasDot){
         if(s.lastIndexOf(",") > s.lastIndexOf(".")){
           s = s.replace(/\./g, "");
@@ -1312,45 +1392,10 @@
       }else{
         s = s.replace(/,/g, "");
       }
-
       const n = Number(s);
       return Number.isFinite(n) ? n : NaN;
     }
 
-    function setMsg(kind, text){
-      const el = document.getElementById("msg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    function setEditMsg(kind, text){
-      const el = document.getElementById("editMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    function getField(obj, keys){
-      for(const k of keys){
-        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-      }
-      return "";
-    }
-    function iconFor(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      return t.includes("rece") ? "⬆" : "⬇";
-    }
-    function valueClass(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      return t.includes("rece") ? "green" : "red";
-    }
     function qs(params){
       const u = new URLSearchParams();
       for(const [k,v] of Object.entries(params)){
@@ -1363,19 +1408,20 @@
     }
 
     // =========================
-    // TAB via URL ( ?tab=ultimos | dashboard | lancar ) + hash (#tab=...)
+    // TAB via URL
     // =========================
+    const TABS = ["lancar","ultimos","dashboard","investimentos"];
+
     function getTabFromURL(){
       try{
         const url = new URL(window.location.href);
         const t = (url.searchParams.get("tab") || "").toLowerCase();
-        if(t === "ultimos" || t === "dashboard" || t === "lancar") return t;
+        if(TABS.includes(t)) return t;
 
         const h = (url.hash || "").replace("#","").trim();
-        // aceita "#tab=ultimos"
         if(h.startsWith("tab=")){
           const hv = h.split("=").slice(1).join("=").toLowerCase();
-          if(hv === "ultimos" || hv === "dashboard" || hv === "lancar") return hv;
+          if(TABS.includes(hv)) return hv;
         }
       }catch(e){}
       return null;
@@ -1396,15 +1442,18 @@
       document.getElementById("tab1").classList.toggle("active", tab==="lancar");
       document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
       document.getElementById("tab3").classList.toggle("active", tab==="dashboard");
+      document.getElementById("tab4").classList.toggle("active", tab==="investimentos");
 
       document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
       document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
       document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
+      document.getElementById("screen-investimentos").style.display = tab==="investimentos" ? "block" : "none";
 
       if(syncURL) setTabInURL(tab);
 
       if(tab==="ultimos") carregarTudo();
       if(tab==="dashboard") atualizarDashboard();
+      if(tab==="investimentos") carregarInvestimentosTudo();
     }
 
     function setTipo(tipo){
@@ -1418,6 +1467,16 @@
       document.getElementById("descricao").value = "";
       document.getElementById("valor").value = "";
       setMsg("", "");
+    }
+
+    function setMsg(kind, text){
+      const el = document.getElementById("msg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
     }
 
     // =========================
@@ -1562,7 +1621,7 @@
     }
 
     // =========================
-    // ENVIAR
+    // ENVIAR (LANÇAR)
     // =========================
     async function enviar(){
       setMsg("", "");
@@ -1612,7 +1671,7 @@
     }
 
     // =========================
-    // MOVIMENTO
+    // MOVIMENTO + PIZZAS
     // =========================
     function atualizarMovimento(j){
       const canvas = document.getElementById("graficoMov");
@@ -1670,9 +1729,6 @@
       });
     }
 
-    // =========================
-    // PIZZAS
-    // =========================
     function donutOptions(){
       return {
         responsive:true,
@@ -1753,7 +1809,7 @@
     }
 
     // =========================
-    // RESUMO + LISTA
+    // RESUMO + LISTA (LANÇAMENTOS)
     // =========================
     async function carregarResumo(){
       const params = {
@@ -1787,7 +1843,6 @@
     function closeAllItemMenus(){
       document.querySelectorAll(".menu").forEach(m=> m.style.display="none");
     }
-
     function toggleMenu(id){
       const el = document.getElementById(id);
       if(!el) return;
@@ -1845,11 +1900,11 @@
       }
 
       arr.forEach((item, idx) => {
-        const tipo = getField(item, ["Tipo"]);
-        const categoria = getField(item, ["Categoria"]);
-        const descricao = getField(item, ["Descrição"]);
-        const data = getField(item, ["Data"]);
-        const valor = getField(item, ["Valor"]);
+        const tipo = item.Tipo || "";
+        const categoria = item.Categoria || "";
+        const descricao = item["Descrição"] || "";
+        const data = item.Data || "";
+        const valor = item.Valor || "";
         const row = item._row;
 
         const vnum = parseMoneyBR(valor);
@@ -1858,10 +1913,14 @@
         const encoded = encodeURIComponent(JSON.stringify(item));
         const menuId = `m_${row}_${idx}`;
 
+        const tLower = String(tipo).toLowerCase();
+        const icon = tLower.includes("rece") ? "⬆" : "⬇";
+        const vClass = tLower.includes("rece") ? "green" : "red";
+
         lista.innerHTML += `
           <div class="item">
             <div class="itemLeft">
-              <div class="icon">${iconFor(item)}</div>
+              <div class="icon">${icon}</div>
               <div class="meta">
                 <b>${tipo} • ${categoria}</b>
                 <span>${descricao} • ${data}</span>
@@ -1869,7 +1928,7 @@
             </div>
 
             <div style="display:flex; align-items:center;">
-              <div class="value ${valueClass(item)}">${showVal}</div>
+              <div class="value ${vClass}">${showVal}</div>
               <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
             </div>
 
@@ -1888,8 +1947,18 @@
     }
 
     // =========================
-    // EDIT
+    // EDIT (LANÇAMENTOS)
     // =========================
+    function setEditMsg(kind, text){
+      const el = document.getElementById("editMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
     function openEdit(encoded){
       try{
         const item = JSON.parse(decodeURIComponent(encoded));
@@ -1954,7 +2023,7 @@
     }
 
     // =========================
-    // EXCLUIR
+    // EXCLUIR (LANÇAMENTOS)
     // =========================
     async function excluirLancamento(row){
       if(!confirm("Excluir este lançamento?")) return;
@@ -2087,7 +2156,7 @@
 
     async function atualizarDashboard(){
       try{
-        const j = await carregarResumo(); // reaproveita o /resumo
+        const j = await carregarResumo();
         document.getElementById("dashReceitas").innerText = brl(j.entradas);
         document.getElementById("dashGastos").innerText   = brl(j.saidas);
         document.getElementById("dashSaldo").innerText    = brl(j.saldo);
@@ -2102,15 +2171,330 @@
     }
 
     // =========================
+    // INVESTIMENTOS (MODELO A)
+    // =========================
+    function setInvMsg(kind, text){
+      const el = document.getElementById("invMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function setInvTipo(t){
+      invTipoAtual = t;
+      document.getElementById("btnAporte").classList.toggle("active", t==="Aporte");
+      document.getElementById("btnRetirada").classList.toggle("active", t==="Retirada");
+    }
+
+    function limparInvestimento(){
+      document.getElementById("invAtivo").value = "";
+      document.getElementById("invDesc").value = "";
+      document.getElementById("invValor").value = "";
+      setInvMsg("", "");
+    }
+
+    function invIcon(tipo){
+      return String(tipo||"").toLowerCase().includes("ap") ? "⬆" : "⬇";
+    }
+    function invValueClass(tipo){
+      return String(tipo||"").toLowerCase().includes("ap") ? "green" : "red";
+    }
+
+    async function enviarInvestimento(){
+      setInvMsg("", "");
+      const ativo = (document.getElementById("invAtivo").value || "").trim();
+      const descricao = (document.getElementById("invDesc").value || "").trim();
+      const valorTxt = (document.getElementById("invValor").value || "").trim();
+      const dataISO = (document.getElementById("invData").value || "").trim();
+
+      if(!ativo || !valorTxt){
+        setInvMsg("err", "Preencha ativo e valor.");
+        return;
+      }
+      const valorNum = parseMoneyBR(valorTxt);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        setInvMsg("err", "Valor inválido. Ex: 200,00");
+        return;
+      }
+      const data = dataISO || isoToday();
+
+      const payload = { ativo, tipo: invTipoAtual, descricao, valor: valorNum, data };
+
+      try{
+        const r = await apiFetch("/investir", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+        if(r.status === 401){ mustLogin(); return; }
+        const j = await r.json().catch(()=> ({}));
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao salvar investimento");
+
+        setInvMsg("ok", "✅ Investimento salvo!");
+        document.getElementById("invDesc").value = "";
+        document.getElementById("invValor").value = "";
+        await carregarInvestimentosTudo();
+      }catch(e){
+        setInvMsg("err", "❌ " + e.message);
+      }
+    }
+
+    function renderInvTabela(saldoPorAtivo){
+      const wrap = document.getElementById("tblInvWrap");
+      const tbody = document.getElementById("tblInv");
+      const entries = Object.entries(saldoPorAtivo || {}).sort((a,b)=> (Number(b[1]||0)-Number(a[1]||0)));
+
+      if(!entries.length){
+        wrap.style.display = "none";
+        tbody.innerHTML = "";
+        return;
+      }
+
+      wrap.style.display = "block";
+      tbody.innerHTML = entries.slice(0, 30).map(([ativo, saldo])=>{
+        return `<tr><td>${ativo}</td><td>${brl(saldo)}</td></tr>`;
+      }).join("");
+    }
+
+    function updateInvChart(saldoPorAtivo){
+      const canvas = document.getElementById("invPizza");
+      if(!canvas) return;
+      const ctx = canvas.getContext("2d");
+
+      const entries = Object.entries(saldoPorAtivo || {}).filter(([,v])=> Number(v||0) !== 0);
+      const labels = entries.map(([k])=>k);
+      const values = entries.map(([,v])=> Math.abs(Number(v||0)));
+
+      if(invChart) invChart.destroy();
+
+      invChart = new Chart(ctx, {
+        type:"doughnut",
+        data:{
+          labels: labels.length ? labels : ["Sem dados"],
+          datasets:[{
+            data: values.length ? values : [1],
+            backgroundColor: labels.length ? getColors("62,226,155", labels.length) : ["rgba(62,226,155,0.18)"],
+            borderColor:"rgba(255,255,255,0.08)",
+            borderWidth:1
+          }]
+        },
+        options: donutOptions()
+      });
+    }
+
+    function closeAllInvMenus(){
+      document.querySelectorAll(".invMenu").forEach(m=> m.style.display="none");
+    }
+    function toggleInvMenu(id){
+      const el = document.getElementById(id);
+      if(!el) return;
+      const isOn = el.style.display === "block";
+      closeAllInvMenus();
+      el.style.display = isOn ? "none" : "block";
+    }
+
+    async function carregarInvestResumo(){
+      const r = await apiFetch("/invest_resumo");
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
+      if(!r.ok) throw new Error("Falha em /invest_resumo");
+      const j = await r.json().catch(()=> ({}));
+
+      document.getElementById("invTotal").innerText = brl(j.total_investido || 0);
+      document.getElementById("invAportes").innerText = brl(j.total_aportes || 0);
+      document.getElementById("invRetiradas").innerText = brl(j.total_retiradas || 0);
+
+      renderInvTabela(j.saldo_por_ativo || {});
+      updateInvChart(j.saldo_por_ativo || {});
+      return j;
+    }
+
+    async function carregarInvestLista(){
+      const lista = document.getElementById("invLista");
+      lista.innerHTML = `
+        <div class="item">
+          <div class="itemLeft">
+            <div class="icon">…</div>
+            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
+          </div>
+          <div class="value"> </div>
+        </div>`;
+
+      const r = await apiFetch("/investimentos");
+      if(r.status === 401){ mustLogin(); throw new Error("401"); }
+      if(!r.ok) throw new Error("Falha em /investimentos");
+
+      const payload = await r.json().catch(()=> ({}));
+      const arr = payload.items || [];
+
+      lista.innerHTML = "";
+      if(!Array.isArray(arr) || arr.length === 0){
+        lista.innerHTML = `
+          <div class="item">
+            <div class="itemLeft">
+              <div class="icon">∅</div>
+              <div class="meta"><b>Nenhum investimento</b><span>Cadastre seu primeiro aporte</span></div>
+            </div>
+            <div class="value"></div>
+          </div>`;
+        return;
+      }
+
+      // mais recente primeiro (se tiver CreatedAt)
+      arr.sort((a,b)=> String(b.CreatedAt||"").localeCompare(String(a.CreatedAt||"")));
+
+      arr.forEach((it, idx)=>{
+        const row = it._row;
+        const ativo = it.Ativo || it.ativo || "Ativo";
+        const tipo = it.Tipo || it.tipo || "Aporte";
+        const desc = it["Descrição"] || it.descricao || "";
+        const data = it.Data || it.data || "";
+        const valor = it.Valor || it.valor || "";
+
+        const vnum = parseMoneyBR(valor);
+        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
+
+        const encoded = encodeURIComponent(JSON.stringify(it));
+        const menuId = `inv_m_${row}_${idx}`;
+
+        lista.innerHTML += `
+          <div class="item">
+            <div class="itemLeft">
+              <div class="icon">${invIcon(tipo)}</div>
+              <div class="meta">
+                <b>${ativo} • ${tipo}</b>
+                <span>${desc ? desc + " • " : ""}${data}</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center;">
+              <div class="value ${invValueClass(tipo)}">${showVal}</div>
+              <button class="kebab" onclick="toggleInvMenu('${menuId}')">⋯</button>
+            </div>
+
+            <div class="menu invMenu" id="${menuId}">
+              <button onclick='openInvEdit("${encoded}"); closeAllInvMenus();'>✏️ Editar</button>
+              <button class="dangerItem" onclick="excluirInvestimento(${row}); closeAllInvMenus();">🗑 Excluir</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function carregarInvestimentosTudo(){
+      setInvMsg("", "");
+      try{ await carregarInvestResumo(); }catch(e){
+        // Se rota não existir ainda, avisa bonito
+        if(String(e.message||"").includes("Falha")){
+          setInvMsg("err", "❌ Rotas de investimentos ainda não estão no backend. Cole o app.py com /investir, /investimentos e /invest_resumo.");
+        }
+      }
+      try{ await carregarInvestLista(); }catch(e){}
+    }
+
+    // ===== EDIT INVESTIMENTOS =====
+    function setInvEditMsg(kind, text){
+      const el = document.getElementById("invEditMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function openInvEdit(encoded){
+      try{
+        const it = JSON.parse(decodeURIComponent(encoded));
+        document.getElementById("invEditRow").value = it._row || "";
+        document.getElementById("invEditTipo").value = it.Tipo || it.tipo || "Aporte";
+        document.getElementById("invEditAtivo").value = it.Ativo || it.ativo || "";
+        document.getElementById("invEditDesc").value = it["Descrição"] || it.descricao || "";
+        document.getElementById("invEditValor").value = String(it.Valor || it.valor || "");
+        // Data no backend (ideal) como YYYY-MM-DD. Se vier diferente, deixa vazio.
+        const d = String(it.Data || it.data || "");
+        document.getElementById("invEditData").value = (d.includes("-") ? d : "");
+        setInvEditMsg("", "");
+        document.getElementById("invEditBack").style.display = "flex";
+      }catch(e){
+        alert("❌ Erro ao abrir edição.");
+      }
+    }
+    function closeInvEdit(){ document.getElementById("invEditBack").style.display = "none"; }
+
+    async function salvarInvEdicao(){
+      setInvEditMsg("", "");
+
+      const row = Number(document.getElementById("invEditRow").value);
+      const tipo = (document.getElementById("invEditTipo").value || "").trim();
+      const ativo = (document.getElementById("invEditAtivo").value || "").trim();
+      const descricao = (document.getElementById("invEditDesc").value || "").trim();
+      const valorTxt = (document.getElementById("invEditValor").value || "").trim();
+      const dataISO = (document.getElementById("invEditData").value || "").trim();
+
+      if(!row || row < 2){
+        setInvEditMsg("err", "Linha inválida.");
+        return;
+      }
+      if(!ativo){
+        setInvEditMsg("err", "Preencha o ativo.");
+        return;
+      }
+      const valorNum = parseMoneyBR(valorTxt);
+      if(!Number.isFinite(valorNum) || valorNum <= 0){
+        setInvEditMsg("err", "Valor inválido. Ex: 200,00");
+        return;
+      }
+
+      const payload = { ativo, tipo, descricao, valor: valorNum, data: dataISO || isoToday() };
+
+      const r = await apiFetch(`/investimento/${row}`, {
+        method:"PATCH",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if(r.status === 401){ mustLogin(); return; }
+      const j = await r.json().catch(()=> ({}));
+      if(!r.ok || !j.ok){
+        setInvEditMsg("err", "❌ " + (j.msg || "Erro ao editar investimento"));
+        return;
+      }
+
+      setInvEditMsg("ok", "✅ Alterações salvas!");
+      await carregarInvestimentosTudo();
+      setTimeout(()=> closeInvEdit(), 450);
+    }
+
+    async function excluirInvestimento(row){
+      if(!confirm("Excluir este investimento?")) return;
+
+      const r = await apiFetch(`/investimento/${row}`, { method:"DELETE" });
+      if(r.status === 401){ mustLogin(); return; }
+
+      const j = await r.json().catch(()=> ({}));
+      if(!r.ok || !j.ok){
+        alert("❌ " + (j.msg || "Erro ao excluir"));
+        return;
+      }
+
+      await carregarInvestimentosTudo();
+    }
+
+    // =========================
     // INIT
     // =========================
     (function init(){
       fillMonthYear();
       document.getElementById("data").value = isoToday();
+      document.getElementById("invData").value = isoToday();
 
       wireBackdropClose("loginBack", closeLogin);
       wireBackdropClose("filtersBack", closeFilters);
       wireBackdropClose("editBack", closeEdit);
+      wireBackdropClose("invEditBack", closeInvEdit);
 
       wirePhoneMask();
       setAuthMode("login");
@@ -2118,7 +2502,10 @@
       document.addEventListener("click", (e)=>{
         const target = e.target;
         const isMenu = target && (target.classList && (target.classList.contains("kebab") || target.closest(".menu")));
-        if(!isMenu) closeAllItemMenus();
+        if(!isMenu){
+          closeAllItemMenus();
+          closeAllInvMenus();
+        }
       });
 
       ["fSearch","fMin","fMax"].forEach(id=>{
@@ -2128,7 +2515,6 @@
         });
       });
 
-      // abrir tab via URL
       const initialTab = getTabFromURL();
       if(initialTab) showTab(initialTab, {syncURL:false});
 
@@ -2136,6 +2522,7 @@
         await refreshAuthUI();
         try{ await carregarTudo(); }catch(e){}
         try{ await atualizarDashboard(); }catch(e){}
+        try{ await carregarInvestimentosTudo(); }catch(e){}
       })();
     })();
   </script>
