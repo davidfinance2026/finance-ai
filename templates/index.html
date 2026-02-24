@@ -1,2509 +1,282 @@
-<!doctype html>
-<html lang="pt-br">
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Finance AI</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finance AI</title>
 
-  <!-- PWA -->
-  <link rel="manifest" href="/static/manifest.json">
-  <meta name="theme-color" content="#0b1020">
-  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#820AD1">
 
-  <style>
-    :root{
-      --bg0:#070b16;
-      --bg1:#0b1020;
-      --card: rgba(255,255,255,.06);
-      --border: rgba(255,255,255,.08);
-      --text:#eef3ff;
-      --muted:#aebad9;
+<style>
+:root{
+  --primary:#820AD1;
+  --bg:#0f0f14;
+  --card:#1a1a22;
+  --text:#ffffff;
+  --muted:#9a9aa3;
+  --danger:#ff4d4f;
+  --success:#00c853;
+}
 
-      --primary:#6aa2ff;
-      --primary2:#4f8cff;
-      --danger:#ff6b7a;
-      --success:#3ee29b;
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto;
+  background:var(--bg);
+  color:var(--text);
+}
 
-      --radius:18px;
-      --radius2:22px;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
-      --shadow2: 0 18px 45px rgba(0,0,0,.35);
-    }
+header{
+  background:var(--primary);
+  padding:20px;
+  font-weight:600;
+  font-size:20px;
+}
 
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      color:var(--text);
-      background:
-        radial-gradient(1000px 700px at 10% 0%, rgba(79,140,255,.18), transparent 55%),
-        radial-gradient(900px 650px at 90% 10%, rgba(62,226,155,.08), transparent 60%),
-        linear-gradient(180deg, var(--bg0), var(--bg1));
-      padding:16px;
-      display:flex;
-      justify-content:center;
-    }
+.container{
+  padding:16px;
+  padding-bottom:80px;
+}
 
-    .app{ width:min(560px, 100%); padding-bottom:18px; }
+.card{
+  background:var(--card);
+  border-radius:16px;
+  padding:16px;
+  margin-bottom:16px;
+}
 
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-      padding:4px 2px 10px 2px;
-    }
-    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
-    .brand span{ display:block; margin-top:4px; color:var(--muted); font-size:13px; }
+h2{
+  margin:0 0 12px 0;
+  font-size:18px;
+}
 
-    .top-actions{ display:flex; gap:10px; align-items:center; }
-    .pill{
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      border-radius:999px;
-      color:var(--muted);
-      font-size:12px;
-      display:flex; align-items:center; gap:8px;
-      user-select:none;
-      cursor:pointer;
-      white-space:nowrap;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-    }
-    .pill.primary{
-      color:#081125;
-      background: linear-gradient(180deg, rgba(106,162,255,1), rgba(79,140,255,.85));
-      border:0;
-      box-shadow: 0 10px 20px rgba(79,140,255,.18);
-    }
+input,select,button{
+  width:100%;
+  padding:12px;
+  border-radius:12px;
+  border:none;
+  margin-bottom:10px;
+  font-size:14px;
+}
 
-    /* Tabs */
-    .tabsWrap{
-      margin:8px 0 14px 0;
-      padding:8px;
-      background: rgba(255,255,255,.045);
-      border:1px solid var(--border);
-      border-radius: 999px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      display:flex;
-      gap:8px;
-      overflow:auto;
-    }
-    .tab{
-      flex:1;
-      min-width:120px;
-      border:0;
-      border-radius:999px;
-      padding:12px 12px;
-      cursor:pointer;
-      font-weight:900;
-      color: var(--muted);
-      background: transparent;
-      transition: .15s ease;
-      white-space:nowrap;
-    }
-    .tab:active{ transform: scale(.98); background: rgba(255,255,255,.04); }
-    .tab.active{
-      color:#071021;
-      background: linear-gradient(180deg, rgba(106,162,255,1), rgba(79,140,255,.85));
-      box-shadow: 0 10px 22px rgba(79,140,255,.18);
-    }
+input,select{
+  background:#2a2a35;
+  color:#fff;
+}
 
-    .card{
-      background: rgba(255,255,255,.055);
-      border:1px solid var(--border);
-      border-radius: var(--radius2);
-      box-shadow: var(--shadow2);
-      padding:16px;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
+button{
+  background:var(--primary);
+  color:#fff;
+  font-weight:600;
+  cursor:pointer;
+}
 
-    label{
-      display:block;
-      margin-top:12px;
-      font-weight:900;
-      color:var(--muted);
-      font-size:12px;
-      letter-spacing:.3px;
-      text-transform:uppercase;
-    }
-    input, select{
-      width:100%;
-      margin-top:8px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.08);
-      background: rgba(10,16,32,.55);
-      color:var(--text);
-      outline:none;
-    }
-    input::placeholder{color:rgba(174,186,217,.6)}
+.bottom-nav{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  background:#14141c;
+  display:flex;
+  justify-content:space-around;
+  padding:12px 0;
+  border-top:1px solid #222;
+}
 
-    .row{display:flex; gap:10px;}
-    .row>*{flex:1}
+.bottom-nav button{
+  background:none;
+  color:#bbb;
+  font-size:12px;
+  border:none;
+}
 
-    .seg{
-      display:flex;
-      gap:10px;
-      padding:6px;
-      background: rgba(255,255,255,.04);
-      border:1px solid var(--border);
-      border-radius:999px;
-    }
-    .seg button{
-      flex:1;
-      border:0;
-      padding:10px 10px;
-      border-radius:999px;
-      background:transparent;
-      color:var(--muted);
-      font-weight:900;
-      cursor:pointer;
-    }
-    .seg button.active{
-      background: rgba(106,162,255,.18);
-      color:var(--text);
-      border:1px solid rgba(106,162,255,.25);
-    }
+.bottom-nav button.active{
+  color:var(--primary);
+  font-weight:600;
+}
 
-    .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
-    .btn{
-      border:0;
-      border-radius:16px;
-      padding:12px 12px;
-      font-weight:900;
-      cursor:pointer;
-      color:#071021;
-      background: linear-gradient(180deg, rgba(106,162,255,1), rgba(79,140,255,.85));
-      box-shadow: 0 12px 22px rgba(79,140,255,.18);
-      flex:1;
-      min-width:140px;
-      transition: .12s ease;
-    }
-    .btn:active{ transform: scale(.985); }
-    .btn.secondary{
-      background: rgba(255,255,255,.05);
-      color: var(--text);
-      border:1px solid var(--border);
-      box-shadow:none;
-    }
-    .btn.danger{
-      background: rgba(255,107,122,.12);
-      color: var(--text);
-      border:1px solid rgba(255,107,122,.30);
-      box-shadow:none;
-    }
-    .btn.small{
-      padding:10px 10px;
-      border-radius:12px;
-      min-width:auto;
-      flex:0 0 auto;
-      font-weight:900;
-    }
-
-    .msg{
-      margin-top:12px;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(10,16,32,.45);
-      display:none;
-    }
-    .msg.ok{display:block; border-color: rgba(62,226,155,.30);}
-    .msg.err{display:block; border-color: rgba(255,107,122,.30);}
-
-    .summaryGrid{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:10px;
-      margin-bottom:12px;
-    }
-    .sumRow{
-      display:flex; justify-content:space-between; align-items:center;
-      padding:12px;
-      border-radius:16px;
-      background: rgba(10,16,32,.42);
-      border:1px solid rgba(255,255,255,.06);
-    }
-    .sumRow .k{
-      color:var(--muted);
-      font-weight:900;
-      letter-spacing:.3px;
-      text-transform:uppercase;
-      font-size:11px;
-    }
-    .sumRow .v{
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-    }
-
-    .barRow{
-      display:flex; gap:10px; align-items:center; justify-content:space-between;
-      margin:10px 0 0 0;
-    }
-    .barRow .left{ display:flex; gap:10px; align-items:center; }
-
-    .chipBtn{
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.05);
-      color: var(--text);
-      border-radius:999px;
-      padding:10px 12px;
-      font-weight:900;
-      cursor:pointer;
-      display:flex; gap:8px; align-items:center;
-      transition:.12s ease;
-      user-select:none;
-    }
-    .chipBtn:active{ transform: scale(.985); background: rgba(255,255,255,.07); }
-
-    .chartCard{ margin-top: 12px; }
-    .chartWrap{ height:240px; }
-    .title{
-      margin:0 0 10px 0;
-      font-weight:900;
-      color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.3px;
-      font-size:12px;
-    }
-
-    .tableWrap{
-      margin-top:10px;
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:16px;
-      overflow:hidden;
-      background: rgba(10,16,32,.35);
-      display:none;
-    }
-    table{width:100%; border-collapse:collapse; font-size:13px;}
-    th, td{
-      padding:10px 12px;
-      border-bottom:1px solid rgba(255,255,255,.06);
-      text-align:left;
-    }
-    th{
-      color:var(--muted);
-      font-weight:900;
-      text-transform:uppercase;
-      letter-spacing:.3px;
-      font-size:11px;
-    }
-    td:last-child, th:last-child{
-      text-align:right;
-      white-space:nowrap;
-      font-weight:900;
-    }
-    tr:last-child td{border-bottom:none;}
-
-    .list{
-      margin-top:12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
-    .item{
-      background: rgba(10,16,32,.48);
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:18px;
-      padding:12px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      position:relative;
-    }
-    .itemLeft{ display:flex; gap:10px; align-items:center; flex:1; min-width:0; }
-    .icon{
-      width:40px; height:40px; border-radius:16px;
-      display:grid; place-items:center;
-      font-weight:900;
-      background: rgba(255,255,255,.05);
-      border:1px solid rgba(255,255,255,.07);
-      flex:0 0 auto;
-    }
-    .meta{min-width:0; flex:1;}
-    .meta b{
-      display:block;
-      font-size:14px;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .meta span{
-      display:block;
-      color:var(--muted);
-      font-size:12px;
-      margin-top:4px;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .value{
-      font-weight:900;
-      font-size:14px;
-      white-space:nowrap;
-      margin-left:10px;
-    }
-    .value.green{ color: #7dffbf; }
-    .value.red{ color: #ff9aa5; }
-    .value.blue{ color: #9dc2ff; }
-
-    .kebab{
-      border:1px solid rgba(255,255,255,.08);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      border-radius:12px;
-      padding:8px 10px;
-      cursor:pointer;
-      font-weight:900;
-      margin-left:8px;
-      user-select:none;
-    }
-    .kebab:active{ transform: scale(.985); background: rgba(255,255,255,.06); }
-
-    .menu{
-      position:absolute;
-      right:12px;
-      top:52px;
-      z-index:50;
-      background: rgba(10,16,32,.92);
-      border:1px solid rgba(255,255,255,.10);
-      border-radius:16px;
-      box-shadow: var(--shadow2);
-      overflow:hidden;
-      display:none;
-      min-width:180px;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .menu button{
-      width:100%;
-      border:0;
-      background:transparent;
-      color: var(--text);
-      padding:12px 12px;
-      text-align:left;
-      cursor:pointer;
-      font-weight:900;
-      display:flex;
-      gap:10px;
-      align-items:center;
-    }
-    .menu button:hover{ background: rgba(255,255,255,.06); }
-    .menu .dangerItem{ color: #ff9aa5; }
-
-    .pager{
-      margin-top:12px;
-      display:none;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
-      padding:12px;
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,.07);
-      background: rgba(10,16,32,.35);
-    }
-    .pager .info{ color:var(--muted); font-size:12px; font-weight:900; }
-    .pager .controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .pillSmall{
-      padding:8px 10px;
-      border:1px solid rgba(255,255,255,.07);
-      background:rgba(255,255,255,.04);
-      border-radius:999px;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:900;
-      user-select:none;
-    }
-    .hint{ margin-top:10px; color:var(--muted); font-size:12px; opacity:.9; }
-
-    /* Bottom sheets */
-    .backdrop{
-      position:fixed; inset:0;
-      background:rgba(0,0,0,.55);
-      display:none;
-      align-items:flex-end;
-      justify-content:center;
-      padding:16px;
-      z-index:9999;
-    }
-    .sheet{
-      width:min(560px, 100%);
-      background: rgba(10,16,32,.92);
-      border:1px solid rgba(255,255,255,.10);
-      border-radius: 22px;
-      box-shadow: var(--shadow2);
-      padding:16px;
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      max-height: 86vh;
-      overflow:auto;
-    }
-    .sheetTop{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
-    .sheetTop h2{ margin:0; font-size:16px; }
-    .sheetTop p{ margin:4px 0 0 0; color: var(--muted); font-size:13px; }
-    .xBtn{
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.05);
-      color:var(--text);
-      border-radius:12px;
-      padding:8px 10px;
-      cursor:pointer;
-      font-weight:900;
-    }
-    .xBtn:active{ transform: scale(.985); }
-
-    .filtersGrid{
-      margin-top:10px;
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:10px;
-    }
-    .filtersGrid .full{ grid-column: 1 / -1; }
-
-    .quickRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-    .chip{
-      border:1px solid rgba(255,255,255,.08);
-      background:rgba(255,255,255,.05);
-      color:var(--text);
-      border-radius:999px;
-      padding:8px 10px;
-      font-weight:900;
-      cursor:pointer;
-      font-size:12px;
-      user-select:none;
-    }
-    .chip.secondary{ background:rgba(255,255,255,.035); color:var(--muted); }
-    .chip:active{ transform: scale(.985); }
-
-    @media(max-width:480px){
-      .filtersGrid{ grid-template-columns:1fr; }
-    }
-  </style>
+.hidden{display:none}
+.alert{
+  padding:12px;
+  border-radius:12px;
+  margin-bottom:10px;
+}
+.alert.warn{background:#332200;color:#ffc107}
+.alert.danger{background:#330000;color:#ff4d4f}
+.alert.ok{background:#002e1c;color:#00e676}
+</style>
 </head>
 
 <body>
-  <div class="app">
 
-    <div class="topbar">
-      <div class="brand">
-        <h1>Finance AI</h1>
-        <span>Controle financeiro • simples e rápido</span>
-      </div>
+<header>Finance AI</header>
 
-      <div class="top-actions">
-        <div class="pill" id="adminPill" onclick="openCreateUser()" style="display:none;">➕ Usuário</div>
-        <div class="pill primary" id="statusPill" onclick="openLogin()">🔒 Login</div>
-      </div>
-    </div>
+<div class="container">
 
-    <div class="tabsWrap">
-      <button class="tab active" id="tab1" onclick="showTab('lancar')">Lançar</button>
-      <button class="tab" id="tab2" onclick="showTab('ultimos')">Últimos</button>
-      <button class="tab" id="tab3" onclick="showTab('dashboard')">Dashboard</button>
-      <button class="tab" id="tab4" onclick="showTab('investir')">Investir</button>
-      <button class="tab" id="tab5" onclick="showTab('carteira')">Carteira</button>
-    </div>
-
-    <!-- ===== SCREEN: LANÇAR ===== -->
-    <div class="card" id="screen-lancar">
-      <div class="seg">
-        <button id="btnGasto" class="active" onclick="setTipo('Gasto')">Gasto</button>
-        <button id="btnReceita" onclick="setTipo('Receita')">Receita</button>
-      </div>
-
-      <label>Categoria</label>
-      <input id="categoria" placeholder="Ex: Alimentação" />
-
-      <label>Descrição</label>
-      <input id="descricao" placeholder="Ex: mercado" />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="valor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
-        </div>
-        <div>
-          <label>Data</label>
-          <input id="data" type="date" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="enviar()">Salvar</button>
-        <button class="btn secondary" onclick="limpar()">Limpar</button>
-      </div>
-
-      <div id="msg" class="msg"></div>
-      <div class="hint">Dica: depois de salvar, vá em “Últimos” para ver a lista.</div>
-    </div>
-
-    <!-- ===== SCREEN: ÚLTIMOS ===== -->
-    <div class="card" id="screen-ultimos" style="display:none;">
-      <div class="summaryGrid">
-        <div class="sumRow"><div class="k">Entradas</div><div class="v" id="entradas">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Saídas</div><div class="v" id="saidas">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Saldo</div><div class="v" id="saldo">R$ 0,00</div></div>
-      </div>
-
-      <div class="barRow">
-        <div class="left">
-          <button class="chipBtn" onclick="openFilters()">⚙️ Filtros</button>
-          <button class="chipBtn" onclick="carregarTudo()">⟳ Atualizar</button>
-        </div>
-        <button class="chipBtn" onclick="showTab('lancar')">➕ Novo</button>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title" id="titleMov">Movimento</div>
-        <div class="chartWrap"><canvas id="graficoMov"></canvas></div>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title">Gastos por categoria</div>
-        <div class="chartWrap"><canvas id="pizzaGastos"></canvas></div>
-        <div class="tableWrap" id="tblGastosWrap">
-          <table>
-            <thead><tr><th>Categoria</th><th>Total</th></tr></thead>
-            <tbody id="tblGastos"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title">Receitas por categoria</div>
-        <div class="chartWrap"><canvas id="pizzaReceitas"></canvas></div>
-        <div class="tableWrap" id="tblReceitasWrap">
-          <table>
-            <thead><tr><th>Categoria</th><th>Total</th></tr></thead>
-            <tbody id="tblReceitas"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="pager" id="pager">
-        <div class="info" id="pagerInfo">Carregando…</div>
-        <div class="controls">
-          <button class="btn secondary small" onclick="prevPage()">◀</button>
-          <span class="pillSmall" id="pagerPage">Página 1</span>
-          <button class="btn secondary small" onclick="nextPage()">▶</button>
-        </div>
-      </div>
-
-      <div class="list" id="lista"></div>
-      <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
-    </div>
-
-    <!-- ===== SCREEN: DASHBOARD (usa /dashboard) ===== -->
-    <div class="card" id="screen-dashboard" style="display:none;">
-      <div class="title">Dashboard do mês</div>
-
-      <div class="summaryGrid" style="margin-bottom:8px;">
-        <div class="sumRow"><div class="k">Receitas</div><div class="v" id="dashReceitas">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Gastos</div><div class="v" id="dashGastos">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Saldo</div><div class="v" id="dashSaldo">R$ 0,00</div></div>
-      </div>
-
-      <div class="actions">
-        <button class="btn secondary" onclick="openFilters(true)">⚙️ Ajustar mês/filtros</button>
-        <button class="btn" onclick="atualizarDashboard()">Atualizar Dashboard</button>
-      </div>
-
-      <div class="card chartCard" style="margin-top:12px;">
-        <div class="title">Saldo acumulado</div>
-        <div class="chartWrap"><canvas id="chartSaldo"></canvas></div>
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="title">Insights</div>
-        <div id="insightsBox" class="hint">Carregando…</div>
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="title">Alertas</div>
-        <div id="alertsBox" class="hint">Carregando…</div>
-      </div>
-    </div>
-
-    <!-- ===== SCREEN: INVESTIR ===== -->
-    <div class="card" id="screen-investir" style="display:none;">
-      <div class="seg">
-        <button id="btnAporte" class="active" onclick="setOperacao('Aporte')">Aporte</button>
-        <button id="btnResgate" onclick="setOperacao('Resgate')">Resgate</button>
-        <button id="btnRend" onclick="setOperacao('Rendimento')">Rendimento</button>
-      </div>
-
-      <label>Ativo</label>
-      <input id="invAtivo" placeholder="Ex: Tesouro Selic, CDB XP, PETR4..." />
-
-      <label>Categoria</label>
-      <input id="invCategoria" placeholder="Ex: Renda fixa, Bolsa, Cripto..." />
-
-      <label>Descrição</label>
-      <input id="invDescricao" placeholder="Ex: aporte mensal, resgate parcial..." />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="invValor" type="text" inputmode="decimal" placeholder="Ex: 500,00" />
-        </div>
-        <div>
-          <label>Data</label>
-          <input id="invData" type="date" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="enviarInvestimento()">Salvar investimento</button>
-        <button class="btn secondary" onclick="limparInvestimento()">Limpar</button>
-      </div>
-
-      <div id="invMsg" class="msg"></div>
-      <div class="hint">Aportes/Resgates/Rendimentos ficam separados do seu gasto/receita.</div>
-    </div>
-
-    <!-- ===== SCREEN: CARTEIRA ===== -->
-    <div class="card" id="screen-carteira" style="display:none;">
-      <div class="summaryGrid">
-        <div class="sumRow"><div class="k">Aportes</div><div class="v" id="invAportes">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Resgates</div><div class="v" id="invResgates">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Rendimentos</div><div class="v" id="invRendimentos">R$ 0,00</div></div>
-        <div class="sumRow"><div class="k">Saldo investido</div><div class="v" id="invSaldo">R$ 0,00</div></div>
-      </div>
-
-      <div class="barRow">
-        <div class="left">
-          <button class="chipBtn" onclick="openInvFilters()">⚙️ Filtros</button>
-          <button class="chipBtn" onclick="carregarInvestimentos()">⟳ Atualizar</button>
-        </div>
-        <button class="chipBtn" onclick="showTab('investir')">➕ Novo</button>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title" id="titleInv">Fluxo de investimentos</div>
-        <div class="chartWrap"><canvas id="chartInvFluxo"></canvas></div>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title">Aportes por ativo</div>
-        <div class="chartWrap"><canvas id="pizzaInvAtivos"></canvas></div>
-      </div>
-
-      <div class="card chartCard">
-        <div class="title">Aportes por categoria</div>
-        <div class="chartWrap"><canvas id="pizzaInvCats"></canvas></div>
-      </div>
-
-      <div class="pager" id="invPager">
-        <div class="info" id="invPagerInfo">Carregando…</div>
-        <div class="controls">
-          <button class="btn secondary small" onclick="invPrevPage()">◀</button>
-          <span class="pillSmall" id="invPagerPage">Página 1</span>
-          <button class="btn secondary small" onclick="invNextPage()">▶</button>
-        </div>
-      </div>
-
-      <div class="list" id="invLista"></div>
-      <div class="hint">Dica: “Saldo investido” = aportes - resgates + rendimentos (por fluxo).</div>
-    </div>
-
+<!-- DASHBOARD -->
+<div id="tab-dashboard" class="tab hidden">
+  <div class="card">
+    <h2>Resumo do Mês</h2>
+    <div id="dash-resumo"></div>
   </div>
 
-  <!-- ===== LOGIN SHEET ===== -->
-  <div class="backdrop" id="loginBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>🔒 Login</h2>
-          <p>Entre com seu e-mail e senha.</p>
-        </div>
-        <button class="xBtn" onclick="closeLogin()">✕</button>
-      </div>
-
-      <label>E-mail</label>
-      <input id="loginEmail" type="email" placeholder="admin@financeai.com" />
-
-      <label>Senha</label>
-      <input id="loginPwd" type="password" placeholder="Sua senha" />
-
-      <div class="actions" style="margin-top:12px;">
-        <button class="btn" onclick="doLogin()">Entrar</button>
-        <button class="btn secondary" onclick="doLogout()">Sair</button>
-      </div>
-
-      <div id="loginMsg" class="msg"></div>
-    </div>
+  <div class="card">
+    <h2>Insights</h2>
+    <div id="dash-insights"></div>
   </div>
 
-  <!-- ===== CREATE USER SHEET ===== -->
-  <div class="backdrop" id="createUserBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>➕ Criar usuário</h2>
-          <p>Cria usuário e gera planilha exclusiva.</p>
-        </div>
-        <button class="xBtn" onclick="closeCreateUser()">✕</button>
-      </div>
-
-      <label>E-mail do usuário</label>
-      <input id="cuEmail" type="email" placeholder="cliente@dominio.com" />
-
-      <label>Senha do usuário</label>
-      <input id="cuPwd" type="password" placeholder="Senha do usuário" />
-
-      <div class="actions" style="margin-top:12px;">
-        <button class="btn" onclick="doCreateUser()">Criar</button>
-        <button class="btn secondary" onclick="closeCreateUser()">Cancelar</button>
-      </div>
-
-      <div id="createUserMsg" class="msg"></div>
-      <div class="hint">Obs: você precisa estar logado como admin.</div>
-    </div>
+  <div class="card">
+    <h2>Alertas</h2>
+    <div id="dash-alerts"></div>
   </div>
+</div>
 
-  <!-- ===== FILTERS (Lancamentos) ===== -->
-  <div class="backdrop" id="filtersBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>⚙️ Filtros</h2>
-          <p>Escolha mês/ano e refine.</p>
-        </div>
-        <button class="xBtn" onclick="closeFilters()">✕</button>
-      </div>
-
-      <div class="filtersGrid">
-        <div>
-          <label>Mês</label>
-          <select id="fMonth"></select>
-        </div>
-        <div>
-          <label>Ano</label>
-          <select id="fYear"></select>
-        </div>
-
-        <div class="full">
-          <label>Tipo</label>
-          <select id="fTipo">
-            <option value="Todos">Todos</option>
-            <option value="Gasto">Gastos</option>
-            <option value="Receita">Receitas</option>
-          </select>
-        </div>
-
-        <div class="full">
-          <label>Ordenar</label>
-          <select id="fOrder">
-            <option value="recent">Mais recente</option>
-            <option value="oldest">Mais antigo</option>
-            <option value="value_desc">Maior valor</option>
-            <option value="value_asc">Menor valor</option>
-          </select>
-        </div>
-
-        <div>
-          <label>De</label>
-          <input id="fFrom" type="date" />
-        </div>
-        <div>
-          <label>Até</label>
-          <input id="fTo" type="date" />
-        </div>
-
-        <div>
-          <label>Valor mínimo</label>
-          <input id="fMin" type="text" inputmode="decimal" placeholder="Ex: 50,00" />
-        </div>
-        <div>
-          <label>Valor máximo</label>
-          <input id="fMax" type="text" inputmode="decimal" placeholder="Ex: 1000,00" />
-        </div>
-
-        <div class="full">
-          <label>Buscar</label>
-          <input id="fSearch" placeholder="Ex: mercado, lazer, alimentação..." />
-        </div>
-
-        <div class="full">
-          <label>Itens por página</label>
-          <select id="fLimit">
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-        </div>
-
-        <div class="full actions">
-          <button class="btn secondary" onclick="aplicarFiltros()">Aplicar filtros</button>
-          <button class="btn" onclick="limparFiltros()">Limpar</button>
-        </div>
-
-        <div class="full actions">
-          <button class="btn secondary" onclick="exportar('csv')">⬇ Exportar CSV</button>
-          <button class="btn secondary" onclick="exportar('pdf')">⬇ Exportar PDF</button>
-        </div>
-      </div>
-    </div>
+<!-- LANÇAR -->
+<div id="tab-lancar" class="tab hidden">
+  <div class="card">
+    <h2>Novo Lançamento</h2>
+    <select id="tipo">
+      <option>Receita</option>
+      <option>Gasto</option>
+    </select>
+    <input id="categoria" placeholder="Categoria">
+    <input id="descricao" placeholder="Descrição">
+    <input id="valor" type="number" step="0.01" placeholder="Valor">
+    <button onclick="lancar()">Salvar</button>
   </div>
+</div>
 
-  <!-- ===== FILTERS (Investimentos) ===== -->
-  <div class="backdrop" id="invFiltersBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>⚙️ Filtros (Carteira)</h2>
-          <p>Mês/ano + operação + busca.</p>
-        </div>
-        <button class="xBtn" onclick="closeInvFilters()">✕</button>
-      </div>
-
-      <div class="filtersGrid">
-        <div>
-          <label>Mês</label>
-          <select id="ifMonth"></select>
-        </div>
-        <div>
-          <label>Ano</label>
-          <select id="ifYear"></select>
-        </div>
-
-        <div class="full">
-          <label>Operação</label>
-          <select id="ifOper">
-            <option value="Todas">Todas</option>
-            <option value="Aporte">Aporte</option>
-            <option value="Resgate">Resgate</option>
-            <option value="Rendimento">Rendimento</option>
-          </select>
-        </div>
-
-        <div class="full">
-          <label>Ordenar</label>
-          <select id="ifOrder">
-            <option value="recent">Mais recente</option>
-            <option value="oldest">Mais antigo</option>
-            <option value="value_desc">Maior valor</option>
-            <option value="value_asc">Menor valor</option>
-          </select>
-        </div>
-
-        <div>
-          <label>De</label>
-          <input id="ifFrom" type="date" />
-        </div>
-        <div>
-          <label>Até</label>
-          <input id="ifTo" type="date" />
-        </div>
-
-        <div class="full">
-          <label>Buscar</label>
-          <input id="ifSearch" placeholder="Ex: tesouro, cdb, aporte..." />
-        </div>
-
-        <div class="full">
-          <label>Itens por página</label>
-          <select id="ifLimit">
-            <option value="10">10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-        </div>
-
-        <div class="full actions">
-          <button class="btn secondary" onclick="aplicarInvFiltros()">Aplicar filtros</button>
-          <button class="btn" onclick="limparInvFiltros()">Limpar</button>
-        </div>
-      </div>
-    </div>
+<!-- INVESTIR -->
+<div id="tab-investir" class="tab hidden">
+  <div class="card">
+    <h2>Novo Investimento</h2>
+    <input id="ativo" placeholder="Ativo (ex: CDB, Ação)">
+    <select id="operacao">
+      <option>Aporte</option>
+      <option>Resgate</option>
+      <option>Rendimento</option>
+    </select>
+    <input id="inv_categoria" placeholder="Categoria">
+    <input id="inv_descricao" placeholder="Descrição">
+    <input id="inv_valor" type="number" step="0.01" placeholder="Valor">
+    <button onclick="investir()">Registrar</button>
   </div>
+</div>
 
-  <!-- EDIT SHEET (Lancamentos) -->
-  <div class="backdrop" id="editBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>✏️ Editar lançamento</h2>
-          <p>Altere e salve.</p>
-        </div>
-        <button class="xBtn" onclick="closeEdit()">✕</button>
-      </div>
-
-      <input type="hidden" id="editRow" />
-
-      <label>Tipo</label>
-      <select id="editTipo">
-        <option value="Gasto">Gasto</option>
-        <option value="Receita">Receita</option>
-      </select>
-
-      <label>Categoria</label>
-      <input id="editCategoria" placeholder="Ex: Alimentação" />
-
-      <label>Descrição</label>
-      <input id="editDescricao" placeholder="Ex: mercado" />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="editValor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
-        </div>
-        <div>
-          <label>Data (dd/mm/aaaa)</label>
-          <input id="editData" type="text" placeholder="Ex: 23/02/2026" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="salvarEdicao()">Salvar alterações</button>
-        <button class="btn secondary" onclick="closeEdit()">Cancelar</button>
-      </div>
-
-      <div id="editMsg" class="msg"></div>
-    </div>
+<!-- LISTA -->
+<div id="tab-ultimos" class="tab hidden">
+  <div class="card">
+    <h2>Lançamentos</h2>
+    <div id="lista"></div>
   </div>
+</div>
+
+</div>
+
+<!-- NAV -->
+<div class="bottom-nav">
+  <button onclick="showTab('dashboard')" id="btn-dashboard">Dashboard</button>
+  <button onclick="showTab('lancar')" id="btn-lancar">Lançar</button>
+  <button onclick="showTab('investir')" id="btn-investir">Investir</button>
+  <button onclick="showTab('ultimos')" id="btn-ultimos">Lista</button>
+</div>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+
+<script>
+function showTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.add('hidden'));
+  document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.remove('active'));
+
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+  document.getElementById('btn-'+tab).classList.add('active');
+
+  history.replaceState(null,null,'/?tab='+tab);
+
+  if(tab==='dashboard') loadDashboard();
+  if(tab==='ultimos') loadLista();
+}
+
+async function loadDashboard(){
+  const res=await fetch('/dashboard');
+  const data=await res.json();
+
+  document.getElementById('dash-resumo').innerHTML=
+    `Entradas: R$ ${data.entradas.toFixed(2)}<br>
+     Saídas: R$ ${data.saidas.toFixed(2)}<br>
+     Saldo: R$ ${data.saldo.toFixed(2)}`;
+
+  document.getElementById('dash-insights').innerHTML=
+    data.insights.map(i=>`<div class="alert ok"><b>${i.title}</b><br>${i.desc}</div>`).join('');
+
+  document.getElementById('dash-alerts').innerHTML=
+    data.alerts.map(a=>`<div class="alert ${a.level}"><b>${a.title}</b><br>${a.desc}</div>`).join('');
+}
+
+async function lancar(){
+  await fetch('/lancar',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      tipo:tipo.value,
+      categoria:categoria.value,
+      descricao:descricao.value,
+      valor:valor.value
+    })
+  });
+  alert("Salvo");
+}
+
+async function investir(){
+  await fetch('/investir',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      ativo:ativo.value,
+      operacao:operacao.value,
+      categoria:inv_categoria.value,
+      descricao:inv_descricao.value,
+      valor:inv_valor.value
+    })
+  });
+  alert("Investimento registrado");
+}
+
+async function loadLista(){
+  const res=await fetch('/ultimos');
+  const data=await res.json();
+  document.getElementById('lista').innerHTML=
+    data.items.map(i=>`
+      <div class="card">
+        <b>${i.Tipo}</b> - ${i.Categoria}<br>
+        ${i.Descrição}<br>
+        R$ ${i.Valor}
+      </div>`).join('');
+}
+
+/* ======================
+   Abrir aba via URL
+====================== */
+(function init(){
+  const tab=new URLSearchParams(location.search).get('tab');
+  const allowed=['dashboard','lancar','ultimos','investir'];
+  if(tab && allowed.includes(tab)){
+    showTab(tab);
+  }else{
+    showTab('dashboard');
+  }
+})();
+
+/* ======================
+   Service Worker (1 único registro)
+====================== */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js');
+  });
+}
+</script>
 
-  <!-- EDIT SHEET (Investimentos) -->
-  <div class="backdrop" id="invEditBack">
-    <div class="sheet">
-      <div class="sheetTop">
-        <div>
-          <h2>✏️ Editar investimento</h2>
-          <p>Altere e salve.</p>
-        </div>
-        <button class="xBtn" onclick="closeInvEdit()">✕</button>
-      </div>
-
-      <input type="hidden" id="invEditRow" />
-
-      <label>Operação</label>
-      <select id="invEditOper">
-        <option value="Aporte">Aporte</option>
-        <option value="Resgate">Resgate</option>
-        <option value="Rendimento">Rendimento</option>
-      </select>
-
-      <label>Ativo</label>
-      <input id="invEditAtivo" placeholder="Ex: Tesouro Selic" />
-
-      <label>Categoria</label>
-      <input id="invEditCategoria" placeholder="Ex: Renda fixa" />
-
-      <label>Descrição</label>
-      <input id="invEditDescricao" placeholder="Ex: aporte mensal" />
-
-      <div class="row">
-        <div>
-          <label>Valor</label>
-          <input id="invEditValor" type="text" inputmode="decimal" placeholder="Ex: 500,00" />
-        </div>
-        <div>
-          <label>Data (dd/mm/aaaa)</label>
-          <input id="invEditData" type="text" placeholder="Ex: 23/02/2026" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="salvarInvEdicao()">Salvar alterações</button>
-        <button class="btn secondary" onclick="closeInvEdit()">Cancelar</button>
-      </div>
-
-      <div id="invEditMsg" class="msg"></div>
-    </div>
-  </div>
-
-  <!-- Chart local (SEM CDN) -->
-  <script src="/static/vendor/chart.umd.min.js"></script>
-
-  <script>
-    // =========================
-    // AUTH (cookie session)
-    // =========================
-    function setPillText(isOn){
-      const pill = document.getElementById("statusPill");
-      pill.textContent = isOn ? "🔓 Conectado" : "🔒 Login";
-    }
-
-    function openLogin(){
-      document.getElementById("loginBack").style.display = "flex";
-      setLoginMsg("", "");
-    }
-    function closeLogin(){ document.getElementById("loginBack").style.display = "none"; }
-
-    function setLoginMsg(kind, text){
-      const el = document.getElementById("loginMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    async function apiFetch(url, opts={}){
-      return fetch(url, Object.assign({ credentials: "include" }, opts));
-    }
-
-    async function refreshAuthUI(){
-      const adminBtn = document.getElementById("adminPill");
-      try{
-        const r = await apiFetch("/me");
-        if(r.ok){
-          const j = await r.json().catch(()=>({}));
-          const logged = !!j.ok;
-          setPillText(logged);
-
-          const isAdmin = !!j.is_admin;
-          if(adminBtn) adminBtn.style.display = isAdmin ? "flex" : "none";
-        }else{
-          setPillText(false);
-          if(adminBtn) adminBtn.style.display = "none";
-        }
-      }catch(e){
-        setPillText(false);
-        if(adminBtn) adminBtn.style.display = "none";
-      }
-    }
-
-    function mustLogin(){
-      openLogin();
-      setLoginMsg("err", "❌ Faça login para continuar.");
-    }
-
-    async function doLogin(){
-      const email = (document.getElementById("loginEmail").value || "").trim();
-      const password = (document.getElementById("loginPwd").value || "").trim();
-
-      if(!email || !password){
-        setLoginMsg("err", "❌ Informe e-mail e senha.");
-        return;
-      }
-
-      try{
-        const r = await apiFetch("/login", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ email, password })
-        });
-
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Credenciais inválidas");
-
-        setLoginMsg("ok", "✅ Login OK!");
-        await refreshAuthUI();
-        closeLogin();
-        await carregarTudo();
-        await atualizarDashboard();
-        await carregarInvestimentos();
-      }catch(e){
-        setLoginMsg("err", "❌ " + e.message);
-      }
-    }
-
-    async function doLogout(){
-      try{ await apiFetch("/logout", { method:"POST" }); }catch(e){}
-      await refreshAuthUI();
-      openLogin();
-      setLoginMsg("ok", "✅ Você saiu.");
-    }
-
-    // =========================
-    // CREATE USER (ADMIN)
-    // =========================
-    function openCreateUser(){
-      document.getElementById("createUserBack").style.display = "flex";
-      setCreateUserMsg("", "");
-    }
-    function closeCreateUser(){
-      document.getElementById("createUserBack").style.display = "none";
-    }
-    function setCreateUserMsg(kind, text){
-      const el = document.getElementById("createUserMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-    async function doCreateUser(){
-      const email = (document.getElementById("cuEmail").value || "").trim().toLowerCase();
-      const password = (document.getElementById("cuPwd").value || "").trim();
-
-      if(!email || !password){
-        setCreateUserMsg("err", "❌ Informe e-mail e senha do usuário.");
-        return;
-      }
-
-      try{
-        const r = await apiFetch("/create_user", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ email, password })
-        });
-
-        if(r.status === 401){ mustLogin(); return; }
-
-        const j = await r.json().catch(()=> ({}));
-        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao criar usuário");
-
-        setCreateUserMsg("ok", "✅ " + (j.msg || "Usuário criado!"));
-        document.getElementById("cuEmail").value = "";
-        document.getElementById("cuPwd").value = "";
-      }catch(e){
-        setCreateUserMsg("err", "❌ " + e.message);
-      }
-    }
-
-    // =========================
-    // SHEETS OPEN/CLOSE
-    // =========================
-    function openFilters(){ document.getElementById("filtersBack").style.display = "flex"; }
-    function closeFilters(){ document.getElementById("filtersBack").style.display = "none"; }
-    function openInvFilters(){ document.getElementById("invFiltersBack").style.display = "flex"; }
-    function closeInvFilters(){ document.getElementById("invFiltersBack").style.display = "none"; }
-
-    function wireBackdropClose(id, closeFn){
-      const back = document.getElementById(id);
-      back.addEventListener("click", (e)=>{
-        if(e.target === back) closeFn();
-      });
-    }
-
-    // =========================
-    // ESTADO
-    // =========================
-    let tipoAtual = "Gasto";
-    let chartMov = null;
-    let chartPizzaGastos = null;
-    let chartPizzaReceitas = null;
-    let chartSaldo = null;
-
-    // investimentos
-    let operacaoAtual = "Aporte";
-    let chartInvFluxo = null;
-    let chartInvAtivos = null;
-    let chartInvCats = null;
-
-    const filtros = {
-      month: null, year: null, tipo: "Todos", q: "",
-      order: "recent", date_from: "", date_to: "",
-      value_min: "", value_max: "",
-      limit: 10, page: 1, total: 0
-    };
-
-    const invFiltros = {
-      month: null, year: null, operacao: "Todas", q: "",
-      order: "recent", date_from: "", date_to: "",
-      limit: 10, page: 1, total: 0
-    };
-
-    // =========================
-    // HELPERS
-    // =========================
-    function brl(n){
-      const v = Number(n || 0);
-      return v.toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-    }
-    function pad2(n){ return String(n).padStart(2,"0"); }
-    function formatBRfromISO(iso){
-      if(!iso) return null;
-      const [y,m,d] = iso.split("-");
-      return `${d}/${m}/${y}`;
-    }
-    function isoToday(){
-      const d = new Date();
-      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-    }
-
-    function parseMoneyBR(str){
-      if(str == null) return NaN;
-      let s = String(str).trim();
-      if(!s) return NaN;
-
-      s = s.replace("R$", "").trim();
-
-      const hasComma = s.includes(",");
-      const hasDot = s.includes(".");
-
-      if(hasComma && hasDot){
-        if(s.lastIndexOf(",") > s.lastIndexOf(".")){
-          s = s.replace(/\./g, "");
-          s = s.replace(",", ".");
-        }else{
-          s = s.replace(/,/g, "");
-        }
-      }else if(hasComma){
-        s = s.replace(/\./g, "");
-        s = s.replace(",", ".");
-      }else{
-        s = s.replace(/,/g, "");
-      }
-
-      const n = Number(s);
-      return Number.isFinite(n) ? n : NaN;
-    }
-
-    function qs(params){
-      const u = new URLSearchParams();
-      for(const [k,v] of Object.entries(params)){
-        if(v === null || v === undefined) continue;
-        if(String(v).trim() === "") continue;
-        u.set(k, String(v));
-      }
-      const s = u.toString();
-      return s ? ("?" + s) : "";
-    }
-
-    function setMsg(kind, text){
-      const el = document.getElementById("msg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-    function setInvMsg(kind, text){
-      const el = document.getElementById("invMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-    function setEditMsg(kind, text){
-      const el = document.getElementById("editMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-    function setInvEditMsg(kind, text){
-      const el = document.getElementById("invEditMsg");
-      el.className = "msg";
-      el.style.display = "none";
-      if(!text) return;
-      el.textContent = text;
-      el.classList.add(kind);
-      el.style.display = "block";
-    }
-
-    function getField(obj, keys){
-      for(const k of keys){
-        if(obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-      }
-      return "";
-    }
-
-    // menus
-    function closeAllMenus(){ document.querySelectorAll(".menu").forEach(m=> m.style.display="none"); }
-    function toggleMenu(id){
-      const el = document.getElementById(id);
-      if(!el) return;
-      const isOn = el.style.display === "block";
-      closeAllMenus();
-      el.style.display = isOn ? "none" : "block";
-    }
-
-    // =========================
-    // UI (Tabs)
-    // =========================
-    function showTab(tab){
-      ["tab1","tab2","tab3","tab4","tab5"].forEach(id=> document.getElementById(id).classList.remove("active"));
-      document.getElementById("tab1").classList.toggle("active", tab==="lancar");
-      document.getElementById("tab2").classList.toggle("active", tab==="ultimos");
-      document.getElementById("tab3").classList.toggle("active", tab==="dashboard");
-      document.getElementById("tab4").classList.toggle("active", tab==="investir");
-      document.getElementById("tab5").classList.toggle("active", tab==="carteira");
-
-      document.getElementById("screen-lancar").style.display = tab==="lancar" ? "block" : "none";
-      document.getElementById("screen-ultimos").style.display = tab==="ultimos" ? "block" : "none";
-      document.getElementById("screen-dashboard").style.display = tab==="dashboard" ? "block" : "none";
-      document.getElementById("screen-investir").style.display = tab==="investir" ? "block" : "none";
-      document.getElementById("screen-carteira").style.display = tab==="carteira" ? "block" : "none";
-
-      if(tab==="ultimos") carregarTudo();
-      if(tab==="dashboard") atualizarDashboard();
-      if(tab==="carteira") carregarInvestimentos();
-      if(tab==="investir") document.getElementById("invData").value = isoToday();
-    }
-
-    function setTipo(tipo){
-      tipoAtual = tipo;
-      document.getElementById("btnGasto").classList.toggle("active", tipo==="Gasto");
-      document.getElementById("btnReceita").classList.toggle("active", tipo==="Receita");
-    }
-
-    function limpar(){
-      document.getElementById("categoria").value = "";
-      document.getElementById("descricao").value = "";
-      document.getElementById("valor").value = "";
-      setMsg("", "");
-    }
-
-    // Investimentos
-    function setOperacao(op){
-      operacaoAtual = op;
-      document.getElementById("btnAporte").classList.toggle("active", op==="Aporte");
-      document.getElementById("btnResgate").classList.toggle("active", op==="Resgate");
-      document.getElementById("btnRend").classList.toggle("active", op==="Rendimento");
-    }
-    function limparInvestimento(){
-      document.getElementById("invAtivo").value = "";
-      document.getElementById("invCategoria").value = "";
-      document.getElementById("invDescricao").value = "";
-      document.getElementById("invValor").value = "";
-      setInvMsg("", "");
-    }
-
-    // =========================
-    // FILTROS (Lancamentos)
-    // =========================
-    function fillMonthYear(){
-      const mSel = document.getElementById("fMonth");
-      const ySel = document.getElementById("fYear");
-
-      const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-      mSel.innerHTML = monthNames.map((n,i)=> `<option value="${i+1}">${String(i+1).padStart(2,"0")} - ${n}</option>`).join("");
-
-      const now = new Date();
-      const y = now.getFullYear();
-      const years = [];
-      for(let i=y-5;i<=y+2;i++) years.push(i);
-      ySel.innerHTML = years.map(v=> `<option value="${v}">${v}</option>`).join("");
-
-      filtros.month = now.getMonth()+1;
-      filtros.year = now.getFullYear();
-      filtros.tipo = "Todos";
-      filtros.q = "";
-      filtros.order = "recent";
-      filtros.date_from = "";
-      filtros.date_to = "";
-      filtros.value_min = "";
-      filtros.value_max = "";
-      filtros.limit = 10;
-      filtros.page = 1;
-
-      mSel.value = String(filtros.month);
-      ySel.value = String(filtros.year);
-      document.getElementById("fTipo").value = filtros.tipo;
-      document.getElementById("fOrder").value = filtros.order;
-      document.getElementById("fSearch").value = "";
-      document.getElementById("fFrom").value = "";
-      document.getElementById("fTo").value = "";
-      document.getElementById("fMin").value = "";
-      document.getElementById("fMax").value = "";
-      document.getElementById("fLimit").value = String(filtros.limit);
-
-      setTitleMov();
-    }
-
-    function setTitleMov(){
-      const m = filtros.month;
-      const y = filtros.year;
-      const t = filtros.tipo === "Todos" ? "Todos" : (filtros.tipo === "Gasto" ? "Gastos" : "Receitas");
-      document.getElementById("titleMov").textContent = `Movimento (${String(m).padStart(2,"0")}/${y}) — ${t}`;
-    }
-
-    function aplicarFiltros(){
-      filtros.month = Number(document.getElementById("fMonth").value);
-      filtros.year = Number(document.getElementById("fYear").value);
-      filtros.tipo = document.getElementById("fTipo").value;
-      filtros.order = document.getElementById("fOrder").value;
-      filtros.q = (document.getElementById("fSearch").value || "").trim();
-      filtros.limit = Number(document.getElementById("fLimit").value) || 10;
-
-      filtros.date_from = (document.getElementById("fFrom").value || "").trim();
-      filtros.date_to = (document.getElementById("fTo").value || "").trim();
-      filtros.value_min = (document.getElementById("fMin").value || "").trim();
-      filtros.value_max = (document.getElementById("fMax").value || "").trim();
-
-      filtros.page = 1;
-      setTitleMov();
-      closeFilters();
-      carregarTudo();
-      atualizarDashboard();
-    }
-
-    function limparFiltros(){
-      fillMonthYear();
-      closeFilters();
-      carregarTudo();
-      atualizarDashboard();
-    }
-
-    // Paginação (Lancamentos)
-    function updatePager(){
-      const page = filtros.page;
-      const limit = filtros.limit;
-      const total = filtros.total;
-      const totalPages = Math.max(1, Math.ceil(total / limit));
-
-      const pager = document.getElementById("pager");
-      if(totalPages <= 1){
-        pager.style.display = "none";
-        return;
-      }
-      pager.style.display = "flex";
-      document.getElementById("pagerPage").textContent = `Página ${page} / ${totalPages}`;
-      document.getElementById("pagerInfo").textContent = `Total: ${total} • ${limit} por página`;
-    }
-    function prevPage(){
-      if(filtros.page <= 1) return;
-      filtros.page -= 1;
-      carregarUltimos();
-    }
-    function nextPage(){
-      const totalPages = Math.max(1, Math.ceil((filtros.total || 0) / (filtros.limit || 10)));
-      if(filtros.page >= totalPages) return;
-      filtros.page += 1;
-      carregarUltimos();
-    }
-
-    // =========================
-    // FILTROS (Investimentos)
-    // =========================
-    function fillInvMonthYear(){
-      const mSel = document.getElementById("ifMonth");
-      const ySel = document.getElementById("ifYear");
-
-      const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-      mSel.innerHTML = monthNames.map((n,i)=> `<option value="${i+1}">${String(i+1).padStart(2,"0")} - ${n}</option>`).join("");
-
-      const now = new Date();
-      const y = now.getFullYear();
-      const years = [];
-      for(let i=y-5;i<=y+2;i++) years.push(i);
-      ySel.innerHTML = years.map(v=> `<option value="${v}">${v}</option>`).join("");
-
-      invFiltros.month = now.getMonth()+1;
-      invFiltros.year = now.getFullYear();
-      invFiltros.operacao = "Todas";
-      invFiltros.q = "";
-      invFiltros.order = "recent";
-      invFiltros.date_from = "";
-      invFiltros.date_to = "";
-      invFiltros.limit = 10;
-      invFiltros.page = 1;
-
-      mSel.value = String(invFiltros.month);
-      ySel.value = String(invFiltros.year);
-      document.getElementById("ifOper").value = invFiltros.operacao;
-      document.getElementById("ifOrder").value = invFiltros.order;
-      document.getElementById("ifSearch").value = "";
-      document.getElementById("ifFrom").value = "";
-      document.getElementById("ifTo").value = "";
-      document.getElementById("ifLimit").value = String(invFiltros.limit);
-
-      setTitleInv();
-    }
-
-    function setTitleInv(){
-      const m = invFiltros.month;
-      const y = invFiltros.year;
-      const op = invFiltros.operacao;
-      document.getElementById("titleInv").textContent = `Fluxo (${String(m).padStart(2,"0")}/${y}) — ${op}`;
-    }
-
-    function aplicarInvFiltros(){
-      invFiltros.month = Number(document.getElementById("ifMonth").value);
-      invFiltros.year = Number(document.getElementById("ifYear").value);
-      invFiltros.operacao = document.getElementById("ifOper").value;
-      invFiltros.order = document.getElementById("ifOrder").value;
-      invFiltros.q = (document.getElementById("ifSearch").value || "").trim();
-      invFiltros.limit = Number(document.getElementById("ifLimit").value) || 10;
-
-      invFiltros.date_from = (document.getElementById("ifFrom").value || "").trim();
-      invFiltros.date_to = (document.getElementById("ifTo").value || "").trim();
-
-      invFiltros.page = 1;
-      setTitleInv();
-      closeInvFilters();
-      carregarInvestimentos();
-    }
-
-    function limparInvFiltros(){
-      fillInvMonthYear();
-      closeInvFilters();
-      carregarInvestimentos();
-    }
-
-    // Paginação (Investimentos)
-    function updateInvPager(){
-      const page = invFiltros.page;
-      const limit = invFiltros.limit;
-      const total = invFiltros.total;
-      const totalPages = Math.max(1, Math.ceil(total / limit));
-
-      const pager = document.getElementById("invPager");
-      if(totalPages <= 1){
-        pager.style.display = "none";
-        return;
-      }
-      pager.style.display = "flex";
-      document.getElementById("invPagerPage").textContent = `Página ${page} / ${totalPages}`;
-      document.getElementById("invPagerInfo").textContent = `Total: ${total} • ${limit} por página`;
-    }
-    function invPrevPage(){
-      if(invFiltros.page <= 1) return;
-      invFiltros.page -= 1;
-      carregarInvestimentosLista();
-    }
-    function invNextPage(){
-      const totalPages = Math.max(1, Math.ceil((invFiltros.total || 0) / (invFiltros.limit || 10)));
-      if(invFiltros.page >= totalPages) return;
-      invFiltros.page += 1;
-      carregarInvestimentosLista();
-    }
-
-    // =========================
-    // ENVIAR (Lancamentos)
-    // =========================
-    async function enviar(){
-      setMsg("", "");
-      const categoria = document.getElementById("categoria").value.trim();
-      const descricao = document.getElementById("descricao").value.trim();
-      const valorTxt = document.getElementById("valor").value;
-      const dataISO = document.getElementById("data").value;
-
-      if(!categoria || !descricao || !valorTxt){
-        setMsg("err", "Preencha categoria, descrição e valor.");
-        return;
-      }
-
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setMsg("err", "Valor inválido. Use exemplo: 360,00");
-        return;
-      }
-
-      const payload = {
-        tipo: tipoAtual,
-        categoria,
-        descricao,
-        valor: valorNum,
-        data: formatBRfromISO(dataISO)
-      };
-
-      try{
-        const r = await apiFetch("/lancar", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if(r.status === 401){ mustLogin(); return; }
-
-        const data = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(data?.msg || "Erro ao salvar");
-
-        setMsg("ok", "✅ Lançamento salvo!");
-        document.getElementById("descricao").value = "";
-        document.getElementById("valor").value = "";
-        showTab("ultimos");
-      }catch(e){
-        setMsg("err", "❌ " + e.message);
-      }
-    }
-
-    // =========================
-    // ENVIAR (Investimentos)
-    // =========================
-    async function enviarInvestimento(){
-      setInvMsg("", "");
-      const ativo = document.getElementById("invAtivo").value.trim();
-      const categoria = document.getElementById("invCategoria").value.trim();
-      const descricao = document.getElementById("invDescricao").value.trim();
-      const valorTxt = document.getElementById("invValor").value;
-      const dataISO = document.getElementById("invData").value;
-
-      if(!ativo || !categoria || !descricao || !valorTxt){
-        setInvMsg("err", "Preencha ativo, categoria, descrição e valor.");
-        return;
-      }
-
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setInvMsg("err", "Valor inválido. Use exemplo: 500,00");
-        return;
-      }
-
-      const payload = {
-        ativo,
-        operacao: operacaoAtual,
-        categoria,
-        descricao,
-        valor: valorNum,
-        data: formatBRfromISO(dataISO)
-      };
-
-      try{
-        const r = await apiFetch("/investir", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if(r.status === 401){ mustLogin(); return; }
-
-        const data = await r.json().catch(()=> ({}));
-        if(!r.ok) throw new Error(data?.msg || "Erro ao salvar investimento");
-
-        setInvMsg("ok", "✅ Investimento salvo!");
-        document.getElementById("invDescricao").value = "";
-        document.getElementById("invValor").value = "";
-        showTab("carteira");
-      }catch(e){
-        setInvMsg("err", "❌ " + e.message);
-      }
-    }
-
-    // =========================
-    // CHARTS (Lancamentos)
-    // =========================
-    function atualizarMovimento(j){
-      const canvas = document.getElementById("graficoMov");
-      if(!canvas) return;
-      const ctx = canvas.getContext("2d");
-
-      const dias = (j.dias || []);
-      const rec  = (j.serie_receita || []).map(v => Number(v || 0));
-      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
-      const gas  = gasP.map(v => -v);
-
-      let acc = 0;
-      const saldoAcum = dias.map((_, i) => {
-        acc += (rec[i] || 0) - (gasP[i] || 0);
-        return acc;
-      });
-
-      if(chartMov) chartMov.destroy();
-
-      chartMov = new Chart(ctx, {
-        data: {
-          labels: dias,
-          datasets: [
-            { type:"bar", label:"Receitas", data: rec, backgroundColor: "rgba(106,162,255,0.45)", borderRadius: 10 },
-            { type:"bar", label:"Gastos",   data: gas, backgroundColor: "rgba(255,107,122,0.40)", borderRadius: 10 },
-            { type:"line", label:"Saldo acumulado", data: saldoAcum, borderWidth:2, tension:0.35, pointRadius:2, fill:false,
-              borderColor:"rgba(62,226,155,0.95)" }
-          ]
-        },
-        options: {
-          responsive:true,
-          maintainAspectRatio:false,
-          interaction:{ mode:"index", intersect:false },
-          plugins:{
-            legend:{ labels:{ color:"rgba(238,243,255,.85)" } },
-            tooltip:{
-              callbacks:{
-                label: (tt)=>{
-                  const label = tt.dataset.label || "";
-                  const y = Number(tt.parsed.y || 0);
-                  if(label.toLowerCase().includes("gasto")) return `${label}: ${brl(Math.abs(y))}`;
-                  return `${label}: ${brl(y)}`;
-                }
-              }
-            }
-          },
-          scales:{
-            x:{ ticks:{ color:"rgba(174,186,217,.80)" }, grid:{ color:"rgba(255,255,255,0.04)" } },
-            y:{ ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) }, grid:{ color:"rgba(255,255,255,0.04)" } }
-          }
-        }
-      });
-    }
-
-    function donutOptions(){
-      return {
-        responsive:true,
-        maintainAspectRatio:false,
-        cutout:"72%",
-        plugins:{
-          legend:{ position:"top", labels:{ color:"rgba(238,243,255,.85)" } },
-          tooltip:{ callbacks:{ label:(tt)=> `${tt.label}: ${brl(tt.parsed)}` } }
-        }
-      };
-    }
-
-    function getColors(base, n){
-      const out = [];
-      for(let i=0;i<n;i++){
-        const a = 0.55 - (i * 0.06);
-        out.push(`rgba(${base},${Math.max(0.22,a)})`);
-      }
-      return out;
-    }
-
-    function atualizarPizzas(j){
-      const labelsG = j.pizza_gastos_labels || [];
-      const valuesG = (j.pizza_gastos_values || []).map(v=>Number(v||0));
-      const canvasG = document.getElementById("pizzaGastos");
-      if(canvasG){
-        if(chartPizzaGastos) chartPizzaGastos.destroy();
-        chartPizzaGastos = new Chart(canvasG, {
-          type:"doughnut",
-          data:{
-            labels: labelsG.length ? labelsG : ["Sem dados"],
-            datasets:[{
-              data: valuesG.length ? valuesG : [1],
-              backgroundColor: labelsG.length ? getColors("255,107,122", labelsG.length) : ["rgba(255,107,122,0.18)"],
-              borderColor:"rgba(255,255,255,0.08)",
-              borderWidth:1
-            }]
-          },
-          options: donutOptions()
-        });
-      }
-
-      const labelsR = j.pizza_receitas_labels || [];
-      const valuesR = (j.pizza_receitas_values || []).map(v=>Number(v||0));
-      const canvasR = document.getElementById("pizzaReceitas");
-      if(canvasR){
-        if(chartPizzaReceitas) chartPizzaReceitas.destroy();
-        chartPizzaReceitas = new Chart(canvasR, {
-          type:"doughnut",
-          data:{
-            labels: labelsR.length ? labelsR : ["Sem dados"],
-            datasets:[{
-              data: valuesR.length ? valuesR : [1],
-              backgroundColor: labelsR.length ? getColors("106,162,255", labelsR.length) : ["rgba(106,162,255,0.18)"],
-              borderColor:"rgba(255,255,255,0.08)",
-              borderWidth:1
-            }]
-          },
-          options: donutOptions()
-        });
-      }
-    }
-
-    function renderTabelaCategorias(idWrap, idBody, arr){
-      const wrap = document.getElementById(idWrap);
-      const tbody = document.getElementById(idBody);
-      if(!wrap || !tbody) return;
-
-      if(!Array.isArray(arr) || arr.length === 0){
-        wrap.style.display = "none";
-        tbody.innerHTML = "";
-        return;
-      }
-      wrap.style.display = "block";
-      tbody.innerHTML = arr.slice(0, 20).map(x => {
-        const cat = (x.categoria || "Sem categoria");
-        const tot = brl(x.total || 0);
-        return `<tr><td>${cat}</td><td>${tot}</td></tr>`;
-      }).join("");
-    }
-
-    // =========================
-    // RESUMO + LISTA (Lancamentos)
-    // =========================
-    async function carregarResumo(){
-      const params = {
-        month: filtros.month,
-        year: filtros.year,
-        tipo: filtros.tipo,
-        q: filtros.q,
-        date_from: filtros.date_from,
-        date_to: filtros.date_to,
-        value_min: filtros.value_min,
-        value_max: filtros.value_max
-      };
-
-      const r = await apiFetch("/resumo" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /resumo");
-
-      const j = await r.json();
-      document.getElementById("entradas").innerText = brl(j.entradas);
-      document.getElementById("saidas").innerText   = brl(j.saidas);
-      document.getElementById("saldo").innerText    = brl(j.saldo);
-
-      atualizarMovimento(j);
-      atualizarPizzas(j);
-
-      renderTabelaCategorias("tblGastosWrap","tblGastos", j.gastos_categorias || []);
-      renderTabelaCategorias("tblReceitasWrap","tblReceitas", j.receitas_categorias || []);
-      return j;
-    }
-
-    function iconForLanc(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      return t.includes("rece") ? "⬆" : "⬇";
-    }
-    function valueClassLanc(item){
-      const t = (item.Tipo || item.tipo || "").toLowerCase();
-      return t.includes("rece") ? "green" : "red";
-    }
-
-    async function carregarUltimos(){
-      const lista = document.getElementById("lista");
-      lista.innerHTML = `
-        <div class="item">
-          <div class="itemLeft">
-            <div class="icon">…</div>
-            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
-          </div>
-          <div class="value"> </div>
-        </div>`;
-
-      const params = {
-        month: filtros.month,
-        year: filtros.year,
-        tipo: filtros.tipo,
-        q: filtros.q,
-        order: filtros.order,
-        date_from: filtros.date_from,
-        date_to: filtros.date_to,
-        value_min: filtros.value_min,
-        value_max: filtros.value_max,
-        page: filtros.page,
-        limit: filtros.limit
-      };
-
-      const r = await apiFetch("/ultimos" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /ultimos");
-
-      const payload = await r.json().catch(()=> ({}));
-      const arr = payload.items || [];
-      filtros.total = Number(payload.total || 0);
-
-      updatePager();
-
-      lista.innerHTML = "";
-      if(!Array.isArray(arr) || arr.length === 0){
-        lista.innerHTML = `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum lançamento</b><span>Não há dados nesse filtro</span></div>
-            </div>
-            <div class="value"></div>
-          </div>`;
-        return;
-      }
-
-      arr.forEach((item, idx) => {
-        const tipo = getField(item, ["Tipo"]);
-        const categoria = getField(item, ["Categoria"]);
-        const descricao = getField(item, ["Descrição"]);
-        const data = getField(item, ["Data"]);
-        const valor = getField(item, ["Valor"]);
-        const row = item._row;
-
-        const vnum = parseMoneyBR(valor);
-        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
-
-        const encoded = encodeURIComponent(JSON.stringify(item));
-        const menuId = `m_l_${row}_${idx}`;
-
-        lista.innerHTML += `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">${iconForLanc(item)}</div>
-              <div class="meta">
-                <b>${tipo} • ${categoria}</b>
-                <span>${descricao} • ${data}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; align-items:center;">
-              <div class="value ${valueClassLanc(item)}">${showVal}</div>
-              <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
-            </div>
-
-            <div class="menu" id="${menuId}">
-              <button onclick='openEdit("${encoded}"); closeAllMenus();'>✏️ Editar</button>
-              <button class="dangerItem" onclick="excluirLancamento(${row}); closeAllMenus();">🗑 Excluir</button>
-            </div>
-          </div>
-        `;
-      });
-    }
-
-    async function carregarTudo(){
-      try{ await carregarResumo(); }catch(e){}
-      try{ await carregarUltimos(); }catch(e){}
-    }
-
-    // =========================
-    // EDIT (Lancamentos)
-    // =========================
-    function openEdit(encoded){
-      try{
-        const item = JSON.parse(decodeURIComponent(encoded));
-        document.getElementById("editRow").value = item._row || "";
-        document.getElementById("editTipo").value = (item.Tipo || "Gasto");
-        document.getElementById("editCategoria").value = (item.Categoria || "");
-        document.getElementById("editDescricao").value = (item["Descrição"] || "");
-        document.getElementById("editValor").value = String(item.Valor || "");
-        document.getElementById("editData").value = String(item.Data || "");
-        setEditMsg("", "");
-        document.getElementById("editBack").style.display = "flex";
-      }catch(e){
-        alert("❌ Erro ao abrir edição.");
-      }
-    }
-    function closeEdit(){ document.getElementById("editBack").style.display = "none"; }
-
-    async function salvarEdicao(){
-      setEditMsg("", "");
-
-      const row = Number(document.getElementById("editRow").value);
-      const tipo = document.getElementById("editTipo").value.trim();
-      const categoria = document.getElementById("editCategoria").value.trim();
-      const descricao = document.getElementById("editDescricao").value.trim();
-      const valorTxt = document.getElementById("editValor").value;
-      const dataStr = document.getElementById("editData").value.trim();
-
-      if(!row || row < 2){
-        setEditMsg("err", "Linha inválida.");
-        return;
-      }
-      if(!categoria || !descricao || !dataStr){
-        setEditMsg("err", "Preencha categoria, descrição e data.");
-        return;
-      }
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setEditMsg("err", "Valor inválido. Ex: 360,00");
-        return;
-      }
-
-      const payload = { tipo, categoria, descricao, valor: valorNum, data: dataStr };
-
-      const r = await apiFetch(`/lancamento/${row}`, {
-        method:"PATCH",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if(r.status === 401){ mustLogin(); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        setEditMsg("err", "❌ " + (j.msg || "Erro ao editar"));
-        return;
-      }
-
-      setEditMsg("ok", "✅ Alterações salvas!");
-      await carregarTudo();
-      await atualizarDashboard();
-      setTimeout(()=> closeEdit(), 450);
-    }
-
-    async function excluirLancamento(row){
-      if(!confirm("Excluir este lançamento?")) return;
-
-      const r = await apiFetch(`/lancamento/${row}`, { method:"DELETE" });
-      if(r.status === 401){ mustLogin(); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        alert("❌ " + (j.msg || "Erro ao excluir"));
-        return;
-      }
-      await carregarTudo();
-      await atualizarDashboard();
-    }
-
-    // =========================
-    // EXPORT
-    // =========================
-    async function exportar(tipo){
-      try{
-        const params = {
-          month: filtros.month,
-          year: filtros.year,
-          tipo: filtros.tipo,
-          q: filtros.q,
-          order: filtros.order,
-          date_from: filtros.date_from,
-          date_to: filtros.date_to,
-          value_min: filtros.value_min,
-          value_max: filtros.value_max
-        };
-        const url = (tipo === "pdf" ? "/export.pdf" : "/export.csv") + qs(params);
-
-        const r = await apiFetch(url, { method:"GET" });
-        if(r.status === 401){ mustLogin(); return; }
-        if(!r.ok) throw new Error("Falha ao exportar");
-
-        const blob = await r.blob();
-        const a = document.createElement("a");
-        const objUrl = URL.createObjectURL(blob);
-
-        const mm = String(filtros.month).padStart(2,"0");
-        const yy = String(filtros.year);
-
-        a.href = objUrl;
-        a.download = tipo === "pdf"
-          ? `finance-ai-${mm}-${yy}.pdf`
-          : `finance-ai-${mm}-${yy}.csv`;
-
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(objUrl);
-      }catch(e){
-        alert("❌ " + e.message);
-      }
-    }
-
-    // =========================
-    // DASHBOARD (usa /dashboard)
-    // =========================
-    function buildInsightsFromServer(insights){
-      if(!Array.isArray(insights) || !insights.length) return "Sem insights neste período.";
-      return insights.map(x => `💡 <b>${x.title}</b><br>${x.desc}`).join("<br><br>");
-    }
-    function buildAlertsFromServer(alerts){
-      if(!Array.isArray(alerts) || !alerts.length) return "✅ Nenhum alerta crítico.";
-      const emoji = (lvl)=> lvl==="danger" ? "⚠️" : (lvl==="warn" ? "🟡" : "✅");
-      return alerts.map(a => `${emoji(a.level)} <b>${a.title}</b><br>${a.desc}`).join("<br><br>");
-    }
-
-    function updateSaldoChart(j){
-      const canvas = document.getElementById("chartSaldo");
-      if(!canvas) return;
-      const ctx = canvas.getContext("2d");
-
-      const dias = (j.dias || []);
-      const rec  = (j.serie_receita || []).map(v => Number(v || 0));
-      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
-
-      let acc = 0;
-      const saldoAcum = dias.map((_, i) => {
-        acc += (rec[i] || 0) - (gasP[i] || 0);
-        return acc;
-      });
-
-      if(chartSaldo) chartSaldo.destroy();
-
-      chartSaldo = new Chart(ctx, {
-        type:"line",
-        data:{
-          labels: dias,
-          datasets:[{
-            label:"Saldo acumulado",
-            data: saldoAcum,
-            borderWidth:2,
-            tension:0.35,
-            pointRadius:2,
-            borderColor:"rgba(106,162,255,0.95)"
-          }]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{ legend:{ labels:{ color:"rgba(238,243,255,.85)" } } },
-          scales:{
-            x:{ ticks:{ color:"rgba(174,186,217,.80)" }, grid:{ color:"rgba(255,255,255,0.04)" } },
-            y:{ ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(v) }, grid:{ color:"rgba(255,255,255,0.04)" } }
-          }
-        }
-      });
-    }
-
-    async function atualizarDashboard(){
-      try{
-        const params = {
-          month: filtros.month,
-          year: filtros.year,
-          tipo: filtros.tipo,
-          q: filtros.q,
-          date_from: filtros.date_from,
-          date_to: filtros.date_to,
-          value_min: filtros.value_min,
-          value_max: filtros.value_max
-        };
-
-        const r = await apiFetch("/dashboard" + qs(params));
-        if(r.status === 401){ mustLogin(); return; }
-        if(!r.ok) throw new Error("Falha em /dashboard");
-        const j = await r.json();
-
-        document.getElementById("dashReceitas").innerText = brl(j.entradas);
-        document.getElementById("dashGastos").innerText   = brl(j.saidas);
-        document.getElementById("dashSaldo").innerText    = brl(j.saldo);
-
-        document.getElementById("insightsBox").innerHTML = buildInsightsFromServer(j.insights);
-        document.getElementById("alertsBox").innerHTML = buildAlertsFromServer(j.alerts);
-
-        updateSaldoChart(j);
-      }catch(e){
-        document.getElementById("insightsBox").innerText = "Faça login para ver insights.";
-        document.getElementById("alertsBox").innerText = "Faça login para ver alertas.";
-      }
-    }
-
-    // =========================
-    // INVESTIMENTOS: RESUMO + LISTA + CHARTS
-    // =========================
-    function invIcon(op){
-      if(op === "Aporte") return "➕";
-      if(op === "Resgate") return "➖";
-      return "✨";
-    }
-    function invValueClass(op){
-      if(op === "Aporte") return "blue";
-      if(op === "Resgate") return "red";
-      return "green";
-    }
-
-    function updateInvCharts(j){
-      // Fluxo
-      const canvas = document.getElementById("chartInvFluxo");
-      if(canvas){
-        const ctx = canvas.getContext("2d");
-        const dias = (j.dias || []);
-        const ap  = (j.serie_aporte || []).map(v => Number(v || 0));
-        const rsP = (j.serie_resgate || []).map(v => Number(v || 0));
-        const rd  = (j.serie_rendimento || []).map(v => Number(v || 0));
-        const rs  = rsP.map(v => -v);
-
-        if(chartInvFluxo) chartInvFluxo.destroy();
-        chartInvFluxo = new Chart(ctx, {
-          data:{
-            labels: dias,
-            datasets:[
-              { type:"bar", label:"Aportes", data: ap, backgroundColor:"rgba(106,162,255,0.40)", borderRadius:10 },
-              { type:"bar", label:"Resgates", data: rs, backgroundColor:"rgba(255,107,122,0.34)", borderRadius:10 },
-              { type:"line", label:"Rendimentos", data: rd, borderWidth:2, tension:0.35, pointRadius:2, fill:false,
-                borderColor:"rgba(62,226,155,0.95)" }
-            ]
-          },
-          options:{
-            responsive:true, maintainAspectRatio:false,
-            interaction:{ mode:"index", intersect:false },
-            plugins:{
-              legend:{ labels:{ color:"rgba(238,243,255,.85)" } },
-              tooltip:{
-                callbacks:{
-                  label:(tt)=>{
-                    const label = tt.dataset.label || "";
-                    const y = Number(tt.parsed.y || 0);
-                    if(label.toLowerCase().includes("resgate")) return `${label}: ${brl(Math.abs(y))}`;
-                    return `${label}: ${brl(y)}`;
-                  }
-                }
-              }
-            },
-            scales:{
-              x:{ ticks:{ color:"rgba(174,186,217,.80)" }, grid:{ color:"rgba(255,255,255,0.04)" } },
-              y:{ ticks:{ color:"rgba(174,186,217,.80)", callback:(v)=> brl(Math.abs(v)) }, grid:{ color:"rgba(255,255,255,0.04)" } }
-            }
-          }
-        });
-      }
-
-      // Pizza Ativos
-      const labelsA = j.pizza_ativos_labels || [];
-      const valuesA = (j.pizza_ativos_values || []).map(v=>Number(v||0));
-      const cA = document.getElementById("pizzaInvAtivos");
-      if(cA){
-        if(chartInvAtivos) chartInvAtivos.destroy();
-        chartInvAtivos = new Chart(cA, {
-          type:"doughnut",
-          data:{
-            labels: labelsA.length ? labelsA : ["Sem dados"],
-            datasets:[{
-              data: valuesA.length ? valuesA : [1],
-              backgroundColor: labelsA.length ? getColors("106,162,255", labelsA.length) : ["rgba(106,162,255,0.18)"],
-              borderColor:"rgba(255,255,255,0.08)",
-              borderWidth:1
-            }]
-          },
-          options: donutOptions()
-        });
-      }
-
-      // Pizza Categorias
-      const labelsC = j.pizza_cats_labels || [];
-      const valuesC = (j.pizza_cats_values || []).map(v=>Number(v||0));
-      const cC = document.getElementById("pizzaInvCats");
-      if(cC){
-        if(chartInvCats) chartInvCats.destroy();
-        chartInvCats = new Chart(cC, {
-          type:"doughnut",
-          data:{
-            labels: labelsC.length ? labelsC : ["Sem dados"],
-            datasets:[{
-              data: valuesC.length ? valuesC : [1],
-              backgroundColor: labelsC.length ? getColors("62,226,155", labelsC.length) : ["rgba(62,226,155,0.18)"],
-              borderColor:"rgba(255,255,255,0.08)",
-              borderWidth:1
-            }]
-          },
-          options: donutOptions()
-        });
-      }
-    }
-
-    async function carregarInvestResumo(){
-      const params = {
-        month: invFiltros.month,
-        year: invFiltros.year,
-        operacao: invFiltros.operacao,
-        q: invFiltros.q,
-        date_from: invFiltros.date_from,
-        date_to: invFiltros.date_to
-      };
-
-      const r = await apiFetch("/investimentos/resumo" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /investimentos/resumo");
-      const j = await r.json();
-
-      document.getElementById("invAportes").innerText = brl(j.aportes);
-      document.getElementById("invResgates").innerText = brl(j.resgates);
-      document.getElementById("invRendimentos").innerText = brl(j.rendimentos);
-      document.getElementById("invSaldo").innerText = brl(j.saldo_investido);
-
-      updateInvCharts(j);
-      return j;
-    }
-
-    async function carregarInvestimentosLista(){
-      const lista = document.getElementById("invLista");
-      lista.innerHTML = `
-        <div class="item">
-          <div class="itemLeft">
-            <div class="icon">…</div>
-            <div class="meta"><b>Carregando</b><span>Aguarde</span></div>
-          </div>
-          <div class="value"> </div>
-        </div>`;
-
-      const params = {
-        month: invFiltros.month,
-        year: invFiltros.year,
-        operacao: invFiltros.operacao,
-        q: invFiltros.q,
-        order: invFiltros.order,
-        date_from: invFiltros.date_from,
-        date_to: invFiltros.date_to,
-        page: invFiltros.page,
-        limit: invFiltros.limit
-      };
-
-      const r = await apiFetch("/investimentos" + qs(params));
-      if(r.status === 401){ mustLogin(); throw new Error("401"); }
-      if(!r.ok) throw new Error("Falha em /investimentos");
-
-      const payload = await r.json().catch(()=> ({}));
-      const arr = payload.items || [];
-      invFiltros.total = Number(payload.total || 0);
-      updateInvPager();
-
-      lista.innerHTML = "";
-      if(!Array.isArray(arr) || arr.length === 0){
-        lista.innerHTML = `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">∅</div>
-              <div class="meta"><b>Nenhum investimento</b><span>Não há dados nesse filtro</span></div>
-            </div>
-            <div class="value"></div>
-          </div>`;
-        return;
-      }
-
-      arr.forEach((item, idx) => {
-        const ativo = getField(item, ["Ativo"]);
-        const op = getField(item, ["Operacao"]);
-        const cat = getField(item, ["Categoria"]);
-        const desc = getField(item, ["Descrição"]);
-        const data = getField(item, ["Data"]);
-        const valor = getField(item, ["Valor"]);
-        const row = item._row;
-
-        const vnum = parseMoneyBR(valor);
-        const showVal = Number.isFinite(vnum) ? brl(vnum) : String(valor);
-
-        const encoded = encodeURIComponent(JSON.stringify(item));
-        const menuId = `m_i_${row}_${idx}`;
-
-        lista.innerHTML += `
-          <div class="item">
-            <div class="itemLeft">
-              <div class="icon">${invIcon(op)}</div>
-              <div class="meta">
-                <b>${op} • ${ativo}</b>
-                <span>${cat} • ${desc} • ${data}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; align-items:center;">
-              <div class="value ${invValueClass(op)}">${showVal}</div>
-              <button class="kebab" onclick="toggleMenu('${menuId}')">⋯</button>
-            </div>
-
-            <div class="menu" id="${menuId}">
-              <button onclick='openInvEdit("${encoded}"); closeAllMenus();'>✏️ Editar</button>
-              <button class="dangerItem" onclick="excluirInvestimento(${row}); closeAllMenus();">🗑 Excluir</button>
-            </div>
-          </div>
-        `;
-      });
-    }
-
-    async function carregarInvestimentos(){
-      setTitleInv();
-      try{ await carregarInvestResumo(); }catch(e){}
-      try{ await carregarInvestimentosLista(); }catch(e){}
-    }
-
-    // =========================
-    // EDIT (Investimentos)
-    // =========================
-    function openInvEdit(encoded){
-      try{
-        const item = JSON.parse(decodeURIComponent(encoded));
-        document.getElementById("invEditRow").value = item._row || "";
-        document.getElementById("invEditOper").value = (item.Operacao || "Aporte");
-        document.getElementById("invEditAtivo").value = (item.Ativo || "");
-        document.getElementById("invEditCategoria").value = (item.Categoria || "");
-        document.getElementById("invEditDescricao").value = (item["Descrição"] || "");
-        document.getElementById("invEditValor").value = String(item.Valor || "");
-        document.getElementById("invEditData").value = String(item.Data || "");
-        setInvEditMsg("", "");
-        document.getElementById("invEditBack").style.display = "flex";
-      }catch(e){
-        alert("❌ Erro ao abrir edição do investimento.");
-      }
-    }
-    function closeInvEdit(){ document.getElementById("invEditBack").style.display = "none"; }
-
-    async function salvarInvEdicao(){
-      setInvEditMsg("", "");
-
-      const row = Number(document.getElementById("invEditRow").value);
-      const operacao = document.getElementById("invEditOper").value.trim();
-      const ativo = document.getElementById("invEditAtivo").value.trim();
-      const categoria = document.getElementById("invEditCategoria").value.trim();
-      const descricao = document.getElementById("invEditDescricao").value.trim();
-      const valorTxt = document.getElementById("invEditValor").value;
-      const dataStr = document.getElementById("invEditData").value.trim();
-
-      if(!row || row < 2){
-        setInvEditMsg("err", "Linha inválida.");
-        return;
-      }
-      if(!operacao || !ativo || !categoria || !descricao || !dataStr){
-        setInvEditMsg("err", "Preencha todos os campos.");
-        return;
-      }
-      const valorNum = parseMoneyBR(valorTxt);
-      if(!Number.isFinite(valorNum) || valorNum <= 0){
-        setInvEditMsg("err", "Valor inválido. Ex: 500,00");
-        return;
-      }
-
-      const payload = { operacao, ativo, categoria, descricao, valor: valorNum, data: dataStr };
-
-      const r = await apiFetch(`/investimento/${row}`, {
-        method:"PATCH",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if(r.status === 401){ mustLogin(); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        setInvEditMsg("err", "❌ " + (j.msg || "Erro ao editar"));
-        return;
-      }
-
-      setInvEditMsg("ok", "✅ Alterações salvas!");
-      await carregarInvestimentos();
-      setTimeout(()=> closeInvEdit(), 450);
-    }
-
-    async function excluirInvestimento(row){
-      if(!confirm("Excluir este investimento?")) return;
-
-      const r = await apiFetch(`/investimento/${row}`, { method:"DELETE" });
-      if(r.status === 401){ mustLogin(); return; }
-
-      const j = await r.json().catch(()=> ({}));
-      if(!r.ok){
-        alert("❌ " + (j.msg || "Erro ao excluir"));
-        return;
-      }
-      await carregarInvestimentos();
-    }
-
-    // =========================
-    // INIT
-    // =========================
-    (function init(){
-      fillMonthYear();
-      fillInvMonthYear();
-
-      document.getElementById("data").value = isoToday();
-      document.getElementById("invData").value = isoToday();
-
-      wireBackdropClose("loginBack", closeLogin);
-      wireBackdropClose("createUserBack", closeCreateUser);
-      wireBackdropClose("filtersBack", closeFilters);
-      wireBackdropClose("invFiltersBack", closeInvFilters);
-      wireBackdropClose("editBack", closeEdit);
-      wireBackdropClose("invEditBack", closeInvEdit);
-
-      document.addEventListener("click", (e)=>{
-        const target = e.target;
-        const isMenu = target && (target.classList && (target.classList.contains("kebab") || target.closest(".menu")));
-        if(!isMenu) closeAllMenus();
-      });
-
-      // ENTER nos filtros
-      ["fSearch","fMin","fMax"].forEach(id=>{
-        const el = document.getElementById(id);
-        el.addEventListener("keydown", (ev)=>{ if(ev.key === "Enter") aplicarFiltros(); });
-      });
-      ["ifSearch"].forEach(id=>{
-        const el = document.getElementById(id);
-        el.addEventListener("keydown", (ev)=>{ if(ev.key === "Enter") aplicarInvFiltros(); });
-      });
-
-      (async ()=>{
-        await refreshAuthUI();
-        try{ await carregarTudo(); }catch(e){}
-        try{ await atualizarDashboard(); }catch(e){}
-        try{ await carregarInvestimentos(); }catch(e){}
-      })();
-    })();
-  </script>
-
-  <!-- ✅ Service Worker (apenas 1 registro) -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", async () => {
-        try{
-          const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-          if(reg && reg.update) reg.update();
-        }catch(e){
-          console.error("SW register failed", e);
-        }
-      });
-    }
-  </script>
 </body>
 </html>
