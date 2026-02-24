@@ -1,23 +1,19 @@
-<!-- templates/offline.html -->
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finance AI • Offline</title>
-
   <meta name="theme-color" content="#0b1020" />
-  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-  <link rel="icon" href="/static/icons/icon-192.png" />
 
   <style>
     :root{
       --bg:#0b1020;
       --text:#eaf0ff;
       --muted:#9fb0da;
-      --border:rgba(255,255,255,.10);
-      --shadow: 0 18px 40px rgba(0,0,0,.45);
-      --radius:20px;
+      --border:rgba(255,255,255,.08);
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --radius:18px;
       --blue:#4f8cff;
       --card: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
     }
@@ -26,7 +22,7 @@
       margin:0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background: radial-gradient(1200px 600px at 10% 0%, rgba(79,140,255,.35), transparent 60%),
-                  radial-gradient(900px 500px at 90% 10%, rgba(33,192,122,.22), transparent 55%),
+                  radial-gradient(900px 500px at 90% 10%, rgba(33,192,122,.25), transparent 55%),
                   var(--bg);
       color:var(--text);
       min-height:100vh;
@@ -35,7 +31,10 @@
       justify-content:center;
       padding:18px;
     }
-    .wrap{width:min(520px, 100%);}
+    .wrap{
+      width:min(520px, 100%);
+      text-align:center;
+    }
     .card{
       background:var(--card);
       border:1px solid var(--border);
@@ -43,55 +42,49 @@
       box-shadow:var(--shadow);
       padding:18px;
     }
-    .top{
-      display:flex;
-      align-items:center;
-      gap:14px;
-      margin-bottom:10px;
-    }
     .logo{
-      width:62px; height:62px;
-      border-radius:18px;
+      width:84px;
+      height:84px;
+      border-radius:22px;
+      margin:0 auto 14px auto;
       display:grid;
       place-items:center;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      font-weight:1000;
+      font-weight:900;
       letter-spacing:.5px;
-    }
-    h1{margin:0; font-size:20px;}
-    p{margin:6px 0 0 0; color:var(--muted); font-size:13px; line-height:1.35;}
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      margin-top:12px;
-      padding:10px 12px;
-      border-radius:999px;
+      font-size:26px;
+      background: rgba(15,23,48,.65);
       border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      color:var(--muted);
-      font-size:12px;
-      font-weight:800;
+      box-shadow: 0 10px 20px rgba(0,0,0,.25);
       user-select:none;
     }
+    h1{
+      margin:0;
+      font-size:22px;
+      letter-spacing:.2px;
+    }
+    p{
+      margin:10px 0 0 0;
+      color:var(--muted);
+      line-height:1.45;
+      font-size:14px;
+    }
     .actions{
+      margin-top:16px;
       display:flex;
       gap:10px;
       flex-wrap:wrap;
-      margin-top:14px;
+      justify-content:center;
     }
     .btn{
       border:0;
       border-radius:16px;
-      padding:12px 12px;
-      font-weight:1000;
+      padding:12px 14px;
+      font-weight:900;
       cursor:pointer;
-      flex:1;
-      min-width:160px;
       color:#061022;
       background: linear-gradient(180deg, rgba(79,140,255,1), rgba(79,140,255,.75));
       box-shadow: 0 12px 20px rgba(79,140,255,.22);
+      min-width:160px;
     }
     .btn.secondary{
       background:rgba(255,255,255,.06);
@@ -99,156 +92,56 @@
       border:1px solid var(--border);
       box-shadow:none;
     }
-    .mini{
-      margin-top:14px;
-      border:1px dashed rgba(255,255,255,.15);
-      border-radius:16px;
-      padding:12px;
-      color:var(--muted);
-      font-size:12px;
-    }
-    .mini b{color:var(--text)}
-    .row{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:10px;
-    }
-    .k{
-      flex:1;
-      min-width:200px;
-      border:1px solid var(--border);
-      background:rgba(15,23,48,.45);
-      border-radius:14px;
-      padding:10px 12px;
-    }
-    .k .t{font-size:11px; font-weight:1000; letter-spacing:.3px; text-transform:uppercase;}
-    .k .v{margin-top:6px; font-size:12px; color:var(--muted); word-break:break-word;}
-    .toast{
-      display:none;
+    .tip{
       margin-top:12px;
-      padding:12px;
-      border-radius:14px;
-      border:1px solid rgba(255,90,106,.35);
-      background: rgba(255,90,106,.10);
-      color:var(--text);
-      font-size:13px;
-      font-weight:800;
+      font-size:12px;
+      color:rgba(159,176,218,.85);
     }
-    .toast.ok{
-      border-color: rgba(33,192,122,.35);
-      background: rgba(33,192,122,.12);
+    .dot{
+      display:inline-block;
+      width:6px; height:6px;
+      border-radius:999px;
+      background:rgba(79,140,255,.9);
+      margin:0 6px 2px 6px;
+      vertical-align:middle;
     }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="top">
-        <div class="logo">FA</div>
-        <div>
-          <h1>Você está offline</h1>
-          <p>Sem conexão no momento. Assim que a internet voltar, você pode recarregar e continuar usando o Finance AI.</p>
-          <div class="pill" id="statusPill">📡 Verificando conexão…</div>
-        </div>
-      </div>
+      <div class="logo">FA</div>
+      <h1>Você está offline</h1>
+      <p>
+        Sem conexão no momento. Assim que a internet voltar, toque em
+        <b>Recarregar</b> para atualizar.
+      </p>
 
       <div class="actions">
-        <button class="btn" onclick="tryReload()">🔄 Tentar novamente</button>
-        <button class="btn secondary" onclick="goHome()">🏠 Voltar ao início</button>
+        <button class="btn" onclick="location.reload()">🔄 Recarregar</button>
+        <button class="btn secondary" onclick="goHome()">🏠 Ir para o início</button>
       </div>
 
-      <div class="toast" id="toast"></div>
-
-      <div class="mini">
-        <b>Dica:</b> Para o offline funcionar bem, abra o app pelo menos 1 vez com internet (pra ele cachear os arquivos).
-        <div class="row">
-          <div class="k">
-            <div class="t">Última verificação</div>
-            <div class="v" id="lastCheck">—</div>
-          </div>
-          <div class="k">
-            <div class="t">Modo</div>
-            <div class="v" id="mode">—</div>
-          </div>
-        </div>
+      <div class="tip">
+        Dica: se estiver usando como aplicativo, a tela pode ficar offline quando o sinal cair
+        <span class="dot"></span>
+        volte a ter conexão e recarregue.
       </div>
     </div>
   </div>
 
   <script>
-    function $(id){ return document.getElementById(id); }
-
-    function setToast(kind, text){
-      const t = $("toast");
-      t.className = "toast";
-      if(!text){
-        t.style.display = "none";
-        return;
-      }
-      t.textContent = text;
-      if(kind) t.classList.add(kind);
-      t.style.display = "block";
-    }
-
-    function setStatus(text){
-      $("statusPill").textContent = text;
-      $("lastCheck").textContent = new Date().toLocaleString("pt-BR");
-      $("mode").textContent = navigator.onLine ? "Online" : "Offline";
-    }
-
-    async function ping(){
-      // tenta um endpoint leve
-      try{
-        const r = await fetch("/health", { cache: "no-store" });
-        return r.ok;
-      }catch(e){
-        return false;
-      }
-    }
-
-    async function checkNow(){
-      setStatus("📡 Verificando conexão…");
-      const ok = await ping();
-      if(ok){
-        setStatus("✅ Conexão OK");
-        setToast("ok", "Internet voltou! Recarregando…");
-        setTimeout(()=> location.reload(), 400);
-      }else{
-        setStatus("❌ Sem internet");
-        setToast("", "");
-      }
-    }
-
-    async function tryReload(){
-      setToast("", "");
-      const ok = await ping();
-      if(ok){
-        setToast("ok", "Conexão OK! Recarregando…");
-        setTimeout(()=> location.reload(), 250);
-      }else{
-        setToast("", "Ainda sem conexão. Verifique o Wi-Fi/4G e tente novamente.");
-      }
-      setStatus(ok ? "✅ Conexão OK" : "❌ Sem internet");
-    }
-
     function goHome(){
-      // tenta voltar para o index (se o SW tiver cache do index, ele abre mesmo offline)
+      // tenta abrir a home (se estiver em cache, volta)
       location.href = "/";
     }
 
-    // eventos do navegador
-    window.addEventListener("online", checkNow);
-    window.addEventListener("offline", ()=> setStatus("❌ Sem internet"));
-
-    // init
-    (function init(){
-      setStatus(navigator.onLine ? "✅ Online" : "❌ Offline");
-      // checagens periódicas (leve)
-      setInterval(checkNow, 7000);
-      // primeira checagem rápida
-      setTimeout(checkNow, 600);
-    })();
+    // opcional: tenta recarregar automaticamente quando voltar a conexão
+    window.addEventListener("online", () => {
+      // pequeno delay pra rede estabilizar
+      setTimeout(() => location.reload(), 500);
+    });
   </script>
 </body>
 </html>
