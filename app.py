@@ -41,7 +41,7 @@ SECRET_FILE_PATH = "/etc/secrets/google_creds.json"
 
 # ✅ Em localhost (http), SESSION_COOKIE_SECURE=True quebra login.
 # No Render/HTTPS pode ficar "1". Em dev local, use COOKIE_SECURE=0.
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1").strip() in ("1", "true", "True", "SIM", "sim")
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1").strip().lower() in ("1", "true", "sim", "yes")
 
 _client_cached: Optional[gspread.Client] = None
 
@@ -57,35 +57,6 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",   # mesmo domínio OK
     SESSION_COOKIE_SECURE=COOKIE_SECURE,
 )
-
-# =========================
-# ✅ ROTAS ROOT (PWA) - ANTES DE QUALQUER RUN
-# Corrige 100% o erro: NameError: app is not defined
-# e garante /sw.js e /manifest.json na RAIZ
-# =========================
-@app.route("/sw.js")
-def sw_root():
-    resp = send_from_directory(app.static_folder, "sw.js")
-    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
-    # permite o SW controlar o site inteiro
-    resp.headers["Service-Worker-Allowed"] = "/"
-    # garante que atualização do SW não fica presa em cache do servidor/CDN
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
-
-
-@app.route("/manifest.json")
-def manifest_root():
-    resp = send_from_directory(app.static_folder, "manifest.json")
-    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
-
-
-@app.route("/offline.html")
-def offline():
-    return render_template("offline.html")
-
 
 # =========================
 # GOOGLE CLIENT
@@ -246,7 +217,7 @@ def current_month_year() -> Tuple[int, int]:
 
 
 # =========================
-# STATIC (PWA) - garante mime OK (arquivos em /static/...)
+# STATIC (PWA) - MIME OK
 # =========================
 @app.route("/static/<path:filename>")
 def static_files(filename):
@@ -261,18 +232,32 @@ def static_files(filename):
     return resp
 
 
+# ✅ ROTA CERTA DO SERVICE WORKER (root)
+@app.route("/sw.js")
+def sw_root():
+    resp = send_from_directory(app.static_folder, "sw.js")
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# ✅ compatibilidade: se em algum lugar ainda estiver registrando /static/sw.js
+@app.route("/static/sw.js")
+def sw_static():
+    return sw_root()
+
+
 # =========================
 # PAGES
 # =========================
 @app.route("/")
 def index():
-    # ⚠️ seu arquivo está em templates/Index.html (I maiúsculo)
-    # Em Linux (Render) isso importa. Então renderizamos com o nome correto.
-    # Se o seu arquivo for "index.html" minúsculo, troque aqui para "index.html".
-    try:
-        return render_template("Index.html")
-    except Exception:
-        return render_template("index.html")
+    return render_template("index.html")
+
+
+@app.route("/offline.html")
+def offline():
+    return render_template("offline.html")
 
 
 @app.route("/health")
@@ -364,7 +349,7 @@ def login():
         return jsonify({"ok": False, "msg": "Credenciais inválidas"}), 401
 
     ativo = str(user.get("Ativo", "1")).strip()
-    if ativo not in ("1", "true", "True", "SIM", "sim"):
+    if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "YES"):
         return jsonify({"ok": False, "msg": "Usuário inativo"}), 403
 
     ph = str(user.get("PasswordHash", "")).strip()
@@ -423,7 +408,7 @@ def admin_create_user():
 
 
 # =========================
-# METAS MENSAIS (DASHBOARD)
+# METAS MENSAIS
 # =========================
 def _find_meta_row(ws, email: str, mes: int, ano: int) -> Optional[int]:
     recs = get_records(ws)
@@ -724,7 +709,6 @@ def resumo():
     gastos_arr = topcats(gastos_cat)
     receitas_arr = topcats(receitas_cat)
 
-    # ✅ inclui metas no resumo
     if month and year:
         meta = _get_meta(user_email, int(month), int(year))
     else:
@@ -755,10 +739,6 @@ def resumo():
 
 @app.route("/dashboard")
 def dashboard():
-    """
-    Endpoint pronto para "Dashboard com metas mensais":
-    devolve resumo + metas + progresso (percentuais).
-    """
     guard = require_login()
     if guard:
         return jsonify(guard[0]), guard[1]
@@ -789,7 +769,7 @@ def dashboard():
 
 
 # =========================
-# EDITAR / EXCLUIR (por linha)
+# EDITAR / EXCLUIR
 # =========================
 @app.route("/lancamento/<int:row>", methods=["PATCH"])
 def editar_lancamento(row: int):
