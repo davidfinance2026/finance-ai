@@ -1,7 +1,8 @@
 import os
 import csv
 import io
-from datetime import datetime, date
+import secrets
+from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
@@ -27,6 +28,7 @@ SHEET_ID = os.getenv("SHEET_ID", "").strip()
 SHEET_TAB = os.getenv("SHEET_TAB", "Lancamentos").strip()
 USERS_TAB = os.getenv("USERS_TAB", "Usuarios").strip()
 METAS_TAB = os.getenv("METAS_TAB", "Metas").strip()
+RESETS_TAB = os.getenv("RESETS_TAB", "PasswordResets").strip()
 
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret").strip()
 
@@ -41,6 +43,11 @@ SECRET_FILE_PATH = "/etc/secrets/google_creds.json"
 # IMPORTANT: in localhost (http), secure cookie breaks sessions
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1").strip().lower() in ("1", "true", "sim", "yes")
 
+# Forgot password behavior
+RESET_CODE_TTL_MIN = int(os.getenv("RESET_CODE_TTL_MIN", "15"))
+RESET_RETURN_CODE = os.getenv("RESET_RETURN_CODE", "0").strip().lower() in ("1", "true", "sim", "yes")
+# ^ se TRUE, o /forgot_password devolve o código no JSON (ótimo p/ dev). Em prod deixe 0.
+
 _client_cached: Optional[gspread.Client] = None
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -54,6 +61,11 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=COOKIE_SECURE,
 )
+
+USERS_HEADERS_NEW = ["NomeApelido", "NomeCompleto", "Telefone", "Email", "PasswordHash", "Ativo", "CreatedAt"]
+USERS_HEADERS_OLD = ["Email", "PasswordHash", "Ativo", "CreatedAt"]
+
+RESETS_HEADERS = ["Email", "CodeHash", "ExpiresAt", "CreatedAt", "UsedAt"]
 
 
 # =========================
@@ -90,7 +102,8 @@ def ensure_worksheet(spread, title: str, headers: List[str]):
         ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
 
     existing = ws.row_values(1)
-    if [h.strip() for h in existing] != headers:
+    # Aqui NÃO apagamos automaticamente se for Users — para Users faremos migração segura.
+    if title != USERS_TAB and [h.strip() for h in existing] != headers:
         ws.clear()
         ws.append_row(headers, value_input_option="RAW")
     return ws
@@ -223,6 +236,17 @@ def normalize_phone_br(raw: str) -> Optional[str]:
     return f"({ddd}) {rest[:5]}-{rest[5:]}"
 
 
+def utc_plus_minutes_str(minutes: int) -> str:
+    return (datetime.utcnow() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def parse_utc_str(s: str) -> Optional[datetime]:
+    try:
+        return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
 # =========================
 # STATIC (PWA) - correct MIME
 # =========================
@@ -264,37 +288,136 @@ def health():
 # WORKSHEETS
 # =========================
 def users_ws():
+    """
+    ✅ Migração automática e segura:
+    - Se header já é novo => ok
+    - Se header é antigo => migrar linhas para novo schema
+    - Se header desconhecido => tentar mapear sem apagar (se não der, levanta erro)
+    """
     spread = open_spread()
-    # ✅ NOVO schema de usuários (self-signup)
-    return ensure_worksheet(
-        spread,
-        USERS_TAB,
-        headers=["NomeApelido", "NomeCompleto", "Telefone", "Email", "PasswordHash", "Ativo", "CreatedAt"]
-    )
+
+    try:
+        ws = spread.worksheet(USERS_TAB)
+    except gspread.WorksheetNotFound:
+        ws = spread.add_worksheet(title=USERS_TAB, rows=2000, cols=max(10, len(USERS_HEADERS_NEW)))
+        ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
+        return ws
+
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing == USERS_HEADERS_NEW:
+        return ws
+
+    # Caso antigo: migrar sem perder usuários
+    if existing == USERS_HEADERS_OLD:
+        values = ws.get_all_values()
+        old_rows = values[1:] if len(values) > 1 else []
+
+        # reconstruir
+        ws.clear()
+        ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
+
+        for row in old_rows:
+            email = (row[0] if len(row) > 0 else "").strip()
+            ph = (row[1] if len(row) > 1 else "").strip()
+            ativo = (row[2] if len(row) > 2 else "1").strip() or "1"
+            created = (row[3] if len(row) > 3 else now_str()).strip() or now_str()
+
+            nome_apelido = (email.split("@")[0] if email else "Usuário")[:40]
+            nome_completo = ""
+            telefone = "(00) 00000-0000"
+
+            ws.append_row(
+                [nome_apelido, nome_completo, telefone, email, ph, ativo, created],
+                value_input_option="RAW"
+            )
+        return ws
+
+    # Header “custom”: tenta mapear se tiver Email e PasswordHash
+    if "Email" in existing and "PasswordHash" in existing:
+        # não apaga; só garante que existe coluna Ativo/CreatedAt (se faltar, adiciona no fim)
+        # Para simplificar, se está diferente do novo, vamos migrar "best effort"
+        values = ws.get_all_values()
+        if not values:
+            ws.clear()
+            ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
+            return ws
+
+        headers = existing
+        data_rows = values[1:] if len(values) > 1 else []
+
+        def idx(name: str) -> int:
+            try:
+                return headers.index(name)
+            except ValueError:
+                return -1
+
+        i_email = idx("Email")
+        i_ph = idx("PasswordHash")
+        i_ativo = idx("Ativo")
+        i_created = idx("CreatedAt")
+        i_nick = idx("NomeApelido")
+        i_full = idx("NomeCompleto")
+        i_phone = idx("Telefone")
+
+        ws.clear()
+        ws.append_row(USERS_HEADERS_NEW, value_input_option="RAW")
+
+        for r in data_rows:
+            email = (r[i_email] if i_email >= 0 and i_email < len(r) else "").strip().lower()
+            ph = (r[i_ph] if i_ph >= 0 and i_ph < len(r) else "").strip()
+            ativo = (r[i_ativo] if i_ativo >= 0 and i_ativo < len(r) else "1").strip() or "1"
+            created = (r[i_created] if i_created >= 0 and i_created < len(r) else now_str()).strip() or now_str()
+
+            nome_apelido = (r[i_nick] if i_nick >= 0 and i_nick < len(r) else "") or (email.split("@")[0] if email else "Usuário")
+            nome_completo = (r[i_full] if i_full >= 0 and i_full < len(r) else "")
+            telefone = (r[i_phone] if i_phone >= 0 and i_phone < len(r) else "") or "(00) 00000-0000"
+
+            ws.append_row([nome_apelido, nome_completo, telefone, email, ph, ativo, created], value_input_option="RAW")
+
+        return ws
+
+    raise RuntimeError(f"Aba {USERS_TAB} com headers inesperados: {existing}")
 
 
 def lanc_ws():
     spread = open_spread()
-    return ensure_worksheet(
+    ws = ensure_worksheet(
         spread,
         SHEET_TAB,
         headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
     )
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != ["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]:
+        ws.clear()
+        ws.append_row(["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"], value_input_option="RAW")
+    return ws
 
 
 def metas_ws():
     spread = open_spread()
-    return ensure_worksheet(
+    ws = ensure_worksheet(
         spread,
         METAS_TAB,
         headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
     )
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != ["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]:
+        ws.clear()
+        ws.append_row(["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"], value_input_option="RAW")
+    return ws
+
+
+def resets_ws():
+    spread = open_spread()
+    ws = ensure_worksheet(spread, RESETS_TAB, headers=RESETS_HEADERS)
+    existing = [h.strip() for h in (ws.row_values(1) or [])]
+    if existing != RESETS_HEADERS:
+        ws.clear()
+        ws.append_row(RESETS_HEADERS, value_input_option="RAW")
+    return ws
 
 
 def ensure_admin_bootstrap():
-    """
-    Cria admin na planilha se APP_EMAIL e APP_PASSWORD_HASH existirem
-    """
     if not APP_EMAIL or not APP_PASSWORD_HASH:
         return
 
@@ -304,12 +427,8 @@ def ensure_admin_bootstrap():
         if safe_lower(r.get("Email")) == safe_lower(APP_EMAIL):
             return
 
-    # Campos extras do admin
-    nome_apelido = "Admin"
-    nome_completo = "Administrador"
-    telefone = "(00) 00000-0000"
     ws.append_row(
-        [nome_apelido, nome_completo, telefone, APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()],
+        ["Admin", "Administrador", "(00) 00000-0000", APP_EMAIL, APP_PASSWORD_HASH, "1", now_str()],
         value_input_option="RAW"
     )
 
@@ -371,11 +490,6 @@ def logout():
 # =========================
 @app.route("/signup", methods=["POST"])
 def signup():
-    """
-    Auto-cadastro (self signup) - não depende de admin.
-    Valida telefone (10-11 dígitos), senha e confirmar senha.
-    Salva na aba Usuarios.
-    """
     ensure_admin_bootstrap()
 
     data = request.get_json(silent=True) or {}
@@ -412,54 +526,131 @@ def signup():
     ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
     ws.append_row([nome_apelido, nome_completo, telefone, email, ph, "1", now_str()], value_input_option="RAW")
 
-    # auto-login
     session["user_email"] = email
     return jsonify({"ok": True, "msg": "Cadastro criado com sucesso!", "email": email})
 
 
 # =========================
-# CREATE USER (ADMIN) - mantém
+# FORGOT / RESET PASSWORD
 # =========================
-def _create_user_impl():
-    guard = require_login()
-    if guard:
-        return jsonify(guard[0]), guard[1]
-
-    if not is_admin_email(session.get("user_email", "")):
-        return jsonify({"ok": False, "msg": "Apenas admin"}), 403
+@app.route("/forgot_password", methods=["POST"])
+def forgot_password():
+    """
+    Gera um código de 6 dígitos e salva (hash) em PasswordResets.
+    Em produção, você enviaria por email/SMS.
+    """
+    ensure_admin_bootstrap()
 
     data = request.get_json(silent=True) or {}
     email = str(data.get("email", "")).strip().lower()
-    password = str(data.get("password", "")).strip()
+    if not email:
+        return jsonify({"ok": False, "msg": "Informe o e-mail."}), 400
 
-    if not email or not password:
-        return jsonify({"ok": False, "msg": "Informe email e senha"}), 400
-
-    ws = users_ws()
-    recs = get_records(ws)
+    # verifica se usuário existe e está ativo
+    uws = users_ws()
+    recs = get_records(uws)
+    user = None
     for r in recs:
         if safe_lower(r.get("Email")) == email:
-            return jsonify({"ok": False, "msg": "Usuário já existe"}), 400
+            user = r
+            break
+    if not user:
+        return jsonify({"ok": False, "msg": "Se o e-mail existir, enviaremos o código."}), 200
 
-    ph = generate_password_hash(password, method="pbkdf2:sha256", salt_length=16)
+    ativo = str(user.get("Ativo", "1")).strip()
+    if ativo not in ("1", "true", "True", "SIM", "sim", "yes", "Yes"):
+        return jsonify({"ok": False, "msg": "Usuário inativo."}), 403
 
-    # cria "mínimo" para admin
-    nome_apelido = (email.split("@")[0] or "Usuário").strip()[:40]
-    nome_completo = ""
-    telefone = "(00) 00000-0000"
+    # gera código
+    code = f"{secrets.randbelow(10**6):06d}"
+    code_hash = generate_password_hash(code, method="pbkdf2:sha256", salt_length=16)
 
-    ws.append_row([nome_apelido, nome_completo, telefone, email, ph, "1", now_str()], value_input_option="RAW")
-    return jsonify({"ok": True, "msg": "Usuário criado com sucesso"})
+    rws = resets_ws()
+    expires_at = utc_plus_minutes_str(RESET_CODE_TTL_MIN)
+    rws.append_row([email, code_hash, expires_at, now_str(), ""], value_input_option="RAW")
+
+    payload = {"ok": True, "msg": "Se o e-mail existir, enviaremos o código de redefinição."}
+    if RESET_RETURN_CODE:
+        payload["dev_code"] = code  # SOMENTE DEV
+        payload["dev_expires_at"] = expires_at
+    return jsonify(payload)
 
 
-@app.route("/create_user", methods=["POST"])
-def create_user():
-    return _create_user_impl()
+def _find_latest_valid_reset_row(ws, email: str) -> Optional[Dict[str, Any]]:
+    recs = get_records(ws)
+    # mais recente primeiro
+    recs.sort(key=lambda x: (str(x.get("CreatedAt", ""))), reverse=True)
+    for r in recs:
+        if safe_lower(r.get("Email")) != safe_lower(email):
+            continue
+        if str(r.get("UsedAt", "")).strip():
+            continue
+        exp = parse_utc_str(r.get("ExpiresAt", ""))
+        if not exp:
+            continue
+        if datetime.utcnow() > exp:
+            continue
+        return r
+    return None
 
 
-@app.route("/admin/create_user", methods=["POST"])
-def admin_create_user():
-    return _create_user_impl()
+@app.route("/reset_password", methods=["POST"])
+def reset_password():
+    """
+    Valida código e troca senha do usuário.
+    """
+    ensure_admin_bootstrap()
+
+    data = request.get_json(silent=True) or {}
+    email = str(data.get("email", "")).strip().lower()
+    code = str(data.get("code", "")).strip()
+    new_password = str(data.get("new_password", "")).strip()
+    confirm_password = str(data.get("confirm_password", "")).strip()
+
+    if not email or not code or not new_password or not confirm_password:
+        return jsonify({"ok": False, "msg": "Informe e-mail, código e nova senha."}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"ok": False, "msg": "As senhas não conferem."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"ok": False, "msg": "Senha muito curta (mín. 6 caracteres)."}), 400
+
+    rws = resets_ws()
+    rr = _find_latest_valid_reset_row(rws, email)
+    if not rr:
+        return jsonify({"ok": False, "msg": "Código inválido ou expirado."}), 400
+
+    code_hash = str(rr.get("CodeHash", "")).strip()
+    if not code_hash or not check_password_hash(code_hash, code):
+        return jsonify({"ok": False, "msg": "Código inválido ou expirado."}), 400
+
+    # atualiza senha do usuário
+    uws = users_ws()
+    headers = uws.row_values(1)
+    col = {h: i + 1 for i, h in enumerate(headers)}
+
+    # encontra a linha do usuário
+    recs = get_records(uws)
+    user_row = None
+    for r in recs:
+        if safe_lower(r.get("Email")) == safe_lower(email):
+            user_row = int(r.get("_row", 0)) or None
+            break
+    if not user_row:
+        return jsonify({"ok": False, "msg": "Usuário não encontrado."}), 404
+
+    new_hash = generate_password_hash(new_password, method="pbkdf2:sha256", salt_length=16)
+    uws.update_cell(user_row, col["PasswordHash"], new_hash)
+
+    # marca reset como usado
+    used_row = int(rr.get("_row", 0)) or None
+    if used_row:
+        rws.update_cell(used_row, 5, now_str())  # UsedAt col 5
+
+    # auto-login
+    session["user_email"] = email
+    return jsonify({"ok": True, "msg": "Senha redefinida com sucesso!", "email": email})
 
 
 # =========================
@@ -581,7 +772,7 @@ def lancar():
 
 
 # =========================
-# FILTERS
+# FILTERS + LIST
 # =========================
 def apply_filters(items: List[Dict[str, Any]], params: Dict[str, Any]) -> List[Dict[str, Any]]:
     month = params.get("month")
