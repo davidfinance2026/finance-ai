@@ -1,4 +1,4 @@
-const VERSION = "v2.0.0"; // troque quando fizer update
+const VERSION = "v2.0.1"; // troque quando fizer update
 const STATIC_CACHE = `static-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 
@@ -7,19 +7,33 @@ const PRECACHE = [
   "/static/manifest.json",
   "/static/vendor/chart.umd.min.js",
 
-  // ícones principais
+  // ícones principais (opcional mas recomendado)
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
   "/static/icons/maskable-192.png",
   "/static/icons/maskable-512.png",
 ];
 
-// INSTALL
+// INSTALL (seguro: não quebra se 1 arquivo faltar)
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then(cache => cache.addAll(PRECACHE))
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(STATIC_CACHE);
+
+    // tenta adicionar 1 por 1 (se falhar, ignora e continua)
+    await Promise.all(
+      PRECACHE.map(async (url) => {
+        try {
+          const req = new Request(url, { cache: "reload" });
+          const res = await fetch(req);
+          if (res.ok) await cache.put(req, res.clone());
+        } catch (e) {
+          // ignora falhas de precache
+        }
+      })
+    );
+
+    self.skipWaiting();
+  })());
 });
 
 // ACTIVATE
@@ -38,7 +52,6 @@ self.addEventListener("activate", (event) => {
 // FETCH
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
@@ -46,22 +59,25 @@ self.addEventListener("fetch", (event) => {
   // Só mesma origem
   if (url.origin !== self.location.origin) return;
 
-  // ÍCONES → cache first
+  // Navegação → network first (com fallback pro / do cache)
+  if (req.mode === "navigate") {
+    event.respondWith(networkFirst(req));
+    return;
+  }
+
+  // ÍCONES → cache first (runtime)
   if (url.pathname.startsWith("/static/icons/")) {
     event.respondWith(cacheFirst(req));
     return;
   }
 
-  // /static → stale while revalidate
+  // /static → stale while revalidate (cache de estáticos)
   if (url.pathname.startsWith("/static/")) {
     event.respondWith(staleWhileRevalidate(req));
     return;
   }
 
-  // Navegação → network first
-  if (req.mode === "navigate") {
-    event.respondWith(networkFirst(req));
-  }
+  // demais GETs → network (sem interferir)
 });
 
 
@@ -86,9 +102,9 @@ async function staleWhileRevalidate(request) {
   const fetchPromise = fetch(request).then(response => {
     if (response.ok) cache.put(request, response.clone());
     return response;
-  });
+  }).catch(() => null);
 
-  return cached || fetchPromise;
+  return cached || fetchPromise || new Response("", { status: 504 });
 }
 
 async function networkFirst(request) {
@@ -98,7 +114,11 @@ async function networkFirst(request) {
     if (fresh.ok) cache.put(request, fresh.clone());
     return fresh;
   } catch {
-    const cached = await cache.match(request);
-    return cached || new Response("Offline", { status: 503 });
+    // fallback: tenta voltar para o index do precache
+    const cachedRoot =
+      (await caches.match("/")) ||
+      (await caches.match(request));
+
+    return cachedRoot || new Response("Offline", { status: 503 });
   }
 }
