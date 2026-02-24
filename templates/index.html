@@ -1,3 +1,4 @@
+<!-- templates/index.html -->
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -12,11 +13,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <!-- Evita cache agressivo (especialmente iOS/PWA) -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-
   <style>
     :root{
       --bg0:#070b16;
@@ -27,7 +23,7 @@
       --text:#eef3ff;
       --muted:#aebad9;
 
-      --primary:#6aa2ff;     /* azul elegante */
+      --primary:#6aa2ff;
       --primary2:#4f8cff;
       --danger:#ff6b7a;
       --success:#3ee29b;
@@ -36,8 +32,6 @@
       --radius2:22px;
       --shadow: 0 10px 30px rgba(0,0,0,.35);
       --shadow2: 0 18px 45px rgba(0,0,0,.35);
-
-      --tap: rgba(255,255,255,.08);
     }
 
     *{box-sizing:border-box}
@@ -55,32 +49,16 @@
       justify-content:center;
     }
 
-    .app{
-      width:min(560px, 100%);
-      padding-bottom:18px;
-    }
+    .app{ width:min(560px, 100%); padding-bottom:18px; }
 
-    /* TOP */
     .topbar{
       display:flex; align-items:center; justify-content:space-between; gap:12px;
       padding:4px 2px 10px 2px;
     }
-    .brand h1{
-      margin:0;
-      font-size:22px;
-      letter-spacing:.2px;
-    }
-    .brand span{
-      display:block;
-      margin-top:4px;
-      color:var(--muted);
-      font-size:13px;
-    }
+    .brand h1{ margin:0; font-size:22px; letter-spacing:.2px; }
+    .brand span{ display:block; margin-top:4px; color:var(--muted); font-size:13px; }
 
-    .top-actions{
-      display:flex; gap:10px; align-items:center;
-    }
-
+    .top-actions{ display:flex; gap:10px; align-items:center; }
     .pill{
       padding:10px 12px;
       border:1px solid var(--border);
@@ -102,7 +80,6 @@
       box-shadow: 0 10px 20px rgba(79,140,255,.18);
     }
 
-    /* TABS (Nubank-ish pill) */
     .tabsWrap{
       margin:8px 0 14px 0;
       padding:8px;
@@ -133,7 +110,6 @@
       box-shadow: 0 10px 22px rgba(79,140,255,.18);
     }
 
-    /* CARDS */
     .card{
       background: rgba(255,255,255,.055);
       border:1px solid var(--border);
@@ -144,7 +120,6 @@
       -webkit-backdrop-filter: blur(12px);
     }
 
-    /* FORM */
     label{
       display:block;
       margin-top:12px;
@@ -165,7 +140,6 @@
       outline:none;
     }
     input::placeholder{color:rgba(174,186,217,.6)}
-
     .row{display:flex; gap:10px;}
     .row>*{flex:1}
 
@@ -193,7 +167,6 @@
       border:1px solid rgba(106,162,255,.25);
     }
 
-    /* BUTTONS */
     .actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
     .btn{
       border:0;
@@ -240,7 +213,6 @@
     .msg.ok{display:block; border-color: rgba(62,226,155,.30);}
     .msg.err{display:block; border-color: rgba(255,107,122,.30);}
 
-    /* SUMMARY */
     .summaryGrid{
       display:grid;
       grid-template-columns: 1fr;
@@ -267,14 +239,11 @@
       white-space:nowrap;
     }
 
-    /* HEADER ACTIONS (Ultimos) */
     .barRow{
       display:flex; gap:10px; align-items:center; justify-content:space-between;
       margin:10px 0 0 0;
     }
-    .barRow .left{
-      display:flex; gap:10px; align-items:center;
-    }
+    .barRow .left{ display:flex; gap:10px; align-items:center; }
 
     .chipBtn{
       border:1px solid var(--border);
@@ -290,7 +259,6 @@
     }
     .chipBtn:active{ transform: scale(.985); background: rgba(255,255,255,.07); }
 
-    /* CHART */
     .chartCard{ margin-top: 12px; }
     .chartWrap{ height:240px; }
     .title{
@@ -329,7 +297,6 @@
     }
     tr:last-child td{border-bottom:none;}
 
-    /* LIST */
     .list{
       margin-top:12px;
       display:flex;
@@ -389,7 +356,6 @@
     .value.green{ color: #7dffbf; }
     .value.red{ color: #ff9aa5; }
 
-    /* 3-dot menu */
     .kebab{
       border:1px solid rgba(255,255,255,.08);
       background: rgba(255,255,255,.04);
@@ -434,10 +400,9 @@
     .menu button:hover{ background: rgba(255,255,255,.06); }
     .menu .dangerItem{ color: #ff9aa5; }
 
-    /* PAGER */
     .pager{
       margin-top:12px;
-      display:none; /* só aparece se precisar */
+      display:none;
       justify-content:space-between;
       align-items:center;
       gap:10px;
@@ -476,7 +441,6 @@
       opacity:.9;
     }
 
-    /* MODALS / SHEETS */
     .backdrop{
       position:fixed; inset:0;
       background:rgba(0,0,0,.55);
@@ -486,7 +450,6 @@
       padding:16px;
       z-index:9999;
     }
-
     .sheet{
       width:min(560px, 100%);
       background: rgba(10,16,32,.92);
@@ -504,15 +467,8 @@
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       margin-bottom:8px;
     }
-    .sheetTop h2{
-      margin:0;
-      font-size:16px;
-    }
-    .sheetTop p{
-      margin:4px 0 0 0;
-      color: var(--muted);
-      font-size:13px;
-    }
+    .sheetTop h2{ margin:0; font-size:16px; }
+    .sheetTop p{ margin:4px 0 0 0; color: var(--muted); font-size:13px; }
     .xBtn{
       border:1px solid rgba(255,255,255,.10);
       background:rgba(255,255,255,.05);
@@ -524,7 +480,6 @@
     }
     .xBtn:active{ transform: scale(.985); }
 
-    /* Filters grid inside sheet */
     .filtersGrid{
       margin-top:10px;
       display:grid;
@@ -681,7 +636,7 @@
       <div class="hint">Toque no “⋯” do item para Editar / Excluir.</div>
     </div>
 
-    <!-- ===== SCREEN: DASHBOARD ===== -->
+    <!-- ===== SCREEN: DASHBOARD (chama /dashboard e mostra metas/insights/alerts) ===== -->
     <div class="card" id="screen-dashboard" style="display:none;">
       <div class="title">Dashboard do mês</div>
 
@@ -691,9 +646,13 @@
         <div class="sumRow"><div class="k">Saldo</div><div class="v" id="dashSaldo">R$ 0,00</div></div>
       </div>
 
-      <div class="actions">
-        <button class="btn secondary" onclick="openFilters(true)">⚙️ Ajustar mês/filtros</button>
-        <button class="btn" onclick="atualizarDashboard()">Atualizar Dashboard</button>
+      <div class="card" style="margin-top:12px;">
+        <div class="title">Metas & Progresso</div>
+        <div class="hint" id="metasBox">Carregando…</div>
+        <div class="actions">
+          <button class="btn secondary" onclick="openMetaSheet()">🎯 Ajustar metas</button>
+          <button class="btn" onclick="atualizarDashboard()">Atualizar</button>
+        </div>
       </div>
 
       <div class="card chartCard" style="margin-top:12px;">
@@ -911,6 +870,33 @@
     </div>
   </div>
 
+  <!-- METAS SHEET -->
+  <div class="backdrop" id="metaBack">
+    <div class="sheet">
+      <div class="sheetTop">
+        <div>
+          <h2>🎯 Metas</h2>
+          <p>Defina metas para este mês/ano selecionados nos filtros.</p>
+        </div>
+        <button class="xBtn" onclick="closeMetaSheet()">✕</button>
+      </div>
+
+      <label>Meta de receitas (R$)</label>
+      <input id="metaReceitas" type="text" inputmode="decimal" placeholder="Ex: 5000,00" />
+
+      <label>Meta de gastos (R$)</label>
+      <input id="metaGastos" type="text" inputmode="decimal" placeholder="Ex: 2500,00" />
+
+      <div class="actions">
+        <button class="btn" onclick="salvarMetas()">Salvar metas</button>
+        <button class="btn secondary" onclick="closeMetaSheet()">Cancelar</button>
+      </div>
+
+      <div id="metaMsg" class="msg"></div>
+      <div class="hint">Dica: gastos abaixo da meta = melhor.</div>
+    </div>
+  </div>
+
   <!-- Chart local (SEM CDN) -->
   <script src="/static/vendor/chart.umd.min.js"></script>
 
@@ -1058,13 +1044,8 @@
     // =========================
     // FILTERS SHEET
     // =========================
-    function openFilters(fromDashboard=false){
-      document.getElementById("filtersBack").style.display = "flex";
-      if(fromDashboard) setTitleMov();
-    }
-    function closeFilters(){
-      document.getElementById("filtersBack").style.display = "none";
-    }
+    function openFilters(){ document.getElementById("filtersBack").style.display = "flex"; }
+    function closeFilters(){ document.getElementById("filtersBack").style.display = "none"; }
 
     // fechar sheets tocando fora
     function wireBackdropClose(id, closeFn){
@@ -1072,6 +1053,73 @@
       back.addEventListener("click", (e)=>{
         if(e.target === back) closeFn();
       });
+    }
+
+    // =========================
+    // METAS SHEET
+    // =========================
+    function setMetaMsg(kind, text){
+      const el = document.getElementById("metaMsg");
+      el.className = "msg";
+      el.style.display = "none";
+      if(!text) return;
+      el.textContent = text;
+      el.classList.add(kind);
+      el.style.display = "block";
+    }
+
+    function openMetaSheet(){
+      document.getElementById("metaBack").style.display = "flex";
+      setMetaMsg("", "");
+      carregarMetasNoSheet();
+    }
+    function closeMetaSheet(){
+      document.getElementById("metaBack").style.display = "none";
+    }
+
+    async function carregarMetasNoSheet(){
+      try{
+        const r = await apiFetch("/metas" + qs({ month: filtros.month, year: filtros.year }));
+        if(r.status === 401){ mustLogin(); return; }
+        const j = await r.json();
+        document.getElementById("metaReceitas").value = (j.meta_receitas ?? 0).toString().replace(".", ",");
+        document.getElementById("metaGastos").value   = (j.meta_gastos ?? 0).toString().replace(".", ",");
+      }catch(e){
+        setMetaMsg("err", "❌ Falha ao carregar metas.");
+      }
+    }
+
+    async function salvarMetas(){
+      const mr = parseMoneyBR(document.getElementById("metaReceitas").value);
+      const mg = parseMoneyBR(document.getElementById("metaGastos").value);
+
+      if(!Number.isFinite(mr) || mr < 0 || !Number.isFinite(mg) || mg < 0){
+        setMetaMsg("err", "❌ Metas inválidas. Ex: 5000,00");
+        return;
+      }
+
+      try{
+        const r = await apiFetch("/metas", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({
+            month: filtros.month,
+            year: filtros.year,
+            meta_receitas: mr,
+            meta_gastos: mg
+          })
+        });
+
+        if(r.status === 401){ mustLogin(); return; }
+        const j = await r.json().catch(()=>({}));
+        if(!r.ok || !j.ok) throw new Error(j.msg || "Erro ao salvar metas");
+
+        setMetaMsg("ok", "✅ Metas salvas!");
+        await atualizarDashboard();
+        setTimeout(()=> closeMetaSheet(), 500);
+      }catch(e){
+        setMetaMsg("err", "❌ " + e.message);
+      }
     }
 
     // =========================
@@ -1823,42 +1871,49 @@
     }
 
     // =========================
-    // DASHBOARD (derivado do /resumo)
+    // DASHBOARD (usa /dashboard pra metas/insights/alerts)
     // =========================
-    function buildInsights(j){
-      const gastosCats = j.gastos_categorias || [];
-      const receitasCats = j.receitas_categorias || [];
+    function renderMetasProgresso(payload){
+      const metas = payload.metas || {};
+      const prog = payload.progresso || {};
 
-      const topG = gastosCats.length ? gastosCats[0] : null;
-      const topR = receitasCats.length ? receitasCats[0] : null;
+      const mr = Number(metas.meta_receitas || 0);
+      const mg = Number(metas.meta_gastos || 0);
 
-      const ins = [];
-      if(topG) ins.push(`💡 Maior gasto: <b>${topG.categoria}</b> (${brl(topG.total)})`);
-      if(topR) ins.push(`💡 Maior receita: <b>${topR.categoria}</b> (${brl(topR.total)})`);
-      if(!ins.length) ins.push("Sem dados suficientes para insights neste período.");
-      return ins.join("<br>");
+      const pr = Number(prog.receitas_pct || 0);
+      const pg = Number(prog.gastos_pct || 0);
+
+      const restR = Number(prog.receitas_restante || 0);
+      const restG = Number(prog.gastos_restante || 0);
+
+      const lines = [];
+      lines.push(`🎯 Meta receitas: <b>${brl(mr)}</b> • Progresso: <b>${pr.toFixed(0)}%</b> • Falta: <b>${brl(restR)}</b>`);
+      lines.push(`🎯 Meta gastos: <b>${brl(mg)}</b> • Uso: <b>${pg.toFixed(0)}%</b> • Restante: <b>${brl(restG)}</b>`);
+      document.getElementById("metasBox").innerHTML = lines.join("<br>");
     }
 
-    function buildAlerts(j){
-      const entradas = Number(j.entradas || 0);
-      const saidas = Number(j.saidas || 0);
-      const saldo = Number(j.saldo || 0);
+    function renderInsightsAlerts(payload){
+      const ins = payload.insights || [];
+      const als = payload.alerts || [];
 
-      const msgs = [];
-      if(saldo < 0) msgs.push("⚠️ Seu saldo está negativo.");
-      if(entradas > 0 && (saidas / entradas) > 0.85) msgs.push("⚠️ Gastos altos (acima de 85% das entradas).");
-      if(!msgs.length) msgs.push("✅ Tudo sob controle. Nenhum alerta crítico.");
-      return msgs.join("<br>");
+      document.getElementById("insightsBox").innerHTML =
+        ins.length ? ins.map(x=> `💡 <b>${x.title}</b><br>${x.desc}`).join("<br><br>") : "Sem insights.";
+
+      document.getElementById("alertsBox").innerHTML =
+        als.length ? als.map(x=> {
+          const icon = x.level === "danger" ? "⛔" : (x.level === "warn" ? "⚠️" : "✅");
+          return `${icon} <b>${x.title}</b><br>${x.desc}`;
+        }).join("<br><br>") : "Sem alertas.";
     }
 
-    function updateSaldoChart(j){
+    function updateSaldoChartFromResumo(payload){
       const canvas = document.getElementById("chartSaldo");
       if(!canvas) return;
       const ctx = canvas.getContext("2d");
 
-      const dias = (j.dias || []);
-      const rec  = (j.serie_receita || []).map(v => Number(v || 0));
-      const gasP = (j.serie_gasto || []).map(v => Number(v || 0));
+      const dias = (payload.dias || []);
+      const rec  = (payload.serie_receita || []).map(v => Number(v || 0));
+      const gasP = (payload.serie_gasto || []).map(v => Number(v || 0));
 
       let acc = 0;
       const saldoAcum = dias.map((_, i) => {
@@ -1895,15 +1950,31 @@
 
     async function atualizarDashboard(){
       try{
-        const j = await carregarResumo();
-        document.getElementById("dashReceitas").innerText = brl(j.entradas);
-        document.getElementById("dashGastos").innerText   = brl(j.saidas);
-        document.getElementById("dashSaldo").innerText    = brl(j.saldo);
+        const r = await apiFetch("/dashboard" + qs({
+          month: filtros.month,
+          year: filtros.year,
+          tipo: filtros.tipo,
+          q: filtros.q,
+          date_from: filtros.date_from,
+          date_to: filtros.date_to,
+          value_min: filtros.value_min,
+          value_max: filtros.value_max
+        }));
 
-        document.getElementById("insightsBox").innerHTML = buildInsights(j);
-        document.getElementById("alertsBox").innerHTML = buildAlerts(j);
-        updateSaldoChart(j);
+        if(r.status === 401){ mustLogin(); return; }
+        if(!r.ok) throw new Error("Falha em /dashboard");
+
+        const payload = await r.json();
+
+        document.getElementById("dashReceitas").innerText = brl(payload.entradas);
+        document.getElementById("dashGastos").innerText   = brl(payload.saidas);
+        document.getElementById("dashSaldo").innerText    = brl(payload.saldo);
+
+        renderMetasProgresso(payload);
+        renderInsightsAlerts(payload);
+        updateSaldoChartFromResumo(payload);
       }catch(e){
+        document.getElementById("metasBox").innerText = "Faça login para ver metas.";
         document.getElementById("insightsBox").innerText = "Faça login para ver insights.";
         document.getElementById("alertsBox").innerText = "Faça login para ver alertas.";
       }
@@ -1920,6 +1991,7 @@
       wireBackdropClose("createUserBack", closeCreateUser);
       wireBackdropClose("filtersBack", closeFilters);
       wireBackdropClose("editBack", closeEdit);
+      wireBackdropClose("metaBack", closeMetaSheet);
 
       document.addEventListener("click", (e)=>{
         const target = e.target;
@@ -1942,17 +2014,15 @@
     })();
   </script>
 
-  <!-- Service Worker (somente 1 registro) -->
+  <!-- ✅ Service Worker (APENAS 1 registro) -->
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
-        try {
-          // ✅ Seu SW está em /static/sw.js (e não /sw.js)
-          const reg = await navigator.serviceWorker.register("/static/sw.js", { scope: "/" });
-          if (reg && reg.update) reg.update();
-          console.log("✅ SW registrado:", reg.scope);
-        } catch (e) {
-          console.error("❌ SW register failed", e);
+        try{
+          const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+          if(reg && reg.update) reg.update();
+        }catch(e){
+          console.error("SW register failed", e);
         }
       });
     }
