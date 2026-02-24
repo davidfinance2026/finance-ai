@@ -108,16 +108,74 @@ def open_spread():
 
 
 def ensure_worksheet(spread, title: str, headers: List[str]):
+    """
+    Garante que a aba existe e que a primeira linha contém os headers esperados.
+
+    ⚠️ Importante:
+    - Esta função NÃO apaga dados automaticamente quando há mismatch de header.
+    - Se detectar header diferente e existir conteúdo, faz migração "best effort" preservando linhas.
+    - Só limpa se a aba estiver vazia (sem dados) ou tiver apenas cabeçalho.
+    """
     try:
         ws = spread.worksheet(title)
     except gspread.WorksheetNotFound:
         ws = spread.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
+        ws.append_row(headers, value_input_option="RAW")
+        return ws
 
-    existing = ws.row_values(1)
-    # Aqui NÃO apagamos automaticamente se for Users — para Users faremos migração segura.
-    if title != USERS_TAB and [h.strip() for h in existing] != headers:
+    values = ws.get_all_values() or []
+    existing = [h.strip() for h in (values[0] if values else [])]
+
+    # Se vazio: só grava header
+    if not values:
         ws.clear()
         ws.append_row(headers, value_input_option="RAW")
+        return ws
+
+    # Se bate, ok
+    if [h.strip() for h in existing] == headers:
+        return ws
+
+    # Se só tem 1 linha (header) e nada mais, pode resetar seguro
+    if len(values) <= 1:
+        ws.clear()
+        ws.append_row(headers, value_input_option="RAW")
+        return ws
+
+    # Migração: mapear colunas por similaridade (case-insensitive, sem acento)
+    import unicodedata
+    import re as _re
+
+    def _norm(h: str) -> str:
+        s = str(h or "").strip().lower()
+        s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+        s = _re.sub(r"\s+", "", s)
+        return s
+
+    norm_existing = [_norm(h) for h in existing]
+    norm_target = [_norm(h) for h in headers]
+
+    # mapa target -> idx existing (ou -1)
+    idx_map = []
+    for t in norm_target:
+        try:
+            idx_map.append(norm_existing.index(t))
+        except ValueError:
+            idx_map.append(-1)
+
+    data_rows = values[1:]
+    new_rows = []
+    for r in data_rows:
+        nr = []
+        for i in idx_map:
+            nr.append(r[i] if i >= 0 and i < len(r) else "")
+        new_rows.append(nr)
+
+    # Regrava mantendo dados
+    ws.clear()
+    ws.append_row(headers, value_input_option="RAW")
+    if new_rows:
+        ws.append_rows(new_rows, value_input_option="RAW")
     return ws
 
 
@@ -383,42 +441,30 @@ def users_ws():
 
 def lanc_ws():
     spread = open_spread()
-    ws = ensure_worksheet(spread, SHEET_TAB, headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"])
-    existing = [h.strip() for h in (ws.row_values(1) or [])]
-    if existing != ["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]:
-        ws.clear()
-        ws.append_row(["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"], value_input_option="RAW")
-    return ws
+    return ensure_worksheet(
+        spread,
+        SHEET_TAB,
+        headers=["Email", "Tipo", "Categoria", "Descrição", "Valor", "Data", "CreatedAt"]
+    )
 
 
 def metas_ws():
     spread = open_spread()
-    ws = ensure_worksheet(spread, METAS_TAB, headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"])
-    existing = [h.strip() for h in (ws.row_values(1) or [])]
-    if existing != ["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]:
-        ws.clear()
-        ws.append_row(["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"], value_input_option="RAW")
-    return ws
+    return ensure_worksheet(
+        spread,
+        METAS_TAB,
+        headers=["Email", "Mes", "Ano", "MetaReceitas", "MetaGastos", "CreatedAt", "UpdatedAt"]
+    )
 
 
 def resets_ws():
     spread = open_spread()
-    ws = ensure_worksheet(spread, RESETS_TAB, headers=RESETS_HEADERS)
-    existing = [h.strip() for h in (ws.row_values(1) or [])]
-    if existing != RESETS_HEADERS:
-        ws.clear()
-        ws.append_row(RESETS_HEADERS, value_input_option="RAW")
-    return ws
+    return ensure_worksheet(spread, RESETS_TAB, headers=RESETS_HEADERS)
 
 
 def invest_ws():
     spread = open_spread()
-    ws = ensure_worksheet(spread, INVEST_TAB, headers=INVEST_HEADERS)
-    existing = [h.strip() for h in (ws.row_values(1) or [])]
-    if existing != INVEST_HEADERS:
-        ws.clear()
-        ws.append_row(INVEST_HEADERS, value_input_option="RAW")
-    return ws
+    return ensure_worksheet(spread, INVEST_TAB, headers=INVEST_HEADERS)
 
 
 def ensure_admin_bootstrap():
