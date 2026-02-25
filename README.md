@@ -1,22 +1,14 @@
-# Finance AI (Railway + PWA)
+# Finance AI (Railway + PWA) - v2
 
-## Deploy no Railway (via GitHub)
-1. Suba este projeto para um repositório no GitHub.
-2. No Railway: **New Project** → **Deploy from GitHub Repo**.
-3. Em **Variables**, configure:
-   - `SERVICE_ACCOUNT_JSON` = JSON completo da conta de serviço (em uma linha)
-   - `SECRET_KEY` = qualquer string
+## Fix de acentuação (UTF-8)
+Este pacote força UTF-8 no Flask (headers) para evitar caracteres quebrados.
 
-## PWA (instalar como app)
-- O app já vem com:
-  - `/static/manifest.json`
-  - `/static/sw.js` (cache offline básico)
-  - ícones em `/static/icons/`
-- No Android/Chrome: menu ⋮ → **Adicionar à tela inicial**.
+## Deploy no Railway
+- Conectar repo no GitHub
+- Variáveis:
+  - SERVICE_ACCOUNT_JSON
+  - SECRET_KEY
 
-## Google Sheets
-- Planilha: **Controle Financeiro**
-- Abas:
-  - **Usuarios**
-  - **Lancamentos**
-O app cria/ajusta os cabeçalhos automaticamente se necessário.
+## PWA
+- /static/manifest.json
+- /static/sw.js (v2) -> força atualização do cache
