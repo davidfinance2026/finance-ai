@@ -1,9 +1,8 @@
-// Finance AI - Service Worker (cache v2)
-const VERSION = "v2.0.0";
+// Finance AI - Service Worker (v3) - avoids caching HTML
+const VERSION = "v3.0.0";
 const CACHE_NAME = `finance-ai-${VERSION}`;
 
 const CORE_ASSETS = [
-  "/",
   "/static/manifest.json",
   "/static/sw.js",
   "/static/icons/icon-192.png",
@@ -12,9 +11,7 @@ const CORE_ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
   );
 });
 
@@ -32,18 +29,19 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin !== self.location.origin) return;
 
-  // Network-first for API
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(req).catch(() => new Response(JSON.stringify({ error: "offline" }), {
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        status: 503
-      }))
-    );
+  // Network-first for navigations (HTML)
+  if (req.mode === "navigate") {
+    event.respondWith(fetch(req));
     return;
   }
 
-  // Cache-first for others
+  // Network-first for API
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
+  // Cache-first for static assets
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
