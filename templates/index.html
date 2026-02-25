@@ -154,18 +154,18 @@
     <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
-        <p>Controle financeiro • simples e rápido</p>
+        <p>Controle financeiro â€¢ simples e rÃ¡pido</p>
       </div>
       <div class="row">
         <span id="userPill" class="pill hidden"></span>
-        <button id="btnLogin" class="btn primary">🔒 Login</button>
+        <button id="btnLogin" class="btn primary">ðŸ”’ Login</button>
         <button id="btnLogout" class="btn danger hidden">Sair</button>
       </div>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="Navegação">
-      <div class="tab" data-tab="lancar">Lançar</div>
-      <div class="tab" data-tab="ultimos">Últimos</div>
+    <div class="tabs" role="tablist" aria-label="NavegaÃ§Ã£o">
+      <div class="tab" data-tab="lancar">LanÃ§ar</div>
+      <div class="tab" data-tab="ultimos">Ãšltimos</div>
       <div class="tab active" data-tab="dashboard">Dashboard</div>
       <div class="tab" data-tab="investimentos">Investimentos</div>
     </div>
@@ -173,11 +173,11 @@
     <!-- DASHBOARD -->
     <section id="tab-dashboard" class="grid cols2">
       <div class="card">
-        <h2>Dashboard do mês</h2>
+        <h2>Dashboard do mÃªs</h2>
 
         <div class="split">
           <div class="field">
-            <label>Mês</label>
+            <label>MÃªs</label>
             <select id="dashMes"></select>
           </div>
           <div class="field">
@@ -215,48 +215,48 @@
         <div class="row" style="margin-top:14px">
           <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
           <div class="spacer"></div>
-          <span class="hint">Faça login para ver seus dados.</span>
+          <span class="hint">FaÃ§a login para ver seus dados.</span>
         </div>
 
         <div id="toastDash" class="toast"></div>
       </div>
 
-      <!-- Gráficos -->
+      <!-- GrÃ¡ficos -->
       <div class="card">
         <h2>Visual</h2>
 
         <div class="chartBox">
-          <div class="chartTitle">📊 Receitas x Gastos</div>
-          <p class="chartHint">Atualiza automaticamente com o mês/ano selecionados.</p>
+          <div class="chartTitle">ðŸ“Š Receitas x Gastos</div>
+          <p class="chartHint">Atualiza automaticamente com o mÃªs/ano selecionados.</p>
           <canvas id="chartRG"></canvas>
         </div>
 
         <div class="chartBox">
-          <div class="chartTitle">📈 Saldo do mês</div>
+          <div class="chartTitle">ðŸ“ˆ Saldo do mÃªs</div>
           <p class="chartHint">Verde (positivo) ou vermelho (negativo).</p>
           <canvas id="chartSaldo"></canvas>
         </div>
 
         <div class="chartBox">
-          <div class="chartTitle">🗓️ Evolução diária</div>
-          <p class="chartHint">Linha por dia do mês com Receitas e Gastos.</p>
+          <div class="chartTitle">ðŸ—“ï¸ EvoluÃ§Ã£o diÃ¡ria</div>
+          <p class="chartHint">Receitas e Gastos por dia + <b>Saldo acumulado</b>.</p>
           <canvas id="chartDaily"></canvas>
         </div>
 
         <div class="divider"></div>
 
         <div class="row">
-          <button class="btn" id="goLancar">➕ Lançar agora</button>
-          <button class="btn" id="openLogin2">🔒 Abrir login</button>
-          <button class="btn" id="goUltimos">🧾 Ver últimos</button>
+          <button class="btn" id="goLancar">âž• LanÃ§ar agora</button>
+          <button class="btn" id="openLogin2">ðŸ”’ Abrir login</button>
+          <button class="btn" id="goUltimos">ðŸ§¾ Ver Ãºltimos</button>
         </div>
       </div>
     </section>
 
-    <!-- LANÇAR -->
+    <!-- LANÃ‡AR -->
     <section id="tab-lancar" class="hidden">
       <div class="card">
-        <h2>Novo lançamento</h2>
+        <h2>Novo lanÃ§amento</h2>
 
         <div class="split">
           <div class="field">
@@ -276,7 +276,7 @@
         <div class="split">
           <div class="field">
             <label>Categoria</label>
-            <input id="lanCategoria" placeholder="Ex: Salário, Mercado, Transporte..." />
+            <input id="lanCategoria" placeholder="Ex: SalÃ¡rio, Mercado, Transporte..." />
           </div>
 
           <div class="field">
@@ -286,7 +286,7 @@
         </div>
 
         <div class="field">
-          <label>Descrição</label>
+          <label>DescriÃ§Ã£o</label>
           <textarea id="lanDescricao" placeholder="Opcional..."></textarea>
         </div>
 
@@ -294,24 +294,24 @@
           <button id="btnSalvarLanc" class="btn primary">Salvar</button>
           <button id="btnLimparLanc" class="btn">Limpar</button>
           <div class="spacer"></div>
-          <span class="hint">Você precisa estar logado.</span>
+          <span class="hint">VocÃª precisa estar logado.</span>
         </div>
 
         <div id="toastLanc" class="toast"></div>
       </div>
     </section>
 
-    <!-- ÚLTIMOS -->
+    <!-- ÃšLTIMOS -->
     <section id="tab-ultimos" class="hidden">
       <div class="card">
         <div class="row" style="align-items:center">
-          <h2 style="margin:0">Últimos lançamentos</h2>
+          <h2 style="margin:0">Ãšltimos lanÃ§amentos</h2>
           <div class="spacer"></div>
           <button class="btn primary" id="btnRecarregarUltimos">Recarregar</button>
         </div>
 
         <div class="hint" style="margin-top:8px">
-          Mostra os últimos lançamentos do seu usuário. Você pode <b>editar</b> ou <b>apagar</b>.
+          Mostra os Ãºltimos lanÃ§amentos do seu usuÃ¡rio. VocÃª pode <b>editar</b> ou <b>apagar</b>.
         </div>
 
         <div id="toastUltimos" class="toast"></div>
@@ -324,7 +324,7 @@
       <div class="card">
         <h2>Investimentos</h2>
         <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono:
+          Tela pronta para evoluir. Se vocÃª quiser registrar investimentos no Sheets, eu adiciono:
           <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
         </p>
       </div>
@@ -335,12 +335,12 @@
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
-        <div style="font-size:22px" id="modalIcon">🔒</div>
+        <div style="font-size:22px" id="modalIcon">ðŸ”’</div>
         <div>
           <h3 id="modalTitle">Login</h3>
           <div class="hint" id="modalSub">Entre com seu e-mail e senha.</div>
         </div>
-        <button class="x" id="closeModal">✕</button>
+        <button class="x" id="closeModal">âœ•</button>
       </div>
 
       <!-- AUTH MODE -->
@@ -394,7 +394,7 @@
           <div class="split">
             <div class="field">
               <label>Senha</label>
-              <input id="regSenha" type="password" placeholder="Mínimo 6 caracteres" />
+              <input id="regSenha" type="password" placeholder="MÃ­nimo 6 caracteres" />
             </div>
             <div class="field">
               <label>Confirmar senha</label>
@@ -418,7 +418,7 @@
           <div class="split">
             <div class="field">
               <label>Nova senha</label>
-              <input id="rstSenha" type="password" placeholder="Mínimo 6 caracteres" />
+              <input id="rstSenha" type="password" placeholder="MÃ­nimo 6 caracteres" />
             </div>
             <div class="field">
               <label>Confirmar</label>
@@ -463,12 +463,12 @@
         </div>
 
         <div class="field">
-          <label>Descrição</label>
+          <label>DescriÃ§Ã£o</label>
           <textarea id="edtDescricao" placeholder="Opcional..."></textarea>
         </div>
 
         <div class="row" style="margin-top:12px">
-          <button id="btnSalvarEdicao" class="btn primary" style="flex:1">Salvar edição</button>
+          <button id="btnSalvarEdicao" class="btn primary" style="flex:1">Salvar ediÃ§Ã£o</button>
           <button class="btn" id="btnCancelarEdicao">Cancelar</button>
         </div>
 
@@ -554,11 +554,11 @@
       $("seg-criar").classList.toggle("hidden", seg !== "criar");
       $("seg-reset").classList.toggle("hidden", seg !== "reset");
 
-      $("modalIcon").textContent = "🔒";
+      $("modalIcon").textContent = "ðŸ”’";
       $("modalTitle").textContent = seg === "entrar" ? "Login" : (seg === "criar" ? "Criar conta" : "Resetar senha");
       $("modalSub").textContent = seg === "entrar"
         ? "Entre com seu e-mail e senha."
-        : (seg === "criar" ? "Crie sua conta para acessar seus lançamentos." : "Defina uma nova senha para sua conta.");
+        : (seg === "criar" ? "Crie sua conta para acessar seus lanÃ§amentos." : "Defina uma nova senha para sua conta.");
 
       $("authBlock").classList.remove("hidden");
       $("editBlock").classList.add("hidden");
@@ -607,7 +607,7 @@
         localStorage.setItem("financeai_user", res.email);
         currentUserEmail = res.email;
         setLoggedUI(true, res.email);
-        showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
+        showToast(t, "ok", "Login realizado", "VocÃª jÃ¡ pode lanÃ§ar e ver o dashboard.");
         setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
       } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
@@ -632,7 +632,7 @@
         currentUserEmail = res.email;
         setLoggedUI(true, res.email);
 
-        showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
+        showToast(t, "ok", "Conta criada", "Cadastro feito! VocÃª jÃ¡ estÃ¡ logado.");
         setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
       } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
@@ -647,7 +647,7 @@
         const confirmar = $("rstConf").value;
 
         await api("/api/reset_password", "POST", { email, nova_senha, confirmar });
-        showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
+        showToast(t, "ok", "Senha alterada", "Agora vocÃª jÃ¡ pode entrar com a nova senha.");
       } catch (e) {
         showToast(t, "err", "Falha no reset", e.message);
       }
@@ -685,9 +685,7 @@
             maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: {
-                callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` }
-              }
+              tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
             },
             cutout: "65%"
           }
@@ -700,7 +698,7 @@
           data: {
             labels: ["Saldo"],
             datasets: [{
-              label: "Saldo do mês",
+              label: "Saldo do mÃªs",
               data: [0],
               backgroundColor: ["rgba(75,140,255,.75)"],
               borderColor: ["rgba(75,140,255,.25)"],
@@ -729,22 +727,31 @@
             labels: [],
             datasets: [
               {
-                label: "Receitas",
+                label: "Receitas (dia)",
                 data: [],
                 borderColor: "rgba(46,229,157,.9)",
-                backgroundColor: "rgba(46,229,157,.15)",
+                backgroundColor: "rgba(46,229,157,.12)",
                 tension: 0.25,
                 fill: true,
                 pointRadius: 2
               },
               {
-                label: "Gastos",
+                label: "Gastos (dia)",
                 data: [],
                 borderColor: "rgba(255,75,110,.9)",
-                backgroundColor: "rgba(255,75,110,.12)",
+                backgroundColor: "rgba(255,75,110,.10)",
                 tension: 0.25,
                 fill: true,
                 pointRadius: 2
+              },
+              {
+                label: "Saldo acumulado",
+                data: [],
+                borderColor: "rgba(75,140,255,.95)",
+                backgroundColor: "rgba(75,140,255,.12)",
+                tension: 0.25,
+                fill: false,
+                pointRadius: 1
               }
             ]
           },
@@ -753,9 +760,7 @@
             maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: {
-                callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` }
-              }
+              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
             },
             scales: {
               x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
@@ -786,7 +791,6 @@
     }
 
     function parseISODate(s) {
-      // espera YYYY-MM-DD
       const parts = String(s || "").split("-");
       if (parts.length !== 3) return null;
       const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
@@ -803,14 +807,12 @@
       ensureCharts();
       if (!chartDaily) return;
 
-      // labels 1..N
       const dim = daysInMonth(ano, mes);
       const labels = Array.from({length: dim}, (_, i) => String(i + 1));
       const receitasDia = Array.from({length: dim}, () => 0);
       const gastosDia = Array.from({length: dim}, () => 0);
 
       try {
-        // Pega até 200 pra montar o mês (ajuste se precisar)
         const res = await api("/api/lancamentos?limit=200", "GET");
         const items = res.items || [];
 
@@ -827,14 +829,22 @@
           if (tipo === "RECEITA") receitasDia[idx] += val;
           if (tipo === "GASTO") gastosDia[idx] += val;
         }
-
       } catch (e) {
-        // se falhar (não logado), zera
+        // nÃ£o logado => fica zerado
+      }
+
+      // saldo acumulado
+      const saldoAcum = [];
+      let acc = 0;
+      for (let i = 0; i < dim; i++) {
+        acc += (receitasDia[i] - gastosDia[i]);
+        saldoAcum.push(acc);
       }
 
       chartDaily.data.labels = labels;
       chartDaily.data.datasets[0].data = receitasDia;
       chartDaily.data.datasets[1].data = gastosDia;
+      chartDaily.data.datasets[2].data = saldoAcum;
       chartDaily.update();
     }
 
@@ -844,7 +854,7 @@
     function initMesAno() {
       const sel = $("dashMes");
       const now = new Date();
-      const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      const meses = ["Janeiro","Fevereiro","MarÃ§o","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
       sel.innerHTML = meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join("");
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
@@ -870,18 +880,16 @@
         $("valSaldo").textContent = "R$ 0,00";
         updateChartsTotals(0, 0, 0);
         await updateDailyChart(mes, ano);
-        showToast(toast, "err", "Faça login para ver o dashboard", e.message);
+        showToast(toast, "err", "FaÃ§a login para ver o dashboard", e.message);
       }
     }
 
     $("btnAtualizarDash").addEventListener("click", () => refreshDashboard());
-
-    // Atualiza gráfico ao mudar mês/ano (sem precisar clicar)
     $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
     $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
 
     // -----------------------
-    // Criar lançamento
+    // Criar lanÃ§amento
     // -----------------------
     $("btnSalvarLanc").addEventListener("click", async () => {
       const toast = $("toastLanc"); hideToast(toast);
@@ -894,7 +902,7 @@
           valor: $("lanValor").value.trim(),
         };
         await api("/api/lancamentos", "POST", payload);
-        showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
+        showToast(toast, "ok", "Salvo!", "LanÃ§amento registrado com sucesso.");
         $("lanCategoria").value = "";
         $("lanDescricao").value = "";
         $("lanValor").value = "";
@@ -913,7 +921,7 @@
     });
 
     // -----------------------
-    // Últimos + Editar + Apagar
+    // Ãšltimos + Editar + Apagar
     // -----------------------
     $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
 
@@ -934,7 +942,7 @@
         const items = res.items || [];
 
         if (items.length === 0) {
-          list.innerHTML = `<div class="muted">Nenhum lançamento ainda.</div>`;
+          list.innerHTML = `<div class="muted">Nenhum lanÃ§amento ainda.</div>`;
           return;
         }
 
@@ -950,7 +958,7 @@
               <div class="row" style="gap:12px;align-items:flex-start">
                 <div style="min-width:92px" class="muted"><b>${it.data}</b></div>
                 <div style="flex:1">
-                  <div style="font-weight:900">${it.tipo} • ${cat}</div>
+                  <div style="font-weight:900">${it.tipo} â€¢ ${cat}</div>
                   <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
                 </div>
                 <div style="text-align:right;min-width:130px">
@@ -973,15 +981,15 @@
     async function apagarLancamento(row) {
       const toast = $("toastUltimos");
       hideToast(toast);
-      if (!confirm("Quer mesmo apagar este lançamento?")) return;
+      if (!confirm("Quer mesmo apagar este lanÃ§amento?")) return;
 
       try {
         await api(`/api/lancamentos/${row}`, "DELETE");
-        showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+        showToast(toast, "ok", "Apagado!", "LanÃ§amento removido.");
         await carregarUltimos();
         await refreshDashboard();
       } catch (e) {
-        showToast(toast, "err", "Não foi possível apagar", e.message);
+        showToast(toast, "err", "NÃ£o foi possÃ­vel apagar", e.message);
       }
     }
 
@@ -991,9 +999,9 @@
     function openEditModal() {
       $("authBlock").classList.add("hidden");
       $("editBlock").classList.remove("hidden");
-      $("modalIcon").textContent = "✏️";
-      $("modalTitle").textContent = "Editar lançamento";
-      $("modalSub").textContent = "Edite e salve. A alteração atualiza sua planilha.";
+      $("modalIcon").textContent = "âœï¸";
+      $("modalTitle").textContent = "Editar lanÃ§amento";
+      $("modalSub").textContent = "Edite e salve. A alteraÃ§Ã£o atualiza sua planilha.";
       openModal();
     }
 
@@ -1023,7 +1031,7 @@
       hideToast(toast);
 
       if (!editingRow) {
-        showToast(toast, "err", "Nada para editar", "Selecione um lançamento para editar.");
+        showToast(toast, "err", "Nada para editar", "Selecione um lanÃ§amento para editar.");
         return;
       }
 
@@ -1037,7 +1045,7 @@
         };
 
         await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
-        showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
+        showToast(toast, "ok", "Atualizado!", "LanÃ§amento editado com sucesso.");
         await carregarUltimos();
         await refreshDashboard();
         setTimeout(() => { closeModal(); }, 450);
