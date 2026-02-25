@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from functools import lru_cache
 
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template
+from flask import Flask, request, jsonify, session, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import gspread
@@ -14,8 +14,6 @@ from google.oauth2.service_account import Credentials
 # Flask config
 # ---------------------------
 app = Flask(__name__)
-
-# Defina SECRET_KEY no Railway (Variables) para manter sessão estável
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
 
@@ -33,15 +31,12 @@ def _load_service_account_info() -> dict:
     if not raw:
         raise RuntimeError("SERVICE_ACCOUNT_JSON não configurado nas Variables do Railway.")
 
-    # Às vezes o JSON vem com aspas/escapes; tentamos carregar de forma robusta
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Tentativa extra: remover aspas externas e reparse
         raw2 = raw.strip()
         if (raw2.startswith('"') and raw2.endswith('"')) or (raw2.startswith("'") and raw2.endswith("'")):
             raw2 = raw2[1:-1]
-        # Consertar escapes comuns
         raw2 = raw2.replace("\\n", "\n")
         return json.loads(raw2)
 
@@ -63,20 +58,14 @@ def open_spreadsheet(gc: gspread.Client):
 
 
 def _ensure_worksheet(sh, title: str, headers: list[str]):
-    """
-    Garante que a aba exista e tenha cabeçalho na primeira linha.
-    """
     try:
         ws = sh.worksheet(title)
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=title, rows=2000, cols=max(10, len(headers)))
 
-    # Se estiver vazia, cria cabeçalho
     values = ws.get_all_values()
     if not values:
         ws.append_row(headers)
-
-    # Se tiver algo, mas cabeçalho errado/vazio, tenta corrigir a primeira linha
     else:
         first = values[0]
         if not first or all((c.strip() == "" for c in first)):
@@ -128,18 +117,27 @@ def _now_iso():
 
 
 def _require_login():
-    if "user_email" not in session:
-        return False
-    return True
+    return "user_email" in session
+
+
+def _parse_money_to_float(v) -> float:
+    # aceita "100,00" ou "100.00" ou "1.234,56"
+    s = str(v).strip()
+    if not s:
+        raise ValueError("valor vazio")
+    s = s.replace(" ", "")
+    # se tem vírgula, assume decimal pt-BR e remove pontos de milhar
+    if "," in s:
+        s = s.replace(".", "")
+        s = s.replace(",", ".")
+    return float(s)
 
 
 # ---------------------------
-# Pages (se você usa templates)
+# Pages
 # ---------------------------
 @app.get("/")
 def home():
-    # Se você tiver templates/index.html, ele vai renderizar.
-    # Se não tiver, comenta esta linha e retorna algo simples.
     try:
         return render_template("index.html")
     except Exception:
@@ -147,21 +145,10 @@ def home():
 
 
 # ---------------------------
-# Auth APIs
+# Auth
 # ---------------------------
 @app.post("/api/register")
 def api_register():
-    """
-    Espera JSON:
-    {
-      "nome_apelido": "...",
-      "nome_completo": "...",
-      "telefone": "...",
-      "email": "...",
-      "senha": "...",
-      "confirmar_senha": "..."
-    }
-    """
     data = request.get_json(silent=True) or {}
     nome_apelido = (data.get("nome_apelido") or "").strip()
     nome_completo = (data.get("nome_completo") or "").strip()
@@ -177,15 +164,10 @@ def api_register():
     if len(senha) < 6:
         return jsonify({"ok": False, "error": "A senha deve ter pelo menos 6 caracteres."}), 400
 
-    sh, ws_users, _, _ = ensure_schema()
+    _, ws_users, _, _ = ensure_schema()
 
-    # Busca por email existente
-    try:
-        emails = ws_users.col_values(1)  # coluna A = email
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Erro ao acessar aba Usuarios: {str(e)}"}), 500
-
-    if email in [e.strip().lower() for e in emails[1:]]:  # ignora cabeçalho
+    emails = ws_users.col_values(1)  # coluna A
+    if email in [e.strip().lower() for e in emails[1:]]:
         return jsonify({"ok": False, "error": "Este e-mail já está cadastrado."}), 409
 
     senha_hash = generate_password_hash(senha)
@@ -204,10 +186,6 @@ def api_register():
 
 @app.post("/api/login")
 def api_login():
-    """
-    Espera JSON:
-    { "email": "...", "senha": "..." }
-    """
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     senha = data.get("senha") or ""
@@ -221,15 +199,17 @@ def api_login():
         return jsonify({"ok": False, "error": "Nenhum usuário cadastrado ainda."}), 401
 
     header = rows[0]
-    # Mapeia colunas
-    idx = {name: header.index(name) for name in header if name in header}
+    try:
+        email_i = header.index("email")
+        hash_i = header.index("senha_hash")
+    except ValueError:
+        return jsonify({"ok": False, "error": "Cabeçalho da aba Usuarios inválido."}), 500
 
     for r in rows[1:]:
-        if len(r) < 2:
+        if len(r) <= max(email_i, hash_i):
             continue
-        r_email = (r[idx["email"]] if "email" in idx else r[0]).strip().lower()
-        if r_email == email:
-            stored_hash = (r[idx["senha_hash"]] if "senha_hash" in idx else r[1]).strip()
+        if r[email_i].strip().lower() == email:
+            stored_hash = r[hash_i].strip()
             if stored_hash and check_password_hash(stored_hash, senha):
                 session["user_email"] = email
                 return jsonify({"ok": True, "email": email})
@@ -246,10 +226,6 @@ def api_logout():
 
 @app.post("/api/reset_password")
 def api_reset_password():
-    """
-    Reset simples (sem e-mail). Requer:
-    { "email": "...", "nova_senha": "...", "confirmar": "..." }
-    """
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     nova = data.get("nova_senha") or ""
@@ -274,17 +250,16 @@ def api_reset_password():
     except ValueError:
         return jsonify({"ok": False, "error": "Cabeçalho da aba Usuarios inválido."}), 500
 
-    for i, r in enumerate(rows[1:], start=2):  # linha real na planilha (começa em 2)
+    for i, r in enumerate(rows[1:], start=2):
         if len(r) >= email_col and r[email_col - 1].strip().lower() == email:
-            new_hash = generate_password_hash(nova)
-            ws_users.update_cell(i, hash_col, new_hash)
+            ws_users.update_cell(i, hash_col, generate_password_hash(nova))
             return jsonify({"ok": True})
 
     return jsonify({"ok": False, "error": "Usuário não encontrado."}), 404
 
 
 # ---------------------------
-# Finance APIs (exemplos)
+# Lancamentos (CRUD)
 # ---------------------------
 @app.post("/api/lancamentos")
 def api_add_lancamento():
@@ -292,21 +267,17 @@ def api_add_lancamento():
         return jsonify({"ok": False, "error": "Faça login para continuar."}), 401
 
     data = request.get_json(silent=True) or {}
-    tipo = (data.get("tipo") or "").strip().upper()  # RECEITA / GASTO
+    tipo = (data.get("tipo") or "").strip().upper()
     categoria = (data.get("categoria") or "").strip()
     descricao = (data.get("descricao") or "").strip()
     valor = data.get("valor")
-
-    # Data opcional
-    data_str = (data.get("data") or "").strip()
-    if not data_str:
-        data_str = date.today().isoformat()
+    data_str = (data.get("data") or "").strip() or date.today().isoformat()
 
     if tipo not in {"RECEITA", "GASTO"}:
         return jsonify({"ok": False, "error": "Tipo inválido (use RECEITA ou GASTO)."}), 400
 
     try:
-        valor_num = float(str(valor).replace(".", "").replace(",", "."))
+        valor_num = _parse_money_to_float(valor)
     except Exception:
         return jsonify({"ok": False, "error": "Valor inválido."}), 400
 
@@ -324,12 +295,138 @@ def api_add_lancamento():
     return jsonify({"ok": True})
 
 
+@app.get("/api/lancamentos")
+def api_list_lancamentos():
+    if not _require_login():
+        return jsonify({"ok": False, "error": "Faça login para continuar."}), 401
+
+    try:
+        limit = int(request.args.get("limit") or 30)
+        limit = max(1, min(limit, 200))
+    except Exception:
+        limit = 30
+
+    _, _, ws_lanc, _ = ensure_schema()
+    rows = ws_lanc.get_all_values()
+    if len(rows) <= 1:
+        return jsonify({"ok": True, "items": []})
+
+    header = rows[0]
+    col = {name: header.index(name) for name in header}
+    user = session["user_email"].lower()
+
+    items = []
+    for sheet_row_number in range(len(rows), 1, -1):  # de baixo pra cima
+        r = rows[sheet_row_number - 1]
+        if len(r) < len(header):
+            continue
+        if r[col["user_email"]].strip().lower() != user:
+            continue
+
+        items.append({
+            "row": sheet_row_number,  # linha real na planilha
+            "data": r[col["data"]].strip(),
+            "tipo": r[col["tipo"]].strip(),
+            "categoria": r[col["categoria"]].strip(),
+            "descricao": r[col["descricao"]].strip(),
+            "valor": r[col["valor"]].strip(),
+        })
+        if len(items) >= limit:
+            break
+
+    return jsonify({"ok": True, "items": items})
+
+
+@app.put("/api/lancamentos/<int:row>")
+def api_update_lancamento(row: int):
+    if not _require_login():
+        return jsonify({"ok": False, "error": "Faça login para continuar."}), 401
+    if row < 2:
+        return jsonify({"ok": False, "error": "Linha inválida."}), 400
+
+    data = request.get_json(silent=True) or {}
+    new_data = (data.get("data") or "").strip()
+    new_tipo = (data.get("tipo") or "").strip().upper()
+    new_categoria = (data.get("categoria") or "").strip()
+    new_descricao = (data.get("descricao") or "").strip()
+    new_valor = data.get("valor")
+
+    if not new_data:
+        return jsonify({"ok": False, "error": "Informe a data (YYYY-MM-DD)."}), 400
+    if new_tipo not in {"RECEITA", "GASTO"}:
+        return jsonify({"ok": False, "error": "Tipo inválido (use RECEITA ou GASTO)."}), 400
+    try:
+        valor_num = _parse_money_to_float(new_valor)
+    except Exception:
+        return jsonify({"ok": False, "error": "Valor inválido."}), 400
+
+    _, _, ws_lanc, _ = ensure_schema()
+
+    try:
+        header = ws_lanc.row_values(1)
+        col = {name: header.index(name) + 1 for name in header}  # 1-based
+
+        user_email_col = col.get("user_email")
+        if not user_email_col:
+            return jsonify({"ok": False, "error": "Cabeçalho da aba Lancamentos inválido."}), 500
+
+        owner = (ws_lanc.cell(row, user_email_col).value or "").strip().lower()
+        if owner != session["user_email"].lower():
+            return jsonify({"ok": False, "error": "Você não pode editar este lançamento."}), 403
+
+        # Atualiza somente colunas de edição (não mexe no criado_em)
+        ws_lanc.update_cell(row, col["data"], new_data)
+        ws_lanc.update_cell(row, col["tipo"], new_tipo)
+        ws_lanc.update_cell(row, col["categoria"], new_categoria)
+        ws_lanc.update_cell(row, col["descricao"], new_descricao)
+        ws_lanc.update_cell(row, col["valor"], valor_num)
+
+        return jsonify({"ok": True})
+
+    except gspread.exceptions.APIError as e:
+        return jsonify({"ok": False, "error": f"Erro ao editar: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Erro ao editar: {str(e)}"}), 500
+
+
+@app.delete("/api/lancamentos/<int:row>")
+def api_delete_lancamento(row: int):
+    if not _require_login():
+        return jsonify({"ok": False, "error": "Faça login para continuar."}), 401
+    if row < 2:
+        return jsonify({"ok": False, "error": "Linha inválida."}), 400
+
+    _, _, ws_lanc, _ = ensure_schema()
+
+    try:
+        header = ws_lanc.row_values(1)
+        col = {name: header.index(name) + 1 for name in header}  # 1-based
+
+        user_email_col = col.get("user_email")
+        if not user_email_col:
+            return jsonify({"ok": False, "error": "Cabeçalho da aba Lancamentos inválido."}), 500
+
+        owner = (ws_lanc.cell(row, user_email_col).value or "").strip().lower()
+        if owner != session["user_email"].lower():
+            return jsonify({"ok": False, "error": "Você não pode apagar este lançamento."}), 403
+
+        ws_lanc.delete_rows(row)
+        return jsonify({"ok": True})
+
+    except gspread.exceptions.APIError as e:
+        return jsonify({"ok": False, "error": f"Erro ao apagar: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Erro ao apagar: {str(e)}"}), 500
+
+
+# ---------------------------
+# Dashboard
+# ---------------------------
 @app.get("/api/dashboard")
 def api_dashboard():
     if not _require_login():
         return jsonify({"ok": False, "error": "Faça login para continuar."}), 401
 
-    # filtros: ?mes=2&ano=2026
     try:
         mes = int(request.args.get("mes") or date.today().month)
         ano = int(request.args.get("ano") or date.today().year)
@@ -346,12 +443,12 @@ def api_dashboard():
 
     receitas = 0.0
     gastos = 0.0
-    user = session["user_email"]
+    user = session["user_email"].lower()
 
     for r in rows[1:]:
         if len(r) < len(header):
             continue
-        if r[col["user_email"]].strip().lower() != user.lower():
+        if r[col["user_email"]].strip().lower() != user:
             continue
 
         d = r[col["data"]].strip()
