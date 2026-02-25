@@ -1,97 +1,61 @@
-const VERSION = "v2.0.0"; // troque quando fizer update
-const STATIC_CACHE = `static-${VERSION}`;
-const RUNTIME_CACHE = `runtime-${VERSION}`;
+// Finance AI - Service Worker (simple offline cache)
+const VERSION = "v1.0.0";
+const CACHE_NAME = `finance-ai-${VERSION}`;
 
-const PRECACHE = [
+const CORE_ASSETS = [
   "/",
   "/static/manifest.json",
-  "/static/vendor/chart.umd.min.js",
-
+  "/static/sw.js",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
-  "/static/icons/maskable-192.png",
-  "/static/icons/maskable-512.png",
 ];
 
-// INSTALL
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// ACTIVATE
 self.addEventListener("activate", (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter((k) => ![STATIC_CACHE, RUNTIME_CACHE].includes(k))
-        .map((k) => caches.delete(k))
-    );
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())))
+    ).then(() => self.clients.claim())
+  );
 });
 
-// FETCH
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
-
   const url = new URL(req.url);
 
-  // só mesma origem
+  // Only handle same-origin
   if (url.origin !== self.location.origin) return;
 
-  // icons → cache first
-  if (url.pathname.startsWith("/static/icons/")) {
-    event.respondWith(cacheFirst(req));
+  // Network-first for API
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => res)
+        .catch(() => caches.match(req).then((c) => c || new Response(JSON.stringify({ error: "offline" }), {
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          status: 503
+        })))
+    );
     return;
   }
 
-  // static (js/css/json/vendor) → stale-while-revalidate
-  if (url.pathname.startsWith("/static/")) {
-    event.respondWith(staleWhileRevalidate(req));
-    return;
-  }
-
-  // navegação → network first (fallback offline)
-  if (req.mode === "navigate") {
-    event.respondWith(networkFirst(req));
-  }
+  // Cache-first for everything else (static/pages)
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          // Cache successful GETs
+          if (req.method === "GET" && res.ok) cache.put(req, copy);
+        });
+        return res;
+      });
+    })
+  );
 });
-
-async function cacheFirst(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const fresh = await fetch(request);
-  if (fresh.ok) cache.put(request, fresh.clone());
-  return fresh;
-}
-
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request);
-
-  const fetchPromise = fetch(request).then((response) => {
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  });
-
-  return cached || fetchPromise;
-}
-
-async function networkFirst(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  try {
-    const fresh = await fetch(request);
-    if (fresh.ok) cache.put(request, fresh.clone());
-    return fresh;
-  } catch {
-    const cached = await cache.match(request);
-    return cached || new Response("Offline", { status: 503 });
-  }
-}
