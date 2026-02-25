@@ -1,6 +1,4 @@
-Flask>=2.3.0
-Werkzeug>=2.3.0
-gunicorn
-gspread
-google-auth
-reportlab
+Flask==3.0.3
+gunicorn==22.0.0
+gspread==6.1.4
+google-auth==2.33.0
