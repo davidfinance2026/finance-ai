@@ -221,20 +221,26 @@
         <div id="toastDash" class="toast"></div>
       </div>
 
-      <!-- Gráfico -->
+      <!-- Gráficos -->
       <div class="card">
         <h2>Visual</h2>
 
         <div class="chartBox">
           <div class="chartTitle">📊 Receitas x Gastos</div>
-          <p class="chartHint">O gráfico atualiza automaticamente com o mês/ano selecionados.</p>
+          <p class="chartHint">Atualiza automaticamente com o mês/ano selecionados.</p>
           <canvas id="chartRG"></canvas>
         </div>
 
         <div class="chartBox">
           <div class="chartTitle">📈 Saldo do mês</div>
-          <p class="chartHint">Barra verde (positivo) ou vermelha (negativo).</p>
+          <p class="chartHint">Verde (positivo) ou vermelho (negativo).</p>
           <canvas id="chartSaldo"></canvas>
+        </div>
+
+        <div class="chartBox">
+          <div class="chartTitle">🗓️ Evolução diária</div>
+          <p class="chartHint">Linha por dia do mês com Receitas e Gastos.</p>
+          <canvas id="chartDaily"></canvas>
         </div>
 
         <div class="divider"></div>
@@ -560,7 +566,6 @@
     }
 
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
-
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
     // -----------------------
@@ -653,13 +658,16 @@
     // -----------------------
     let chartRG = null;
     let chartSaldo = null;
+    let chartDaily = null;
 
     function ensureCharts() {
+      if (!window.Chart) return;
+
       const c1 = $("chartRG");
       const c2 = $("chartSaldo");
-      if (!c1 || !c2 || !window.Chart) return;
+      const c3 = $("chartDaily");
 
-      if (!chartRG) {
+      if (c1 && !chartRG) {
         chartRG = new Chart(c1, {
           type: "doughnut",
           data: {
@@ -676,16 +684,9 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: {
-                labels: { color: "rgba(234,240,255,.85)" }
-              },
+              legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    const v = ctx.raw || 0;
-                    return `${ctx.label}: ${moneyBR(v)}`;
-                  }
-                }
+                callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` }
               }
             },
             cutout: "65%"
@@ -693,7 +694,7 @@
         });
       }
 
-      if (!chartSaldo) {
+      if (c2 && !chartSaldo) {
         chartSaldo = new Chart(c2, {
           type: "bar",
           data: {
@@ -711,10 +712,49 @@
             maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
+              tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
+            },
+            scales: {
+              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
+            }
+          }
+        });
+      }
+
+      if (c3 && !chartDaily) {
+        chartDaily = new Chart(c3, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Receitas",
+                data: [],
+                borderColor: "rgba(46,229,157,.9)",
+                backgroundColor: "rgba(46,229,157,.15)",
+                tension: 0.25,
+                fill: true,
+                pointRadius: 2
+              },
+              {
+                label: "Gastos",
+                data: [],
+                borderColor: "rgba(255,75,110,.9)",
+                backgroundColor: "rgba(255,75,110,.12)",
+                tension: 0.25,
+                fill: true,
+                pointRadius: 2
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: {
-                callbacks: {
-                  label: (ctx) => moneyBR(ctx.raw || 0)
-                }
+                callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` }
               }
             },
             scales: {
@@ -726,7 +766,7 @@
       }
     }
 
-    function updateCharts(receitas, gastos, saldo) {
+    function updateChartsTotals(receitas, gastos, saldo) {
       ensureCharts();
       if (chartRG) {
         chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)];
@@ -735,12 +775,67 @@
       if (chartSaldo) {
         const s = Number(saldo || 0);
         chartSaldo.data.datasets[0].data = [s];
-
-        // muda a cor conforme positivo/negativo
         chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"];
         chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"];
         chartSaldo.update();
       }
+    }
+
+    function daysInMonth(year, month1to12) {
+      return new Date(year, month1to12, 0).getDate();
+    }
+
+    function parseISODate(s) {
+      // espera YYYY-MM-DD
+      const parts = String(s || "").split("-");
+      if (parts.length !== 3) return null;
+      const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+      if (!y || !m || !d) return null;
+      return { y, m, d };
+    }
+
+    function parseMoneyLoose(v) {
+      const n = Number(String(v ?? "").trim().replace(/\s/g,"").replace(/\./g,"").replace(",", "."));
+      return isNaN(n) ? 0 : n;
+    }
+
+    async function updateDailyChart(mes, ano) {
+      ensureCharts();
+      if (!chartDaily) return;
+
+      // labels 1..N
+      const dim = daysInMonth(ano, mes);
+      const labels = Array.from({length: dim}, (_, i) => String(i + 1));
+      const receitasDia = Array.from({length: dim}, () => 0);
+      const gastosDia = Array.from({length: dim}, () => 0);
+
+      try {
+        // Pega até 200 pra montar o mês (ajuste se precisar)
+        const res = await api("/api/lancamentos?limit=200", "GET");
+        const items = res.items || [];
+
+        for (const it of items) {
+          const dt = parseISODate(it.data);
+          if (!dt) continue;
+          if (dt.y !== ano || dt.m !== mes) continue;
+          const idx = dt.d - 1;
+          if (idx < 0 || idx >= dim) continue;
+
+          const tipo = String(it.tipo || "").toUpperCase();
+          const val = parseMoneyLoose(it.valor);
+
+          if (tipo === "RECEITA") receitasDia[idx] += val;
+          if (tipo === "GASTO") gastosDia[idx] += val;
+        }
+
+      } catch (e) {
+        // se falhar (não logado), zera
+      }
+
+      chartDaily.data.labels = labels;
+      chartDaily.data.datasets[0].data = receitasDia;
+      chartDaily.data.datasets[1].data = gastosDia;
+      chartDaily.update();
     }
 
     // -----------------------
@@ -767,17 +862,23 @@
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
 
-        updateCharts(res.receitas, res.gastos, res.saldo);
+        updateChartsTotals(res.receitas, res.gastos, res.saldo);
+        await updateDailyChart(mes, ano);
       }catch(e){
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
-        updateCharts(0, 0, 0);
+        updateChartsTotals(0, 0, 0);
+        await updateDailyChart(mes, ano);
         showToast(toast, "err", "Faça login para ver o dashboard", e.message);
       }
     }
 
     $("btnAtualizarDash").addEventListener("click", () => refreshDashboard());
+
+    // Atualiza gráfico ao mudar mês/ano (sem precisar clicar)
+    $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
+    $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
 
     // -----------------------
     // Criar lançamento
@@ -949,7 +1050,7 @@
     // Boot
     // -----------------------
     initMesAno();
-    ensureCharts();               // cria os gráficos zerados
+    ensureCharts();
     refreshDashboard().catch(()=>{});
   </script>
 </body>
