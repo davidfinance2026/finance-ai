@@ -6,19 +6,10 @@
   <title>Finance AI</title>
   <style>
     :root{
-      --bg:#070B18;
-      --panel:#0B1024;
-      --panel2:#0E1736;
-      --text:#EAF0FF;
-      --muted:#93A4C7;
-      --brand:#4B8CFF;
-      --brand2:#2D6BFF;
-      --danger:#FF4B6E;
-      --ok:#2EE59D;
-      --border:rgba(255,255,255,.10);
-      --shadow: 0 14px 50px rgba(0,0,0,.55);
-      --radius:18px;
-      --radius2:26px;
+      --bg:#070B18; --panel:#0B1024; --text:#EAF0FF; --muted:#93A4C7;
+      --brand:#4B8CFF; --danger:#FF4B6E; --ok:#2EE59D;
+      --border:rgba(255,255,255,.10); --shadow:0 14px 50px rgba(0,0,0,.55);
+      --radius:18px; --radius2:26px;
     }
     *{box-sizing:border-box}
     body{
@@ -29,63 +20,53 @@
                   var(--bg);
       color:var(--text);
     }
-    a{color:inherit}
+    code{opacity:.9}
     .wrap{max-width:980px;margin:0 auto;padding:22px 16px 70px}
     .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
-    .brand h1{margin:0;font-size:28px;letter-spacing:.2px}
+    .brand h1{margin:0;font-size:28px}
     .brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
+
     .btn{
       border:1px solid var(--border);
       background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
       color:var(--text);
-      padding:10px 14px;
-      border-radius:999px;
-      cursor:pointer;
-      transition:.15s transform, .2s background;
-      display:inline-flex;align-items:center;gap:8px;
-      user-select:none;
+      padding:10px 14px;border-radius:999px;cursor:pointer;
+      transition:.15s transform,.2s background;
+      display:inline-flex;align-items:center;gap:8px;user-select:none;
     }
-    .btn:hover{transform: translateY(-1px)}
+    .btn:hover{transform:translateY(-1px)}
     .btn.primary{
-      border-color: rgba(75,140,255,.45);
+      border-color:rgba(75,140,255,.45);
       background: linear-gradient(180deg, rgba(75,140,255,.35), rgba(45,107,255,.18));
     }
     .btn.danger{
-      border-color: rgba(255,75,110,.45);
+      border-color:rgba(255,75,110,.45);
       background: linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
-    .pill{
-      padding:6px 10px;border-radius:999px;
-      border:1px solid var(--border);
-      color:var(--muted);
-      font-size:12px;
-    }
+    .btn.small{padding:8px 12px;font-size:13px}
+
+    .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .spacer{flex:1}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:14px}
+    @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
 
     .tabs{
       display:flex;gap:10px;flex-wrap:wrap;
-      padding:8px;border-radius:999px;
-      border:1px solid var(--border);
+      padding:8px;border-radius:999px;border:1px solid var(--border);
       background: rgba(255,255,255,.04);
-      margin:14px 0 16px;
-      width:fit-content;
+      margin:14px 0 16px;width:fit-content;
     }
     .tab{
-      padding:10px 14px;border-radius:999px;
-      cursor:pointer;
-      color:var(--muted);
-      border:1px solid transparent;
-      user-select:none;
-      font-weight:600;
-      font-size:14px;
+      padding:10px 14px;border-radius:999px;cursor:pointer;
+      color:var(--muted);border:1px solid transparent;user-select:none;font-weight:700;font-size:14px;
     }
     .tab.active{
       color:var(--text);
-      border-color: rgba(75,140,255,.35);
+      border-color:rgba(75,140,255,.35);
       background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
     }
-
-    .grid{display:grid;gap:14px}
-    @media(min-width:840px){ .grid.cols2{grid-template-columns:1fr 1fr;} }
 
     .card{
       border:1px solid var(--border);
@@ -96,94 +77,52 @@
       overflow:hidden;
     }
     .card h2{margin:0 0 8px;font-size:14px;letter-spacing:.4px;color:var(--muted);text-transform:uppercase}
-    .card .value{font-size:28px;font-weight:800;margin-top:4px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .spacer{flex:1}
-    .muted{color:var(--muted)}
+
     .field{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     label{font-size:12px;color:var(--muted);letter-spacing:.2px}
-    input, select, textarea{
-      width:100%;
-      border-radius:14px;
-      padding:12px 12px;
-      border:1px solid var(--border);
-      background: rgba(0,0,0,.20);
-      color:var(--text);
-      outline:none;
+    input,select,textarea{
+      width:100%;border-radius:14px;padding:12px 12px;border:1px solid var(--border);
+      background: rgba(0,0,0,.20);color:var(--text);outline:none;
     }
     textarea{min-height:92px;resize:vertical}
     .split{display:grid;gap:10px}
-    @media(min-width:640px){ .split{grid-template-columns:1fr 1fr;} }
+    @media(min-width:640px){.split{grid-template-columns:1fr 1fr}}
 
-    .toast{
-      margin-top:12px;
-      padding:12px 12px;
-      border-radius:16px;
-      border:1px solid var(--border);
-      background: rgba(0,0,0,.25);
-      display:none;
-    }
+    .toast{margin-top:12px;padding:12px 12px;border-radius:16px;border:1px solid var(--border);
+      background: rgba(0,0,0,.25);display:none}
     .toast.show{display:block}
-    .toast.ok{border-color: rgba(46,229,157,.35)}
-    .toast.err{border-color: rgba(255,75,110,.35)}
-    .toast .t{font-weight:700}
+    .toast.ok{border-color:rgba(46,229,157,.35)}
+    .toast.err{border-color:rgba(255,75,110,.35)}
+    .toast .t{font-weight:800}
     .toast .d{color:var(--muted);font-size:13px;margin-top:4px}
 
+    .hidden{display:none !important}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+
     /* modal */
-    .overlay{
-      position:fixed;inset:0;
-      background: rgba(0,0,0,.55);
-      display:none;align-items:flex-end;justify-content:center;
-      padding:16px;
-      z-index:50;
-    }
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;padding:16px;z-index:50}
     .overlay.show{display:flex}
     .modal{
       width:min(560px, 100%);
-      border-radius: 26px;
-      border:1px solid var(--border);
+      border-radius:26px;border:1px solid var(--border);
       background: linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
-      box-shadow: var(--shadow);
-      padding:16px;
+      box-shadow: var(--shadow);padding:16px;
     }
     .modalHead{display:flex;align-items:center;gap:12px}
     .modalHead h3{margin:0;font-size:20px}
-    .x{
-      margin-left:auto;
-      width:42px;height:42px;border-radius:999px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.05);
-      cursor:pointer;
-      color:var(--text);
-      font-size:18px;
-    }
-    .segTabs{
-      margin-top:12px;
-      display:flex;
-      gap:8px;
-      padding:6px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.04);
-    }
-    .seg{
-      flex:1;
-      text-align:center;
-      padding:10px 12px;
-      border-radius:999px;
-      cursor:pointer;
-      color:var(--muted);
-      font-weight:700;
-      user-select:none;
-    }
-    .seg.active{
-      color:var(--text);
-      background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
-      border:1px solid rgba(75,140,255,.35);
-    }
+    .x{margin-left:auto;width:42px;height:42px;border-radius:999px;border:1px solid var(--border);
+      background: rgba(255,255,255,.05);cursor:pointer;color:var(--text);font-size:18px}
+    .segTabs{margin-top:12px;display:flex;gap:8px;padding:6px;border-radius:999px;border:1px solid var(--border);background: rgba(255,255,255,.04)}
+    .seg{flex:1;text-align:center;padding:10px 12px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:800;user-select:none}
+    .seg.active{color:var(--text);background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));border:1px solid rgba(75,140,255,.35)}
     .hint{font-size:12px;color:var(--muted);margin-top:8px}
-    .hidden{display:none !important}
-    .divider{height:1px;background:var(--border);margin:14px 0}
+
+    /* list cards */
+    .miniCard{
+      box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03);
+      border:1px solid var(--border);padding:12px;
+    }
+    .kpi{font-weight:900}
   </style>
 </head>
 
@@ -194,7 +133,6 @@
         <h1>Finance AI</h1>
         <p>Controle financeiro • simples e rápido</p>
       </div>
-
       <div class="row">
         <span id="userPill" class="pill hidden"></span>
         <button id="btnLogin" class="btn primary">🔒 Login</button>
@@ -213,6 +151,7 @@
     <section id="tab-dashboard" class="grid cols2">
       <div class="card">
         <h2>Dashboard do mês</h2>
+
         <div class="split">
           <div class="field">
             <label>Mês</label>
@@ -227,27 +166,25 @@
         <div class="divider"></div>
 
         <div class="grid" style="gap:10px">
-          <div class="card" style="box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03)">
+          <div class="miniCard">
             <div class="row">
-              <div class="muted" style="font-weight:800;letter-spacing:.3px">RECEITAS</div>
+              <div class="muted" style="font-weight:900">RECEITAS</div>
               <div class="spacer"></div>
-              <div id="valReceitas" style="font-weight:900">R$ 0,00</div>
+              <div id="valReceitas" class="kpi">R$ 0,00</div>
             </div>
           </div>
-
-          <div class="card" style="box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03)">
+          <div class="miniCard">
             <div class="row">
-              <div class="muted" style="font-weight:800;letter-spacing:.3px">GASTOS</div>
+              <div class="muted" style="font-weight:900">GASTOS</div>
               <div class="spacer"></div>
-              <div id="valGastos" style="font-weight:900">R$ 0,00</div>
+              <div id="valGastos" class="kpi">R$ 0,00</div>
             </div>
           </div>
-
-          <div class="card" style="box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03)">
+          <div class="miniCard">
             <div class="row">
-              <div class="muted" style="font-weight:800;letter-spacing:.3px">SALDO</div>
+              <div class="muted" style="font-weight:900">SALDO</div>
               <div class="spacer"></div>
-              <div id="valSaldo" style="font-weight:900">R$ 0,00</div>
+              <div id="valSaldo" class="kpi">R$ 0,00</div>
             </div>
           </div>
         </div>
@@ -255,7 +192,7 @@
         <div class="row" style="margin-top:14px">
           <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
           <div class="spacer"></div>
-          <span class="hint">Dica: faça login para ver seus dados.</span>
+          <span class="hint">Faça login para ver seus dados.</span>
         </div>
 
         <div id="toastDash" class="toast"></div>
@@ -266,11 +203,12 @@
         <div class="row" style="margin-top:6px;flex-wrap:wrap">
           <button class="btn" id="goLancar">➕ Lançar agora</button>
           <button class="btn" id="openLogin2">🔒 Abrir login</button>
+          <button class="btn" id="goUltimos">🧾 Ver últimos</button>
         </div>
         <div class="divider"></div>
-        <p class="muted" style="margin:0;font-size:13px;line-height:1.5">
-          Se o dashboard estiver zerado mesmo após lançar, confirme se a planilha <b>Controle Financeiro</b> foi compartilhada
-          com a Service Account (e-mail do JSON) como <b>Editor</b>.
+        <p class="muted" style="margin:0;font-size:13px;line-height:1.6">
+          Se o dashboard não atualizar, confirme se a planilha <b>Controle Financeiro</b> foi compartilhada com a Service Account
+          (e-mail do JSON) como <b>Editor</b>.
         </p>
       </div>
     </section>
@@ -326,13 +264,18 @@
     <!-- ÚLTIMOS -->
     <section id="tab-ultimos" class="hidden">
       <div class="card">
-        <h2>Últimos lançamentos</h2>
-        <p class="muted" style="margin:0;line-height:1.6">
-          Esta tela está pronta no layout. Se você quiser listar “Últimos”, eu te passo 2 rotas no <code>app.py</code>:
-          <b>GET /api/lancamentos</b> e <b>DELETE /api/lancamentos/:id</b> (ou por linha), e eu atualizo o front pra puxar do Sheets.
-        </p>
-        <div class="divider"></div>
-        <div class="muted">Por enquanto, use “Lançar” e “Dashboard”.</div>
+        <div class="row" style="align-items:center">
+          <h2 style="margin:0">Últimos lançamentos</h2>
+          <div class="spacer"></div>
+          <button class="btn primary" id="btnRecarregarUltimos">Recarregar</button>
+        </div>
+
+        <div class="hint" style="margin-top:8px">
+          Mostra os últimos lançamentos do seu usuário. Você pode <b>editar</b> ou <b>apagar</b>.
+        </div>
+
+        <div id="toastUltimos" class="toast"></div>
+        <div id="listaUltimos" style="margin-top:12px;display:grid;gap:10px"></div>
       </div>
     </section>
 
@@ -341,18 +284,18 @@
       <div class="card">
         <h2>Investimentos</h2>
         <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono no backend:
+          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono:
           <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
         </p>
       </div>
     </section>
   </div>
 
-  <!-- MODAL LOGIN -->
+  <!-- MODAL AUTH + EDIT -->
   <div id="overlay" class="overlay" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Autenticação">
+    <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
-        <div style="font-size:22px">🔒</div>
+        <div style="font-size:22px" id="modalIcon">🔒</div>
         <div>
           <h3 id="modalTitle">Login</h3>
           <div class="hint" id="modalSub">Entre com seu e-mail e senha.</div>
@@ -360,118 +303,151 @@
         <button class="x" id="closeModal">✕</button>
       </div>
 
-      <div class="segTabs" style="margin-top:12px">
-        <div class="seg active" data-seg="entrar">Entrar</div>
-        <div class="seg" data-seg="criar">Criar conta</div>
-        <div class="seg" data-seg="reset">Resetar senha</div>
-      </div>
-
-      <!-- ENTRAR -->
-      <div id="seg-entrar" style="margin-top:12px">
-        <div class="field">
-          <label>E-mail</label>
-          <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
-        </div>
-        <div class="field">
-          <label>Senha</label>
-          <input id="loginSenha" type="password" placeholder="Sua senha" />
+      <!-- AUTH MODE -->
+      <div id="authBlock">
+        <div class="segTabs">
+          <div class="seg active" data-seg="entrar">Entrar</div>
+          <div class="seg" data-seg="criar">Criar conta</div>
+          <div class="seg" data-seg="reset">Resetar senha</div>
         </div>
 
-        <div class="row" style="margin-top:12px">
-          <button id="btnEntrar" class="btn primary" style="flex:1">Entrar</button>
-          <button class="btn" id="btnFechar1">Sair</button>
-        </div>
-
-        <div id="toastAuth1" class="toast"></div>
-      </div>
-
-      <!-- CRIAR -->
-      <div id="seg-criar" class="hidden" style="margin-top:12px">
-        <div class="split">
+        <div id="seg-entrar" style="margin-top:12px">
           <div class="field">
-            <label>Nome / Apelido</label>
-            <input id="regApelido" placeholder="Ex: David" />
+            <label>E-mail</label>
+            <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
           </div>
-          <div class="field">
-            <label>Telefone (DDD + número)</label>
-            <input id="regTelefone" inputmode="tel" placeholder="(37) 99999-9999" />
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Nome completo</label>
-          <input id="regNomeCompleto" placeholder="Seu nome completo" />
-        </div>
-
-        <div class="field">
-          <label>E-mail</label>
-          <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
-        </div>
-
-        <div class="split">
           <div class="field">
             <label>Senha</label>
-            <input id="regSenha" type="password" placeholder="Mínimo 6 caracteres" />
+            <input id="loginSenha" type="password" placeholder="Sua senha" />
           </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnEntrar" class="btn primary" style="flex:1">Entrar</button>
+            <button class="btn" id="btnFechar1">Sair</button>
+          </div>
+
+          <div id="toastAuth1" class="toast"></div>
+        </div>
+
+        <div id="seg-criar" class="hidden" style="margin-top:12px">
+          <div class="split">
+            <div class="field">
+              <label>Nome / Apelido</label>
+              <input id="regApelido" placeholder="Ex: David" />
+            </div>
+            <div class="field">
+              <label>Telefone</label>
+              <input id="regTelefone" inputmode="tel" placeholder="(37) 99999-9999" />
+            </div>
+          </div>
+
           <div class="field">
-            <label>Confirmar senha</label>
-            <input id="regConf" type="password" placeholder="Repita a senha" />
+            <label>Nome completo</label>
+            <input id="regNomeCompleto" placeholder="Seu nome completo" />
           </div>
+
+          <div class="field">
+            <label>E-mail</label>
+            <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
+          </div>
+
+          <div class="split">
+            <div class="field">
+              <label>Senha</label>
+              <input id="regSenha" type="password" placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div class="field">
+              <label>Confirmar senha</label>
+              <input id="regConf" type="password" placeholder="Repita a senha" />
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnCriarConta" class="btn primary" style="flex:1">Criar conta</button>
+            <button class="btn" id="btnFechar2">Sair</button>
+          </div>
+
+          <div id="toastAuth2" class="toast"></div>
         </div>
 
-        <div class="row" style="margin-top:12px">
-          <button id="btnCriarConta" class="btn primary" style="flex:1">Criar conta</button>
-          <button class="btn" id="btnFechar2">Sair</button>
-        </div>
+        <div id="seg-reset" class="hidden" style="margin-top:12px">
+          <div class="field">
+            <label>E-mail</label>
+            <input id="rstEmail" type="email" placeholder="seuemail@dominio.com" />
+          </div>
+          <div class="split">
+            <div class="field">
+              <label>Nova senha</label>
+              <input id="rstSenha" type="password" placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div class="field">
+              <label>Confirmar</label>
+              <input id="rstConf" type="password" placeholder="Repita a senha" />
+            </div>
+          </div>
 
-        <div id="toastAuth2" class="toast"></div>
-        <div class="hint">Cadastro é imediato: você entra após criar.</div>
+          <div class="row" style="margin-top:12px">
+            <button id="btnResetar" class="btn primary" style="flex:1">Resetar senha</button>
+            <button class="btn" id="btnFechar3">Sair</button>
+          </div>
+
+          <div id="toastAuth3" class="toast"></div>
+        </div>
       </div>
 
-      <!-- RESET -->
-      <div id="seg-reset" class="hidden" style="margin-top:12px">
-        <div class="field">
-          <label>E-mail</label>
-          <input id="rstEmail" type="email" placeholder="seuemail@dominio.com" />
-        </div>
+      <!-- EDIT MODE -->
+      <div id="editBlock" class="hidden" style="margin-top:12px">
         <div class="split">
           <div class="field">
-            <label>Nova senha</label>
-            <input id="rstSenha" type="password" placeholder="Mínimo 6 caracteres" />
+            <label>Tipo</label>
+            <select id="edtTipo">
+              <option value="RECEITA">RECEITA</option>
+              <option value="GASTO">GASTO</option>
+            </select>
           </div>
           <div class="field">
-            <label>Confirmar</label>
-            <input id="rstConf" type="password" placeholder="Repita a senha" />
+            <label>Data</label>
+            <input id="edtData" type="date" />
           </div>
+        </div>
+
+        <div class="split">
+          <div class="field">
+            <label>Categoria</label>
+            <input id="edtCategoria" placeholder="Ex: Mercado" />
+          </div>
+          <div class="field">
+            <label>Valor (R$)</label>
+            <input id="edtValor" inputmode="decimal" placeholder="Ex: 50,00" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Descrição</label>
+          <textarea id="edtDescricao" placeholder="Opcional..."></textarea>
         </div>
 
         <div class="row" style="margin-top:12px">
-          <button id="btnResetar" class="btn primary" style="flex:1">Resetar senha</button>
-          <button class="btn" id="btnFechar3">Sair</button>
+          <button id="btnSalvarEdicao" class="btn primary" style="flex:1">Salvar edição</button>
+          <button class="btn" id="btnCancelarEdicao">Cancelar</button>
         </div>
 
-        <div id="toastAuth3" class="toast"></div>
-        <div class="hint">Reset simples (sem e-mail). Só altera a senha no Sheets.</div>
+        <div id="toastEdit" class="toast"></div>
       </div>
+
     </div>
   </div>
 
   <script>
-    // -----------------------
-    // Helpers
-    // -----------------------
     const $ = (id) => document.getElementById(id);
+
     const moneyBR = (n) => {
       const v = Number(n || 0);
       return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
     };
 
     async function api(path, method="GET", body=null) {
-      const opt = {
-        method,
-        headers: { "Content-Type":"application/json" },
-        credentials: "include"
-      };
+      const opt = { method, headers: { "Content-Type":"application/json" }, credentials:"include" };
       if (body) opt.body = JSON.stringify(body);
       const res = await fetch(path, opt);
       let data = null;
@@ -487,45 +463,50 @@
       el.className = "toast show " + (type === "ok" ? "ok" : "err");
       el.innerHTML = `<div class="t">${title}</div>` + (desc ? `<div class="d">${desc}</div>` : "");
     }
-    function hideToast(el) {
-      el.className = "toast";
-      el.innerHTML = "";
-    }
+    function hideToast(el) { el.className = "toast"; el.innerHTML = ""; }
 
     // -----------------------
     // Tabs
     // -----------------------
     const tabEls = Array.from(document.querySelectorAll(".tab"));
-    function setTab(name) {
+
+    function _setTabBase(name) {
       tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
       ["dashboard","lancar","ultimos","investimentos"].forEach(n => {
-        const sec = $("tab-" + n);
-        sec.classList.toggle("hidden", n !== name);
+        $("tab-" + n).classList.toggle("hidden", n !== name);
       });
       if (name === "dashboard") refreshDashboard().catch(()=>{});
+      if (name === "ultimos") carregarUltimos().catch(()=>{});
     }
+
+    let setTab = _setTabBase;
     tabEls.forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
 
     $("goLancar").addEventListener("click", () => setTab("lancar"));
-    $("openLogin2").addEventListener("click", () => openModal("entrar"));
+    $("goUltimos").addEventListener("click", () => setTab("ultimos"));
+    $("openLogin2").addEventListener("click", () => openAuthModal("entrar"));
 
     // -----------------------
-    // Modal
+    // Modal (auth + edit)
     // -----------------------
     const overlay = $("overlay");
     const segs = Array.from(document.querySelectorAll(".seg"));
 
-    function openModal(seg="entrar") {
+    function openModal() {
       overlay.classList.add("show");
       overlay.setAttribute("aria-hidden", "false");
-      setSeg(seg);
     }
     function closeModal() {
       overlay.classList.remove("show");
       overlay.setAttribute("aria-hidden", "true");
-      // limpar toasts
-      [$("toastAuth1"),$("toastAuth2"),$("toastAuth3")].forEach(hideToast);
+      ["toastAuth1","toastAuth2","toastAuth3","toastEdit"].forEach(id => hideToast($(id)));
     }
+
+    $("closeModal").addEventListener("click", closeModal);
+    $("btnFechar1").addEventListener("click", closeModal);
+    $("btnFechar2").addEventListener("click", closeModal);
+    $("btnFechar3").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
     function setSeg(seg) {
       segs.forEach(s => s.classList.toggle("active", s.dataset.seg === seg));
@@ -533,18 +514,20 @@
       $("seg-criar").classList.toggle("hidden", seg !== "criar");
       $("seg-reset").classList.toggle("hidden", seg !== "reset");
 
-      if (seg === "entrar") { $("modalTitle").textContent = "Login"; $("modalSub").textContent = "Entre com seu e-mail e senha."; }
-      if (seg === "criar")  { $("modalTitle").textContent = "Criar conta"; $("modalSub").textContent = "Crie sua conta para acessar seus lançamentos."; }
-      if (seg === "reset")  { $("modalTitle").textContent = "Resetar senha"; $("modalSub").textContent = "Defina uma nova senha para sua conta."; }
+      $("modalIcon").textContent = "🔒";
+      $("modalTitle").textContent = seg === "entrar" ? "Login" : (seg === "criar" ? "Criar conta" : "Resetar senha");
+      $("modalSub").textContent = seg === "entrar"
+        ? "Entre com seu e-mail e senha."
+        : (seg === "criar" ? "Crie sua conta para acessar seus lançamentos." : "Defina uma nova senha para sua conta.");
+
+      $("authBlock").classList.remove("hidden");
+      $("editBlock").classList.add("hidden");
+      openModal();
     }
 
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
-    $("btnLogin").addEventListener("click", () => openModal("entrar"));
-    $("closeModal").addEventListener("click", closeModal);
-    $("btnFechar1").addEventListener("click", closeModal);
-    $("btnFechar2").addEventListener("click", closeModal);
-    $("btnFechar3").addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    function openAuthModal(seg="entrar") { setSeg(seg); }
 
     // -----------------------
     // Auth state (front only)
@@ -553,33 +536,24 @@
 
     function setLoggedUI(isLogged, email="") {
       const pill = $("userPill");
-      const btnLogin = $("btnLogin");
-      const btnLogout = $("btnLogout");
-
-      if (isLogged) {
-        pill.textContent = email;
-        pill.classList.remove("hidden");
-        btnLogin.classList.add("hidden");
-        btnLogout.classList.remove("hidden");
-      } else {
-        pill.classList.add("hidden");
-        btnLogin.classList.remove("hidden");
-        btnLogout.classList.add("hidden");
-      }
+      $("btnLogin").classList.toggle("hidden", isLogged);
+      $("btnLogout").classList.toggle("hidden", !isLogged);
+      pill.classList.toggle("hidden", !isLogged);
+      pill.textContent = isLogged ? email : "";
     }
 
-    // tenta assumir logado pelo localStorage (a sessão real é no servidor)
     if (currentUserEmail) setLoggedUI(true, currentUserEmail);
     else setLoggedUI(false);
 
+    $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
+
     $("btnLogout").addEventListener("click", async () => {
-      try{
-        await api("/api/logout", "POST");
-      }catch(e){}
+      try { await api("/api/logout", "POST"); } catch(e) {}
       localStorage.removeItem("financeai_user");
       currentUserEmail = "";
       setLoggedUI(false);
       refreshDashboard().catch(()=>{});
+      carregarUltimos().catch(()=>{});
     });
 
     // -----------------------
@@ -587,7 +561,7 @@
     // -----------------------
     $("btnEntrar").addEventListener("click", async () => {
       const t = $("toastAuth1"); hideToast(t);
-      try{
+      try {
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
         const res = await api("/api/login", "POST", { email, senha });
@@ -596,14 +570,14 @@
         setLoggedUI(true, res.email);
         showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
         setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
-      }catch(e){
+      } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
       }
     });
 
     $("btnCriarConta").addEventListener("click", async () => {
       const t = $("toastAuth2"); hideToast(t);
-      try{
+      try {
         const nome_apelido = $("regApelido").value.trim();
         const nome_completo = $("regNomeCompleto").value.trim();
         const telefone = $("regTelefone").value.trim();
@@ -621,21 +595,21 @@
 
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
         setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
-      }catch(e){
+      } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
       }
     });
 
     $("btnResetar").addEventListener("click", async () => {
       const t = $("toastAuth3"); hideToast(t);
-      try{
+      try {
         const email = $("rstEmail").value.trim().toLowerCase();
         const nova_senha = $("rstSenha").value;
         const confirmar = $("rstConf").value;
 
         await api("/api/reset_password", "POST", { email, nova_senha, confirmar });
         showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
-      }catch(e){
+      } catch (e) {
         showToast(t, "err", "Falha no reset", e.message);
       }
     });
@@ -646,20 +620,15 @@
     function initMesAno() {
       const sel = $("dashMes");
       const now = new Date();
-      const meses = [
-        "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-        "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
-      ];
-      sel.innerHTML = meses.map((m, i) => `<option value="${i+1}">${m}</option>`).join("");
+      const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      sel.innerHTML = meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join("");
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
       $("lanData").value = now.toISOString().slice(0,10);
     }
 
     async function refreshDashboard() {
-      const toast = $("toastDash");
-      hideToast(toast);
-
+      const toast = $("toastDash"); hideToast(toast);
       const mes = Number($("dashMes").value);
       const ano = Number($("dashAno").value);
 
@@ -669,7 +638,6 @@
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
       }catch(e){
-        // se não estiver logado, o backend retorna 401
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
@@ -680,28 +648,25 @@
     $("btnAtualizarDash").addEventListener("click", () => refreshDashboard());
 
     // -----------------------
-    // Lançamentos
+    // Criar lançamento
     // -----------------------
     $("btnSalvarLanc").addEventListener("click", async () => {
-      const toast = $("toastLanc");
-      hideToast(toast);
-
+      const toast = $("toastLanc"); hideToast(toast);
       try{
-        const tipo = $("lanTipo").value;
-        const data = $("lanData").value;
-        const categoria = $("lanCategoria").value.trim();
-        const descricao = $("lanDescricao").value.trim();
-        const valor = $("lanValor").value.trim();
-
-        await api("/api/lancamentos", "POST", { tipo, data, categoria, descricao, valor });
-
+        const payload = {
+          tipo: $("lanTipo").value,
+          data: $("lanData").value,
+          categoria: $("lanCategoria").value.trim(),
+          descricao: $("lanDescricao").value.trim(),
+          valor: $("lanValor").value.trim(),
+        };
+        await api("/api/lancamentos", "POST", payload);
         showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
-        // limpar campos básicos
         $("lanCategoria").value = "";
         $("lanDescricao").value = "";
         $("lanValor").value = "";
-        // atualiza dashboard
         refreshDashboard().catch(()=>{});
+        carregarUltimos().catch(()=>{});
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
@@ -712,6 +677,149 @@
       $("lanDescricao").value = "";
       $("lanValor").value = "";
       hideToast($("toastLanc"));
+    });
+
+    // -----------------------
+    // Últimos + Editar + Apagar
+    // -----------------------
+    $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
+
+    function normalizeValorToMoneyBR(raw) {
+      const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(/\./g,"").replace(",", "."));
+      if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return String(raw ?? "");
+    }
+
+    async function carregarUltimos() {
+      const toast = $("toastUltimos");
+      const list = $("listaUltimos");
+      hideToast(toast);
+      list.innerHTML = "";
+
+      try {
+        const res = await api("/api/lancamentos?limit=30", "GET");
+        const items = res.items || [];
+
+        if (items.length === 0) {
+          list.innerHTML = `<div class="muted">Nenhum lançamento ainda.</div>`;
+          return;
+        }
+
+        list.innerHTML = items.map(it => {
+          const valorNum = Number(String(it.valor).replace(/\./g,"").replace(",", "."));
+          const v = isNaN(valorNum) ? it.valor : moneyBR(valorNum);
+
+          const desc = (it.descricao || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+          const cat = (it.categoria || "Sem categoria").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+          // Guarda dados no botão via data-*
+          return `
+            <div class="miniCard">
+              <div class="row" style="gap:12px;align-items:flex-start">
+                <div style="min-width:92px" class="muted"><b>${it.data}</b></div>
+                <div style="flex:1">
+                  <div style="font-weight:900">${it.tipo} • ${cat}</div>
+                  <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
+                </div>
+                <div style="text-align:right;min-width:130px">
+                  <div style="font-weight:900">${v}</div>
+                  <div class="row" style="justify-content:flex-end;margin-top:8px">
+                    <button class="btn small" onclick='abrirEdicao(${JSON.stringify(it).replace(/'/g,"&#39;")})'>Editar</button>
+                    <button class="btn danger small" onclick="apagarLancamento(${it.row})">Apagar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+      } catch (e) {
+        showToast(toast, "err", "Erro ao carregar", e.message);
+      }
+    }
+
+    async function apagarLancamento(row) {
+      const toast = $("toastUltimos");
+      hideToast(toast);
+      if (!confirm("Quer mesmo apagar este lançamento?")) return;
+
+      try {
+        await api(`/api/lancamentos/${row}`, "DELETE");
+        showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+        await carregarUltimos();
+        await refreshDashboard();
+      } catch (e) {
+        showToast(toast, "err", "Não foi possível apagar", e.message);
+      }
+    }
+
+    // ---- Edit Modal ----
+    let editingRow = null;
+
+    function openEditModal() {
+      $("authBlock").classList.add("hidden");
+      $("editBlock").classList.remove("hidden");
+      $("modalIcon").textContent = "✏️";
+      $("modalTitle").textContent = "Editar lançamento";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza sua planilha.";
+      openModal();
+    }
+
+    function openAuthFromEdit() {
+      $("authBlock").classList.remove("hidden");
+      $("editBlock").classList.add("hidden");
+      openAuthModal("entrar");
+    }
+
+    // expõe no window para o onclick
+    window.abrirEdicao = (it) => {
+      // se não estiver logado (front) tenta abrir login
+      if (!currentUserEmail) return openAuthModal("entrar");
+
+      editingRow = it.row;
+      $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
+      $("edtData").value = it.data || new Date().toISOString().slice(0,10);
+      $("edtCategoria").value = it.categoria || "";
+      $("edtDescricao").value = it.descricao || "";
+      $("edtValor").value = normalizeValorToMoneyBR(it.valor);
+
+      hideToast($("toastEdit"));
+      openEditModal();
+    };
+
+    window.apagarLancamento = apagarLancamento;
+
+    $("btnCancelarEdicao").addEventListener("click", () => {
+      editingRow = null;
+      closeModal();
+    });
+
+    $("btnSalvarEdicao").addEventListener("click", async () => {
+      const toast = $("toastEdit");
+      hideToast(toast);
+
+      if (!editingRow) {
+        showToast(toast, "err", "Nada para editar", "Selecione um lançamento para editar.");
+        return;
+      }
+
+      try {
+        const payload = {
+          tipo: $("edtTipo").value,
+          data: $("edtData").value,
+          categoria: $("edtCategoria").value.trim(),
+          descricao: $("edtDescricao").value.trim(),
+          valor: $("edtValor").value.trim(),
+        };
+
+        await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
+        showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
+        await carregarUltimos();
+        await refreshDashboard();
+        setTimeout(() => { closeModal(); }, 450);
+      } catch (e) {
+        showToast(toast, "err", "Erro ao editar", e.message);
+      }
     });
 
     // -----------------------
