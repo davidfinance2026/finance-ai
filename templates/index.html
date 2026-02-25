@@ -1,18 +1,774 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Finance AI</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>Finance AI</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+
+  <style>
+    :root{
+      --bg:#070b18;
+      --panel:#0b1020;
+      --panel2:#0e1630;
+      --text:#eaf0ff;
+      --muted:#a9b6d6;
+      --line:rgba(255,255,255,.08);
+      --blue1:#2b6cff;
+      --blue2:#60a5ff;
+      --green:#2ee59d;
+      --red:#ff4d6d;
+      --shadow: 0 24px 70px rgba(0,0,0,.45);
+      --radius: 22px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(96,165,255,.18), transparent 60%),
+                  radial-gradient(900px 700px at 80% 30%, rgba(46,229,157,.10), transparent 55%),
+                  linear-gradient(180deg, #060a16, #070b18 40%, #060a16);
+      color:var(--text);
+      min-height:100vh;
+    }
+    .wrap{ max-width: 980px; margin: 0 auto; padding: 22px 16px 70px; }
+    header{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+      padding: 8px 6px 16px;
+    }
+    .brand h1{ margin:0; font-weight: 800; letter-spacing:.4px; font-size: 44px; }
+    .brand p{ margin: 6px 0 0; color:var(--muted); }
+    .top-actions{ display:flex; align-items:center; gap:10px; }
+    .pill{
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      border-radius: 999px;
+      padding: 10px 14px;
+      color:var(--text);
+      display:flex; align-items:center; gap:8px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.25);
+    }
+    .btn{
+      border:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(96,165,255,.25), rgba(96,165,255,.10));
+      color: var(--text);
+      border-radius: 999px;
+      padding: 10px 14px;
+      cursor:pointer;
+      transition: transform .06s ease, filter .15s ease;
+    }
+    .btn:hover{ filter: brightness(1.08); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.secondary{
+      background: rgba(255,255,255,.03);
+    }
+    .btn.danger{
+      background: linear-gradient(180deg, rgba(255,77,109,.22), rgba(255,77,109,.10));
+    }
+
+    .nav{
+      margin: 14px 0 18px;
+      padding: 14px;
+      border-radius: 28px;
+      background: rgba(255,255,255,.03);
+      border:1px solid var(--line);
+      box-shadow: var(--shadow);
+      display:flex; gap:10px; flex-wrap: wrap;
+    }
+    .tab{
+      flex: 0 0 auto;
+      padding: 12px 16px;
+      border-radius: 999px;
+      border:1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      cursor:pointer;
+      font-weight: 650;
+    }
+    .tab.active{
+      color: var(--text);
+      background: linear-gradient(180deg, rgba(43,108,255,.35), rgba(96,165,255,.12));
+      border-color: rgba(96,165,255,.20);
+    }
+
+    .card{
+      background: rgba(255,255,255,.03);
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .card h2{
+      margin:0 0 12px;
+      font-size: 16px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: rgba(234,240,255,.75);
+    }
+    .grid2{ display:grid; gap:14px; grid-template-columns: 1fr; }
+    @media (min-width: 860px){
+      .grid2{ grid-template-columns: 1fr 1fr; }
+    }
+    label{ display:block; color: rgba(234,240,255,.80); font-size: 12px; letter-spacing:.06em; text-transform: uppercase; margin-bottom:8px; }
+    input, select, textarea{
+      width:100%;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      padding: 12px 14px;
+      outline: none;
+    }
+    textarea{ min-height: 92px; resize: vertical; }
+    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .row > *{ flex: 1 1 160px; }
+    .kpi{
+      display:flex; justify-content:space-between; align-items:center;
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.06);
+      margin-top: 10px;
+    }
+    .kpi .name{ color: rgba(234,240,255,.70); font-weight: 750; letter-spacing:.06em; }
+    .kpi .val{ font-weight: 850; font-size: 20px; }
+    .kpi.green .val{ color: #bfffe6; }
+    .kpi.red .val{ color: #ffd0d9; }
+    .kpi.blue .val{ color: #d7e6ff; }
+
+    .hint{ color: var(--muted); font-size: 13px; margin-top: 10px; }
+    .alert{
+      margin-top: 12px;
+      border-radius: 16px;
+      padding: 12px 14px;
+      border:1px solid rgba(255,77,109,.35);
+      background: rgba(255,77,109,.10);
+      color: #ffe6eb;
+    }
+    .ok{
+      border-color: rgba(46,229,157,.35);
+      background: rgba(46,229,157,.08);
+      color: #ddfff3;
+    }
+
+    .hidden{ display:none !important; }
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.55);
+      display:flex; align-items:flex-end; justify-content:center;
+      padding: 18px 12px;
+      z-index: 50;
+    }
+    .modal{
+      width:min(700px, 100%);
+      border-radius: 26px;
+      background: linear-gradient(180deg, rgba(14,22,48,.95), rgba(11,16,32,.95));
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: 0 40px 120px rgba(0,0,0,.60);
+      overflow:hidden;
+    }
+    .modal-head{
+      display:flex; justify-content:space-between; align-items:center;
+      padding: 16px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .modal-head .title{
+      display:flex; align-items:center; gap:10px;
+      font-weight: 850;
+      font-size: 18px;
+    }
+    .modal-head .title .lock{ filter: drop-shadow(0 6px 14px rgba(96,165,255,.25)); }
+    .modal-body{ padding: 16px; }
+    .segmented{
+      display:flex; gap:8px; background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 999px;
+      padding: 6px;
+      margin-bottom: 14px;
+    }
+    .segmented button{
+      flex:1;
+      border-radius: 999px;
+      border:1px solid transparent;
+      padding: 10px 12px;
+      background: transparent;
+      color: rgba(234,240,255,.70);
+      cursor:pointer;
+      font-weight: 750;
+    }
+    .segmented button.active{
+      background: linear-gradient(180deg, rgba(43,108,255,.35), rgba(96,165,255,.12));
+      border-color: rgba(96,165,255,.18);
+      color: var(--text);
+    }
+    .modal-foot{
+      padding: 14px 16px 16px;
+      display:flex; gap:10px; justify-content:flex-end;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+
+    table{ width:100%; border-collapse: collapse; }
+    th, td{ text-align:left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 13px; }
+    th{ color: rgba(234,240,255,.70); font-weight: 850; letter-spacing:.05em; text-transform: uppercase; font-size: 11px; }
+    .money{ font-variant-numeric: tabular-nums; font-weight: 750; }
+    .tag{
+      display:inline-flex; align-items:center; gap:6px;
+      padding: 6px 10px; border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.16);
+      color: rgba(234,240,255,.85);
+      font-size: 12px;
+      white-space:nowrap;
+    }
+    .tag.green{ border-color: rgba(46,229,157,.35); background: rgba(46,229,157,.10); }
+    .tag.red{ border-color: rgba(255,77,109,.35); background: rgba(255,77,109,.10); }
+    .actions{ display:flex; gap:8px; justify-content:flex-end; }
+    .mini{ padding: 8px 10px; border-radius: 999px; font-size: 13px; }
+  </style>
 </head>
+
 <body>
-<h1>Finance AI</h1>
-<p>Controle financeiro • simples e rápido</p>
-<nav>
-<button>Lançar</button>
-<button>Últimos</button>
-<button>Dashboard</button>
-<button>Investimentos</button>
-</nav>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <h1>Finance AI</h1>
+        <p>Controle financeiro • simples e rápido</p>
+      </div>
+      <div class="top-actions">
+        <div id="userPill" class="pill hidden">
+          <span id="userEmail" style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+          <button class="btn danger mini" id="btnLogout">Sair</button>
+        </div>
+        <button class="btn" id="btnOpenAuth">🔒 Login</button>
+      </div>
+    </header>
+
+    <div class="nav" role="tablist" aria-label="Navegação">
+      <button class="tab active" data-tab="lancar">Lançar</button>
+      <button class="tab" data-tab="ultimos">Últimos</button>
+      <button class="tab" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="invest">Investimentos</button>
+    </div>
+
+    <!-- Lançar -->
+    <section id="tab-lancar" class="card">
+      <h2>Novo lançamento</h2>
+      <div class="grid2">
+        <div>
+          <label>Tipo</label>
+          <select id="inpTipo">
+            <option value="RECEITA">RECEITA</option>
+            <option value="GASTO">GASTO</option>
+          </select>
+        </div>
+        <div>
+          <label>Data</label>
+          <input id="inpData" type="date" />
+        </div>
+        <div>
+          <label>Categoria</label>
+          <input id="inpCategoria" type="text" placeholder="Ex: Salário, Mercado, Transporte" />
+        </div>
+        <div>
+          <label>Valor (R$)</label>
+          <input id="inpValor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
+        </div>
+        <div style="grid-column:1/-1">
+          <label>Descrição</label>
+          <textarea id="inpDescricao" placeholder="Opcional"></textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btnSalvarLanc">Salvar lançamento</button>
+        <div class="hint" id="hintLanc">Você precisa estar logado para salvar.</div>
+      </div>
+      <div id="alertLanc" class="alert hidden"></div>
+    </section>
+
+    <!-- Últimos -->
+    <section id="tab-ultimos" class="card hidden">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <h2 style="margin:0">Últimos lançamentos</h2>
+        <button class="btn secondary mini" id="btnRecarregar">Recarregar</button>
+      </div>
+      <p class="hint">Mostra os últimos lançamentos do seu usuário. Você pode editar ou apagar.</p>
+      <div id="alertUlt" class="alert hidden"></div>
+      <div style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Categoria</th>
+              <th>Descrição</th>
+              <th>Valor</th>
+              <th style="text-align:right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tblLanc"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="card hidden">
+      <h2>Dashboard do mês</h2>
+      <div class="grid2">
+        <div>
+          <label>Mês</label>
+          <select id="selMes"></select>
+        </div>
+        <div>
+          <label>Ano</label>
+          <input id="inpAno" type="number" min="2000" max="2100" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px; justify-content:space-between">
+        <button class="btn" id="btnAtualizarDash">Atualizar Dashboard</button>
+        <div class="hint" id="hintDash">Faça login para ver seus dados.</div>
+      </div>
+
+      <div class="kpi blue">
+        <div class="name">Receitas</div>
+        <div class="val money" id="kpiReceitas">R$ 0,00</div>
+      </div>
+      <div class="kpi red">
+        <div class="name">Gastos</div>
+        <div class="val money" id="kpiGastos">R$ 0,00</div>
+      </div>
+      <div class="kpi green">
+        <div class="name">Saldo</div>
+        <div class="val money" id="kpiSaldo">R$ 0,00</div>
+      </div>
+
+      <div id="alertDash" class="alert hidden"></div>
+    </section>
+
+    <!-- Investimentos (placeholder) -->
+    <section id="tab-invest" class="card hidden">
+      <h2>Investimentos</h2>
+      <p class="hint">Esta área fica pronta para sua próxima etapa (carteira, aportes e rentabilidade).</p>
+      <div class="alert ok">Tudo certo: base e autenticação funcionando no Railway.</div>
+    </section>
+  </div>
+
+  <!-- Modal Auth -->
+  <div id="authBackdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Autenticação">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="title"><span class="lock">🔒</span> <span id="authTitle">Login</span></div>
+        <button class="btn secondary mini" id="btnCloseAuth">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="segmented" role="tablist">
+          <button id="segLogin" class="active" data-pane="login">Entrar</button>
+          <button id="segRegister" data-pane="register">Criar conta</button>
+          <button id="segReset" data-pane="reset">Resetar senha</button>
+        </div>
+
+        <!-- Login -->
+        <div id="pane-login">
+          <div class="grid2">
+            <div>
+              <label>E-mail</label>
+              <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
+            </div>
+            <div>
+              <label>Senha</label>
+              <input id="loginSenha" type="password" placeholder="Sua senha" />
+            </div>
+          </div>
+          <div id="authAlertLogin" class="alert hidden"></div>
+        </div>
+
+        <!-- Register -->
+        <div id="pane-register" class="hidden">
+          <div class="grid2">
+            <div>
+              <label>Nome / apelido</label>
+              <input id="regApelido" type="text" placeholder="Ex: David" />
+            </div>
+            <div>
+              <label>Nome completo</label>
+              <input id="regNome" type="text" placeholder="Ex: David da Fonseca Ferreira" />
+            </div>
+            <div>
+              <label>Telefone (DDD + número)</label>
+              <input id="regFone" type="tel" placeholder="(37) 99873-8228" />
+            </div>
+            <div>
+              <label>E-mail</label>
+              <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
+            </div>
+            <div>
+              <label>Senha</label>
+              <input id="regSenha" type="password" placeholder="Crie uma senha" />
+            </div>
+            <div>
+              <label>Confirmar senha</label>
+              <input id="regSenha2" type="password" placeholder="Repita a senha" />
+            </div>
+          </div>
+          <div id="authAlertReg" class="alert hidden"></div>
+        </div>
+
+        <!-- Reset -->
+        <div id="pane-reset" class="hidden">
+          <div class="grid2">
+            <div>
+              <label>E-mail</label>
+              <input id="resetEmail" type="email" placeholder="seuemail@dominio.com" />
+            </div>
+            <div>
+              <label>Nova senha</label>
+              <input id="resetSenha" type="password" placeholder="Nova senha" />
+            </div>
+            <div>
+              <label>Confirmar senha</label>
+              <input id="resetSenha2" type="password" placeholder="Repita a nova senha" />
+            </div>
+          </div>
+          <div id="authAlertReset" class="alert hidden"></div>
+        </div>
+
+      </div>
+      <div class="modal-foot">
+        <button class="btn secondary" id="btnAuthCancel">Sair</button>
+        <button class="btn" id="btnAuthPrimary">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Register SW with cache-busting
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/sw.js?v=3").catch(() => {});
+      });
+    }
+
+    // Helpers
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+    function moneyBR(n){
+      const v = Number(n || 0);
+      return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+    }
+
+    // Normalize money: accepts "360,00" or "360.00" or "1.234,56"
+    function normalizeMoneyInput(s){
+      if(!s) return "0";
+      s = String(s).trim();
+      // remove spaces
+      s = s.replace(/\s+/g, "");
+      // if has comma as decimal separator, remove thousand dots then change comma -> dot
+      if(s.includes(",")){
+        s = s.replace(/\./g, "").replace(",", ".");
+      }
+      // keep only digits, dot, minus
+      s = s.replace(/[^0-9.-]/g, "");
+      return s;
+    }
+
+    async function api(path, options={}){
+      const res = await fetch(path, {
+        credentials: "include",
+        headers: { "Content-Type":"application/json" },
+        ...options,
+      });
+      let data = null;
+      try { data = await res.json(); } catch(e){}
+      if(!res.ok){
+        const msg = (data && (data.error || data.message)) || ("Erro " + res.status);
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function show(el, on=true){ el.classList.toggle("hidden", !on); }
+    function setAlert(el, msg, ok=false){
+      if(!msg){ show(el,false); el.textContent=""; el.classList.remove("ok"); return; }
+      el.textContent = msg;
+      el.classList.toggle("ok", ok);
+      show(el,true);
+    }
+
+    // Tabs
+    const tabMap = {
+      lancar: $("#tab-lancar"),
+      ultimos: $("#tab-ultimos"),
+      dashboard: $("#tab-dashboard"),
+      invest: $("#tab-invest"),
+    };
+
+    $$(".tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        $$(".tab").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const key = btn.dataset.tab;
+        Object.entries(tabMap).forEach(([k,sec]) => show(sec, k === key));
+        // auto refresh
+        if(key === "ultimos") loadUltimos().catch(()=>{});
+      });
+    });
+
+    // Month/year defaults
+    const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const selMes = $("#selMes");
+    monthNames.forEach((m,i)=>{
+      const opt = document.createElement("option");
+      opt.value = String(i+1);
+      opt.textContent = m;
+      selMes.appendChild(opt);
+    });
+    const now = new Date();
+    selMes.value = String(now.getMonth()+1);
+    $("#inpAno").value = String(now.getFullYear());
+    $("#inpData").valueAsDate = now;
+
+    // Session state (front-only)
+    let currentUserEmail = null;
+
+    function setLogged(email){
+      currentUserEmail = email || null;
+      if(currentUserEmail){
+        $("#userEmail").textContent = currentUserEmail;
+        show($("#userPill"), true);
+        show($("#btnOpenAuth"), false);
+        $("#hintLanc").textContent = "Pronto! Você pode salvar lançamentos.";
+        $("#hintDash").textContent = "Atualiza automaticamente com o mês/ano selecionados.";
+      }else{
+        show($("#userPill"), false);
+        show($("#btnOpenAuth"), true);
+        $("#hintLanc").textContent = "Você precisa estar logado para salvar.";
+        $("#hintDash").textContent = "Faça login para ver seus dados.";
+      }
+    }
+
+    // Auth modal
+    const backdrop = $("#authBackdrop");
+    const panes = {
+      login: $("#pane-login"),
+      register: $("#pane-register"),
+      reset: $("#pane-reset"),
+    };
+    let activePane = "login";
+
+    function openAuth(){
+      show(backdrop,true);
+      switchPane(activePane);
+    }
+    function closeAuth(){
+      show(backdrop,false);
+      setAlert($("#authAlertLogin"), "");
+      setAlert($("#authAlertReg"), "");
+      setAlert($("#authAlertReset"), "");
+    }
+    function switchPane(p){
+      activePane = p;
+      $("#authTitle").textContent = p === "login" ? "Login" : (p === "register" ? "Criar conta" : "Resetar senha");
+      Object.entries(panes).forEach(([k,el]) => show(el, k === p));
+      // segmented buttons state
+      $("#segLogin").classList.toggle("active", p==="login");
+      $("#segRegister").classList.toggle("active", p==="register");
+      $("#segReset").classList.toggle("active", p==="reset");
+      // primary button label
+      $("#btnAuthPrimary").textContent = p === "login" ? "Entrar" : (p === "register" ? "Criar conta" : "Resetar");
+    }
+
+    $("#btnOpenAuth").addEventListener("click", () => { activePane="login"; openAuth(); });
+    $("#btnCloseAuth").addEventListener("click", closeAuth);
+    $("#btnAuthCancel").addEventListener("click", closeAuth);
+    backdrop.addEventListener("click", (e)=>{ if(e.target === backdrop) closeAuth(); });
+
+    $("#segLogin").addEventListener("click", ()=> switchPane("login"));
+    $("#segRegister").addEventListener("click", ()=> switchPane("register"));
+    $("#segReset").addEventListener("click", ()=> switchPane("reset"));
+
+    $("#btnAuthPrimary").addEventListener("click", async () => {
+      try{
+        if(activePane === "login"){
+          const email = $("#loginEmail").value.trim().toLowerCase();
+          const senha = $("#loginSenha").value;
+          const r = await api("/api/login", { method:"POST", body: JSON.stringify({ email, senha }) });
+          setLogged(r.email);
+          closeAuth();
+          setAlert($("#alertDash"), "", false);
+          await loadDashboard().catch(()=>{});
+        }
+        if(activePane === "register"){
+          const payload = {
+            nome_apelido: $("#regApelido").value.trim(),
+            nome_completo: $("#regNome").value.trim(),
+            telefone: $("#regFone").value.trim(),
+            email: $("#regEmail").value.trim().toLowerCase(),
+            senha: $("#regSenha").value,
+            confirmar_senha: $("#regSenha2").value,
+          };
+          const r = await api("/api/register", { method:"POST", body: JSON.stringify(payload) });
+          setLogged(r.email);
+          closeAuth();
+          await loadDashboard().catch(()=>{});
+        }
+        if(activePane === "reset"){
+          const payload = {
+            email: $("#resetEmail").value.trim().toLowerCase(),
+            nova_senha: $("#resetSenha").value,
+            confirmar: $("#resetSenha2").value,
+          };
+          await api("/api/reset_password", { method:"POST", body: JSON.stringify(payload) });
+          setAlert($("#authAlertReset"), "Senha alterada com sucesso. Você já pode entrar.", true);
+        }
+      }catch(err){
+        const msg = err?.message || "Erro";
+        if(activePane === "login") setAlert($("#authAlertLogin"), msg, false);
+        if(activePane === "register") setAlert($("#authAlertReg"), msg, false);
+        if(activePane === "reset") setAlert($("#authAlertReset"), msg, false);
+      }
+    });
+
+    $("#btnLogout").addEventListener("click", async () => {
+      try{ await api("/api/logout", { method:"POST", body:"{}" }); } catch(e){}
+      setLogged(null);
+      setAlert($("#alertUlt"), "Você saiu. Faça login para ver seus lançamentos.", false);
+      setAlert($("#alertDash"), "Faça login para ver o dashboard.", false);
+    });
+
+    // Lançar
+    $("#btnSalvarLanc").addEventListener("click", async () => {
+      setAlert($("#alertLanc"), "");
+      try{
+        const payload = {
+          tipo: $("#inpTipo").value,
+          data: $("#inpData").value,
+          categoria: $("#inpCategoria").value.trim(),
+          descricao: $("#inpDescricao").value.trim(),
+          valor: normalizeMoneyInput($("#inpValor").value),
+        };
+        await api("/api/lancamentos", { method:"POST", body: JSON.stringify(payload) });
+        setAlert($("#alertLanc"), "Lançamento salvo com sucesso!", true);
+        $("#inpCategoria").value = "";
+        $("#inpDescricao").value = "";
+        $("#inpValor").value = "";
+        // refresh lists/dash
+        await loadUltimos().catch(()=>{});
+        await loadDashboard().catch(()=>{});
+      }catch(err){
+        setAlert($("#alertLanc"), err?.message || "Erro ao salvar", false);
+        if((err?.message||"").includes("Não logado")) openAuth();
+      }
+    });
+
+    // Últimos
+    $("#btnRecarregar").addEventListener("click", () => loadUltimos().catch(()=>{}));
+    async function loadUltimos(){
+      setAlert($("#alertUlt"), "");
+      const tbody = $("#tblLanc");
+      tbody.innerHTML = "";
+      try{
+        const r = await api("/api/lancamentos?limit=50", { method:"GET" });
+        const items = r.items || [];
+        if(items.length === 0){
+          setAlert($("#alertUlt"), "Nenhum lançamento encontrado para este usuário.", true);
+          return;
+        }
+        for(const it of items){
+          const tr = document.createElement("tr");
+          const tipo = String(it.tipo||"").toUpperCase();
+          const tagClass = tipo === "RECEITA" ? "green" : (tipo === "GASTO" ? "red" : "");
+          tr.innerHTML = `
+            <td>${(it.data||"").slice(0,10)}</td>
+            <td><span class="tag ${tagClass}">${tipo||"-"}</span></td>
+            <td>${it.categoria||"-"}</td>
+            <td>${it.descricao||"-"}</td>
+            <td class="money">${moneyBR(normalizeMoneyInput(it.valor))}</td>
+            <td>
+              <div class="actions">
+                <button class="btn secondary mini" data-act="edit">Editar</button>
+                <button class="btn danger mini" data-act="del">Apagar</button>
+              </div>
+            </td>
+          `;
+          // actions
+          tr.querySelector('[data-act="del"]').addEventListener("click", async ()=>{
+            if(!confirm("Apagar este lançamento?")) return;
+            try{
+              await api("/api/lancamentos/" + it.row, { method:"DELETE" });
+              await loadUltimos();
+              await loadDashboard().catch(()=>{});
+            }catch(err){
+              setAlert($("#alertUlt"), err?.message || "Erro ao apagar", false);
+            }
+          });
+          tr.querySelector('[data-act="edit"]').addEventListener("click", async ()=>{
+            const novaData = prompt("Data (AAAA-MM-DD):", (it.data||"").slice(0,10)) ?? "";
+            if(!novaData) return;
+            const novoTipo = prompt("Tipo (RECEITA ou GASTO):", (it.tipo||"").toUpperCase()) ?? "";
+            const novaCat = prompt("Categoria:", it.categoria||"") ?? "";
+            const novaDesc = prompt("Descrição:", it.descricao||"") ?? "";
+            const novoVal = prompt("Valor (ex: 360,00):", String(it.valor||"")) ?? "";
+            try{
+              await api("/api/lancamentos/" + it.row, {
+                method:"PUT",
+                body: JSON.stringify({
+                  data: novaData,
+                  tipo: novoTipo.toUpperCase(),
+                  categoria: novaCat,
+                  descricao: novaDesc,
+                  valor: normalizeMoneyInput(novoVal),
+                })
+              });
+              await loadUltimos();
+              await loadDashboard().catch(()=>{});
+            }catch(err){
+              setAlert($("#alertUlt"), err?.message || "Erro ao editar", false);
+            }
+          });
+
+          tbody.appendChild(tr);
+        }
+      }catch(err){
+        setAlert($("#alertUlt"), err?.message || "Erro ao carregar", false);
+        if((err?.message||"").includes("Não logado")) {
+          // show hint but do not force modal
+        }
+      }
+    }
+
+    // Dashboard
+    $("#btnAtualizarDash").addEventListener("click", () => loadDashboard().catch(()=>{}));
+
+    async function loadDashboard(){
+      setAlert($("#alertDash"), "");
+      try{
+        const mes = Number($("#selMes").value);
+        const ano = Number($("#inpAno").value);
+        const r = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, { method:"GET" });
+        $("#kpiReceitas").textContent = moneyBR(r.receitas);
+        $("#kpiGastos").textContent = moneyBR(r.gastos);
+        $("#kpiSaldo").textContent = moneyBR(r.saldo);
+      }catch(err){
+        $("#kpiReceitas").textContent = "R$ 0,00";
+        $("#kpiGastos").textContent = "R$ 0,00";
+        $("#kpiSaldo").textContent = "R$ 0,00";
+        setAlert($("#alertDash"), (err?.message || "Faça login para ver o dashboard"), false);
+        if((err?.message||"").includes("Não logado")) {
+          // keep button visible; user can open auth
+        }
+      }
+    }
+
+    // Initial: try to load dashboard (will show "Não logado" if needed)
+    loadDashboard().catch(()=>{});
+  </script>
 </body>
 </html>
