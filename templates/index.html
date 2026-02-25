@@ -4,6 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Finance AI</title>
+
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
   <style>
     :root{
       --bg:#070B18; --panel:#0B1024; --text:#EAF0FF; --muted:#93A4C7;
@@ -123,6 +127,25 @@
       border:1px solid var(--border);padding:12px;
     }
     .kpi{font-weight:900}
+
+    /* chart */
+    .chartBox{
+      border:1px solid var(--border);
+      background: rgba(0,0,0,.18);
+      border-radius: 18px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .chartTitle{
+      display:flex;align-items:center;gap:10px;
+      font-weight:900;
+      margin:0 0 8px;
+    }
+    .chartHint{color:var(--muted);font-size:12px;margin:0 0 10px}
+    canvas{width:100% !important; height:260px !important;}
+    @media(min-width:840px){
+      canvas{height:280px !important;}
+    }
   </style>
 </head>
 
@@ -198,18 +221,29 @@
         <div id="toastDash" class="toast"></div>
       </div>
 
+      <!-- Gráfico -->
       <div class="card">
-        <h2>Atalhos</h2>
-        <div class="row" style="margin-top:6px;flex-wrap:wrap">
+        <h2>Visual</h2>
+
+        <div class="chartBox">
+          <div class="chartTitle">📊 Receitas x Gastos</div>
+          <p class="chartHint">O gráfico atualiza automaticamente com o mês/ano selecionados.</p>
+          <canvas id="chartRG"></canvas>
+        </div>
+
+        <div class="chartBox">
+          <div class="chartTitle">📈 Saldo do mês</div>
+          <p class="chartHint">Barra verde (positivo) ou vermelha (negativo).</p>
+          <canvas id="chartSaldo"></canvas>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
           <button class="btn" id="goLancar">➕ Lançar agora</button>
           <button class="btn" id="openLogin2">🔒 Abrir login</button>
           <button class="btn" id="goUltimos">🧾 Ver últimos</button>
         </div>
-        <div class="divider"></div>
-        <p class="muted" style="margin:0;font-size:13px;line-height:1.6">
-          Se o dashboard não atualizar, confirme se a planilha <b>Controle Financeiro</b> foi compartilhada com a Service Account
-          (e-mail do JSON) como <b>Editor</b>.
-        </p>
       </div>
     </section>
 
@@ -615,6 +649,101 @@
     });
 
     // -----------------------
+    // Charts
+    // -----------------------
+    let chartRG = null;
+    let chartSaldo = null;
+
+    function ensureCharts() {
+      const c1 = $("chartRG");
+      const c2 = $("chartSaldo");
+      if (!c1 || !c2 || !window.Chart) return;
+
+      if (!chartRG) {
+        chartRG = new Chart(c1, {
+          type: "doughnut",
+          data: {
+            labels: ["Receitas", "Gastos"],
+            datasets: [{
+              data: [0, 0],
+              backgroundColor: ["rgba(46,229,157,.85)", "rgba(255,75,110,.85)"],
+              borderColor: ["rgba(46,229,157,.20)", "rgba(255,75,110,.20)"],
+              borderWidth: 1,
+              hoverOffset: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: { color: "rgba(234,240,255,.85)" }
+              },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const v = ctx.raw || 0;
+                    return `${ctx.label}: ${moneyBR(v)}`;
+                  }
+                }
+              }
+            },
+            cutout: "65%"
+          }
+        });
+      }
+
+      if (!chartSaldo) {
+        chartSaldo = new Chart(c2, {
+          type: "bar",
+          data: {
+            labels: ["Saldo"],
+            datasets: [{
+              label: "Saldo do mês",
+              data: [0],
+              backgroundColor: ["rgba(75,140,255,.75)"],
+              borderColor: ["rgba(75,140,255,.25)"],
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => moneyBR(ctx.raw || 0)
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
+            }
+          }
+        });
+      }
+    }
+
+    function updateCharts(receitas, gastos, saldo) {
+      ensureCharts();
+      if (chartRG) {
+        chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)];
+        chartRG.update();
+      }
+      if (chartSaldo) {
+        const s = Number(saldo || 0);
+        chartSaldo.data.datasets[0].data = [s];
+
+        // muda a cor conforme positivo/negativo
+        chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"];
+        chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"];
+        chartSaldo.update();
+      }
+    }
+
+    // -----------------------
     // Dashboard
     // -----------------------
     function initMesAno() {
@@ -637,10 +766,13 @@
         $("valReceitas").textContent = moneyBR(res.receitas);
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
+
+        updateCharts(res.receitas, res.gastos, res.saldo);
       }catch(e){
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
+        updateCharts(0, 0, 0);
         showToast(toast, "err", "Faça login para ver o dashboard", e.message);
       }
     }
@@ -712,7 +844,6 @@
           const desc = (it.descricao || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
           const cat = (it.categoria || "Sem categoria").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-          // Guarda dados no botão via data-*
           return `
             <div class="miniCard">
               <div class="row" style="gap:12px;align-items:flex-start">
@@ -765,15 +896,7 @@
       openModal();
     }
 
-    function openAuthFromEdit() {
-      $("authBlock").classList.remove("hidden");
-      $("editBlock").classList.add("hidden");
-      openAuthModal("entrar");
-    }
-
-    // expõe no window para o onclick
     window.abrirEdicao = (it) => {
-      // se não estiver logado (front) tenta abrir login
       if (!currentUserEmail) return openAuthModal("entrar");
 
       editingRow = it.row;
@@ -826,6 +949,7 @@
     // Boot
     // -----------------------
     initMesAno();
+    ensureCharts();               // cria os gráficos zerados
     refreshDashboard().catch(()=>{});
   </script>
 </body>
