@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from flask import Flask, request
+from typing import List, Dict, Any
 
 app = Flask(__name__)
 
@@ -11,7 +12,7 @@ app = Flask(__name__)
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
 WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")  # ex: 1000378126494307
-GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")       # pode manter
+GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "true").lower() == "true"
 
 
@@ -24,9 +25,16 @@ def health():
 
 
 # =========================
-# Webhook - Verificação (Meta)
+# Webhook - GET (verificação) e POST (recebimento)
+# strict_slashes=False aceita /webhook e /webhook/
 # =========================
-@app.get("/webhook")
+@app.route("/webhook", methods=["GET", "POST"], strict_slashes=False)
+def webhook():
+    if request.method == "GET":
+        return verify_webhook()
+    return receive_webhook()
+
+
 def verify_webhook():
     """
     Meta/WhatsApp chama:
@@ -43,10 +51,6 @@ def verify_webhook():
     return "Forbidden", 403
 
 
-# =========================
-# Webhook - Recebimento (Meta)
-# =========================
-@app.post("/webhook")
 def receive_webhook():
     payload = request.get_json(silent=True) or {}
 
@@ -55,18 +59,21 @@ def receive_webhook():
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         print("======================================\n")
 
-    # Tenta extrair mensagens (texto, etc.)
     msgs = extract_messages(payload)
 
     # Exemplo: responder automaticamente quando receber texto
     for msg in msgs:
-        sender_wa_id = msg.get("from")              # número do usuário (wa_id)
+        sender_wa_id = msg.get("from")
         msg_type = msg.get("type")
         text_body = (msg.get("text") or {}).get("body")
 
         if msg_type == "text" and sender_wa_id and text_body:
-            # Resposta simples (opcional)
-            reply = f"Recebi: {text_body}\n\nEnvie algo como:\n+ 35,90 mercado\n- 120 aluguel"
+            reply = (
+                f"Recebi: {text_body}\n\n"
+                "Envie algo como:\n"
+                "+ 35,90 mercado\n"
+                "- 120 aluguel"
+            )
             send_text_message(sender_wa_id, reply)
 
     return "OK", 200
@@ -75,12 +82,12 @@ def receive_webhook():
 # =========================
 # Helpers: extrair mensagens
 # =========================
-def extract_messages(payload: dict) -> list[dict]:
+def extract_messages(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Payload do WhatsApp vem geralmente assim:
     entry -> changes -> value -> messages[]
     """
-    messages = []
+    messages: List[Dict[str, Any]] = []
     try:
         entry = payload.get("entry", [])
         for e in entry:
