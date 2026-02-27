@@ -1,8 +1,7 @@
 import os
 import json
 import requests
-from flask import Flask, request
-from typing import List, Dict, Any
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -24,26 +23,34 @@ def health():
     return "OK", 200
 
 
-# =========================
-# Webhook - GET (verificação) e POST (recebimento)
-# strict_slashes=False aceita /webhook e /webhook/
-# =========================
-@app.route("/webhook", methods=["GET", "POST"], strict_slashes=False)
-def webhook():
-    if request.method == "GET":
-        return verify_webhook()
-    return receive_webhook()
+@app.get("/debug/env")
+def debug_env():
+    # NÃO mostra tokens (segurança)
+    return jsonify({
+        "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
+        "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
+        "WA_PHONE_NUMBER_ID": WA_PHONE_NUMBER_ID,
+        "GRAPH_VERSION": GRAPH_VERSION,
+        "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
+    }), 200
 
 
+# =========================
+# Webhook - Verificação (Meta)
+# =========================
+@app.get("/webhook")
 def verify_webhook():
-    """
-    Meta/WhatsApp chama:
-    GET /webhook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
-    Se o verify_token bater com WA_VERIFY_TOKEN, devemos retornar o challenge puro.
-    """
     mode = request.args.get("hub.mode", "")
     token = request.args.get("hub.verify_token", "")
     challenge = request.args.get("hub.challenge", "")
+
+    if DEBUG_LOG_PAYLOAD:
+        print("\n========== WEBHOOK VERIFY ==========")
+        print("mode:", mode)
+        print("token(recebido):", token)
+        print("token(ENV set):", bool(WA_VERIFY_TOKEN))
+        print("challenge:", challenge)
+        print("====================================\n")
 
     if mode == "subscribe" and token == WA_VERIFY_TOKEN:
         return challenge, 200
@@ -51,13 +58,16 @@ def verify_webhook():
     return "Forbidden", 403
 
 
+# =========================
+# Webhook - Recebimento (Meta)
+# =========================
+@app.post("/webhook")
 def receive_webhook():
     payload = request.get_json(silent=True) or {}
 
-    if DEBUG_LOG_PAYLOAD:
-        print("\n========== INCOMING WEBHOOK ==========")
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        print("======================================\n")
+    print("\n========== INCOMING WEBHOOK ==========")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print("======================================\n")
 
     msgs = extract_messages(payload)
 
@@ -70,7 +80,7 @@ def receive_webhook():
         if msg_type == "text" and sender_wa_id and text_body:
             reply = (
                 f"Recebi: {text_body}\n\n"
-                "Envie algo como:\n"
+                "Exemplos:\n"
                 "+ 35,90 mercado\n"
                 "- 120 aluguel"
             )
@@ -79,15 +89,8 @@ def receive_webhook():
     return "OK", 200
 
 
-# =========================
-# Helpers: extrair mensagens
-# =========================
-def extract_messages(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Payload do WhatsApp vem geralmente assim:
-    entry -> changes -> value -> messages[]
-    """
-    messages: List[Dict[str, Any]] = []
+def extract_messages(payload):
+    messages = []
     try:
         entry = payload.get("entry", [])
         for e in entry:
@@ -107,12 +110,6 @@ def extract_messages(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 # Enviar mensagem (Cloud API)
 # =========================
 def send_text_message(to_wa_id: str, body: str) -> bool:
-    """
-    Envia mensagem de texto via WhatsApp Cloud API.
-    Requer:
-      WA_ACCESS_TOKEN
-      WA_PHONE_NUMBER_ID
-    """
     if not WA_ACCESS_TOKEN or not WA_PHONE_NUMBER_ID:
         print("⚠️ WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado.")
         return False
@@ -132,10 +129,8 @@ def send_text_message(to_wa_id: str, body: str) -> bool:
     try:
         r = requests.post(url, headers=headers, json=data, timeout=20)
         ok = 200 <= r.status_code < 300
-        if not ok:
-            print("❌ Falha ao enviar mensagem:", r.status_code, r.text)
-        else:
-            print("✅ Mensagem enviada:", r.text)
+        print("SEND_TEXT status:", r.status_code)
+        print("SEND_TEXT resp:", r.text)
         return ok
     except Exception as ex:
         print("❌ Erro requests send_text_message:", ex)
@@ -143,7 +138,28 @@ def send_text_message(to_wa_id: str, body: str) -> bool:
 
 
 # =========================
-# Exec local (não usado no Railway com gunicorn)
+# Endpoint para testar envio e ver ERRO no Railway Logs
+# =========================
+@app.post("/send-test")
+def send_test():
+    """
+    Use para testar envio manual:
+    POST /send-test
+    Body JSON: { "to": "5537998675231", "text": "teste" }
+    """
+    payload = request.get_json(silent=True) or {}
+    to = (payload.get("to") or "").strip()
+    text = (payload.get("text") or "Teste do Railway").strip()
+
+    if not to:
+        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+
+    ok = send_text_message(to, text)
+    return jsonify({"ok": ok}), 200 if ok else 500
+
+
+# =========================
+# Exec local
 # =========================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
