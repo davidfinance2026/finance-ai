@@ -11,33 +11,37 @@ app = Flask(__name__)
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
 WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")  # ex: 1000378126494307
-WA_BUSINESS_ACCOUNT_ID = os.getenv("WA_BUSINESS_ACCOUNT_ID", "")  # opcional (não usado aqui)
-
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "true").lower() == "true"
 
-# Coloque aqui o template EXATO que aparece no seu painel Meta
-DEFAULT_TEMPLATE_NAME = os.getenv(
-    "WA_TEMPLATE_NAME",
-    "jaspers_market_order_confirmation_v1"
-)
-DEFAULT_TEMPLATE_LANG = os.getenv("WA_TEMPLATE_LANG", "en_US")
+# Template default (pode trocar via body do /send-template)
+WA_TEMPLATE_NAME = os.getenv("WA_TEMPLATE_NAME", "jaspers_market_order_confirmation_v1")
+WA_TEMPLATE_LANG = os.getenv("WA_TEMPLATE_LANG", "en_US")
 
 
 # =========================
 # Helpers
 # =========================
 def normalize_phone(phone: str) -> str:
-    """Mantém só dígitos. Aceita +55... e retorna 55..."""
+    """
+    WhatsApp Cloud API espera E.164 sem +, sem espaços.
+    Ex: +55 37 99867-5231 -> 5537998675231
+    """
     if not phone:
         return ""
     digits = "".join(ch for ch in phone if ch.isdigit())
     return digits
 
 
-def graph_post_messages(payload: dict) -> tuple[bool, int, str]:
+def graph_post_messages(payload: dict):
+    """
+    POST /{PHONE_NUMBER_ID}/messages
+    Retorna: (ok:bool, status:int, resp_json_or_text:any)
+    """
     if not WA_ACCESS_TOKEN or not WA_PHONE_NUMBER_ID:
-        return False, 500, "WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado."
+        return False, 500, {
+            "error": "WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado no ambiente."
+        }
 
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {
@@ -47,87 +51,35 @@ def graph_post_messages(payload: dict) -> tuple[bool, int, str]:
 
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=25)
-        ok = 200 <= r.status_code < 300
-        return ok, r.status_code, r.text
+        status = r.status_code
+        try:
+            resp = r.json()
+        except Exception:
+            resp = r.text
+
+        ok = 200 <= status < 300
+        return ok, status, resp
     except Exception as ex:
-        return False, 500, f"Erro requests: {ex}"
+        return False, 500, {"error": f"Erro requests: {str(ex)}"}
 
 
-def send_template_message(to_wa_id: str, template_name: str = None, lang_code: str = None) -> tuple[bool, int, str]:
-    to_wa_id = normalize_phone(to_wa_id)
-    template_name = template_name or DEFAULT_TEMPLATE_NAME
-    lang_code = lang_code or DEFAULT_TEMPLATE_LANG
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": lang_code},
-        },
-    }
-
-    ok, status, resp = graph_post_messages(payload)
-    print("\n===== SEND TEMPLATE =====")
-    print("to:", to_wa_id)
-    print("template:", template_name, lang_code)
-    print("status:", status)
-    print("resp:", resp)
-    print("=========================\n")
-    return ok, status, resp
-
-
-def send_text_message(to_wa_id: str, body: str) -> tuple[bool, int, str]:
+def extract_messages(payload):
     """
-    ⚠️ Só entrega se existir conversa aberta (janela 24h) com esse usuário.
-    Caso contrário, use template.
+    Extrai lista de mensagens recebidas do webhook.
     """
-    to_wa_id = normalize_phone(to_wa_id)
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "text",
-        "text": {"body": body},
-    }
-
-    ok, status, resp = graph_post_messages(payload)
-    print("\n===== SEND TEXT =====")
-    print("to:", to_wa_id)
-    print("status:", status)
-    print("resp:", resp)
-    print("=====================\n")
-    return ok, status, resp
-
-
-def extract_all(payload: dict) -> dict:
-    """
-    Extrai messages (inbound) e statuses (delivery reports).
-    """
-    out = {"messages": [], "statuses": [], "errors": []}
-
+    messages = []
     try:
-        for entry in payload.get("entry", []):
-            for change in entry.get("changes", []):
-                value = change.get("value") or {}
-
-                # inbound messages
-                for m in (value.get("messages") or []):
-                    out["messages"].append(m)
-
-                # delivery status updates
-                for s in (value.get("statuses") or []):
-                    out["statuses"].append(s)
-
-                # alguns erros podem vir aqui
-                if "errors" in value:
-                    out["errors"].extend(value.get("errors") or [])
-
+        entry = payload.get("entry", [])
+        for e in entry:
+            changes = e.get("changes", [])
+            for c in changes:
+                value = (c.get("value") or {})
+                msgs = value.get("messages") or []
+                for m in msgs:
+                    messages.append(m)
     except Exception as ex:
-        out["errors"].append({"exception": str(ex)})
-
-    return out
+        print("Erro ao extrair mensagens:", ex)
+    return messages
 
 
 # =========================
@@ -140,15 +92,15 @@ def health():
 
 @app.get("/debug/env")
 def debug_env():
+    # NÃO mostra tokens
     return jsonify({
         "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
         "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
         "WA_PHONE_NUMBER_ID": WA_PHONE_NUMBER_ID,
-        "WA_BUSINESS_ACCOUNT_ID_set": bool(WA_BUSINESS_ACCOUNT_ID),
         "GRAPH_VERSION": GRAPH_VERSION,
         "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
-        "DEFAULT_TEMPLATE_NAME": DEFAULT_TEMPLATE_NAME,
-        "DEFAULT_TEMPLATE_LANG": DEFAULT_TEMPLATE_LANG,
+        "WA_TEMPLATE_NAME": WA_TEMPLATE_NAME,
+        "WA_TEMPLATE_LANG": WA_TEMPLATE_LANG,
     }), 200
 
 
@@ -176,39 +128,21 @@ def verify_webhook():
 
 
 # =========================
-# Webhook - Recebimento/Status (Meta)
+# Webhook - Recebimento (Meta)
 # =========================
 @app.post("/webhook")
 def receive_webhook():
     payload = request.get_json(silent=True) or {}
 
+    print("\n========== INCOMING WEBHOOK ==========")
     if DEBUG_LOG_PAYLOAD:
-        print("\n========== INCOMING WEBHOOK RAW ==========")
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        print("==========================================\n")
+    print("======================================\n")
 
-    extracted = extract_all(payload)
+    msgs = extract_messages(payload)
 
-    # log limpo dos inbound messages
-    for msg in extracted["messages"]:
-        sender_wa_id = msg.get("from")
-        msg_type = msg.get("type")
-        text_body = (msg.get("text") or {}).get("body")
-
-        print("\n--- INBOUND MESSAGE ---")
-        print("from:", sender_wa_id)
-        print("type:", msg_type)
-        print("text:", text_body)
-        print("-----------------------\n")
-
-    # log limpo de delivery reports (AQUI você vai ver o motivo da não entrega)
-    for st in extracted["statuses"]:
-        print("\n--- DELIVERY STATUS ---")
-        print(json.dumps(st, ensure_ascii=False, indent=2))
-        print("-----------------------\n")
-
-    # Se quiser: responder automaticamente quando receber texto (janela 24h)
-    for msg in extracted["messages"]:
+    # Exemplo: responder quando receber texto (isso SÓ entrega se a conversa estiver na janela de 24h)
+    for msg in msgs:
         sender_wa_id = msg.get("from")
         msg_type = msg.get("type")
         text_body = (msg.get("text") or {}).get("body")
@@ -220,58 +154,126 @@ def receive_webhook():
                 "+ 35,90 mercado\n"
                 "- 120 aluguel"
             )
-            # responder texto só funciona na janela
             send_text_message(sender_wa_id, reply)
 
     return "OK", 200
 
 
 # =========================
-# Endpoints de teste
+# Enviar mensagem de TEXTO (Cloud API)
+# =========================
+def send_text_message(to_wa_id: str, body: str):
+    to_wa_id = normalize_phone(to_wa_id)
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_wa_id,
+        "type": "text",
+        "text": {"body": body},
+    }
+
+    ok, status, resp = graph_post_messages(payload)
+    print("SEND_TEXT status:", status)
+    print("SEND_TEXT resp:", resp)
+    return ok, status, resp
+
+
+# =========================
+# Enviar TEMPLATE (3 params)
+# =========================
+def send_template_message_3params(to_wa_id: str, p1: str, p2: str, p3: str,
+                                  template_name: str = None, lang: str = None):
+    to_wa_id = normalize_phone(to_wa_id)
+    template_name = template_name or WA_TEMPLATE_NAME
+    lang = lang or WA_TEMPLATE_LANG
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_wa_id,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": lang},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": str(p1)},
+                        {"type": "text", "text": str(p2)},
+                        {"type": "text", "text": str(p3)},
+                    ],
+                }
+            ],
+        },
+    }
+
+    ok, status, resp = graph_post_messages(payload)
+    print("\n===== SEND TEMPLATE =====")
+    print("template:", template_name, "lang:", lang)
+    print("to:", to_wa_id)
+    print("status:", status)
+    print("resp:", resp)
+    print("=========================\n")
+    return ok, status, resp
+
+
+# =========================
+# Endpoint para testar envio (texto)
+# =========================
+@app.post("/send-test")
+def send_test():
+    """
+    POST /send-test
+    Body JSON: { "to": "5537998675231", "text": "teste" }
+    """
+    payload = request.get_json(silent=True) or {}
+    to = (payload.get("to") or "").strip()
+    text = (payload.get("text") or "Teste do Railway").strip()
+
+    if not to:
+        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+
+    ok, status, resp = send_text_message(to, text)
+    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
+
+
+# =========================
+# Endpoint para testar envio (template com 3 params)
 # =========================
 @app.post("/send-template")
 def send_template():
     """
     POST /send-template
     Body JSON:
-      { "to": "5537998675231", "template": "nome_template", "lang": "en_US" }
+    {
+      "to": "5537998675231",
+      "p1": "David",
+      "p2": "Pedido 12345",
+      "p3": "R$ 99,90",
+      "template_name": "jaspers_market_order_confirmation_v1",  # opcional
+      "lang": "en_US"                                          # opcional
+    }
     """
     payload = request.get_json(silent=True) or {}
-    to = (payload.get("to") or "").strip()
-    template = (payload.get("template") or "").strip() or None
-    lang = (payload.get("lang") or "").strip() or None
 
+    to = (payload.get("to") or "").strip()
     if not to:
         return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
 
-    ok, status, resp = send_template_message(to, template_name=template, lang_code=lang)
-    return jsonify({"ok": ok, "status": status, "response": safe_json(resp)}), (200 if ok else 500)
+    p1 = payload.get("p1", "David")
+    p2 = payload.get("p2", "12345")
+    p3 = payload.get("p3", "R$ 99,90")
 
+    template_name = (payload.get("template_name") or "").strip() or None
+    lang = (payload.get("lang") or "").strip() or None
 
-@app.post("/send-text")
-def send_text():
-    """
-    POST /send-text
-    Body JSON:
-      { "to": "5537998675231", "text": "oi" }
-    ⚠️ Só entrega se a janela de 24h estiver aberta.
-    """
-    payload = request.get_json(silent=True) or {}
-    to = (payload.get("to") or "").strip()
-    text = (payload.get("text") or "").strip()
+    ok, status, resp = send_template_message_3params(
+        to_wa_id=to,
+        p1=p1, p2=p2, p3=p3,
+        template_name=template_name,
+        lang=lang
+    )
 
-    if not to or not text:
-        return jsonify({"error": "Campos 'to' e 'text' são obrigatórios."}), 400
-
-    ok, status, resp = send_text_message(to, text)
-    return jsonify({"ok": ok, "status": status, "response": safe_json(resp)}), (200 if ok else 500)
-
-
-def safe_json(text: str):
-    try:
-        return json.loads(text)
-    except Exception:
-        return text
+    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
 
 
 # =========================
