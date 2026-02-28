@@ -1,300 +1,261 @@
 import os
 import json
 import time
+import re
 import requests
+from datetime import datetime, timezone
+
 from flask import Flask, request, jsonify
+
+import gspread
+from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
 # =========================
-# Config via ENV (Railway)
+# ENV (Railway)
 # =========================
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
-WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")  # ex: 1000378126494307
+WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
-DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "true").lower() == "true"
+DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "false").lower() == "true"
 
-# Template default
-WA_TEMPLATE_NAME = os.getenv("WA_TEMPLATE_NAME", "jaspers_market_order_confirmation_v1")
-WA_TEMPLATE_LANG = os.getenv("WA_TEMPLATE_LANG", "en_US")
+GSHEET_ID = os.getenv("GSHEET_ID", "")
+GSHEET_TAB = os.getenv("GSHEET_TAB", "Lancamentos")
+SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "")
 
 # =========================
-# Debug storage (em memória)
+# Google Sheets client (cache)
 # =========================
-LAST_STATUS_EVENT = None
-LAST_MESSAGE_EVENT = None
+_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+_gspread_client = None
+_worksheet = None
 
-def _now_iso():
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+def get_worksheet():
+    global _gspread_client, _worksheet
+
+    if _worksheet is not None:
+        return _worksheet
+
+    if not SERVICE_ACCOUNT_JSON:
+        raise RuntimeError("SERVICE_ACCOUNT_JSON não configurado no Railway.")
+    if not GSHEET_ID:
+        raise RuntimeError("GSHEET_ID não configurado no Railway.")
+
+    creds_info = json.loads(SERVICE_ACCOUNT_JSON)
+    creds = Credentials.from_service_account_info(creds_info, scopes=_SCOPES)
+    _gspread_client = gspread.authorize(creds)
+
+    sh = _gspread_client.open_by_key(GSHEET_ID)
+    ws = sh.worksheet(GSHEET_TAB)
+
+    # Garante cabeçalho
+    header = ws.row_values(1)
+    expected = ["timestamp", "user_wa", "tipo", "valor", "descricao", "raw"]
+    if header != expected:
+        # Se estiver vazio, escreve cabeçalho; se tiver outra coisa, não sobrescreve automaticamente
+        if len(header) == 0:
+            ws.update("A1:F1", [expected])
+        else:
+            # Opcional: você pode forçar, mas prefiro não mexer no que já existe
+            pass
+
+    _worksheet = ws
+    return _worksheet
+
 
 # =========================
 # Helpers
 # =========================
-def normalize_phone(phone: str) -> str:
-    """WhatsApp Cloud API espera E.164 sem +, sem espaços."""
-    if not phone:
-        return ""
-    return "".join(ch for ch in phone if ch.isdigit())
+def now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S%z")
 
-def graph_post_messages(payload: dict):
-    """POST /{PHONE_NUMBER_ID}/messages"""
-    if not WA_ACCESS_TOKEN or not WA_PHONE_NUMBER_ID:
-        return False, 500, {
-            "error": "WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado no ambiente."
-        }
 
+def parse_money_to_float(s: str):
+    """
+    Converte:
+    "35,90" -> 35.90
+    "1.234,56" -> 1234.56
+    "1234.56" -> 1234.56
+    """
+    s = s.strip()
+
+    # Remove moeda e espaços
+    s = re.sub(r"[R$r$\s]", "", s, flags=re.IGNORECASE)
+
+    # Se tem vírgula e ponto, assume padrão BR: 1.234,56
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+        return float(s)
+
+    # Se só tem vírgula: 35,90
+    if "," in s:
+        s = s.replace(",", ".")
+        return float(s)
+
+    # Só ponto ou inteiro
+    return float(s)
+
+
+def detect_transaction(text: str):
+    """
+    Aceita exemplos:
+    "+35,90 mercado"
+    "-120 aluguel"
+    "120 aluguel"
+    "35.90 mercado"
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+
+    # Normaliza espaços
+    raw2 = re.sub(r"\s+", " ", raw)
+
+    # Regex: sinal opcional +/-, valor com separadores, e descrição opcional
+    m = re.match(r"^([+\-])?\s*(\d{1,3}(?:[.\s]\d{3})*(?:[,\.\s]\d{1,2})?|\d+(?:[,\.\s]\d{1,2})?)\s*(.*)$", raw2)
+    if not m:
+        return None
+
+    sign = m.group(1) or ""
+    amount_str = m.group(2)
+    desc = (m.group(3) or "").strip()
+
+    try:
+        value = parse_money_to_float(amount_str)
+    except Exception:
+        return None
+
+    # Decide tipo
+    if sign == "-":
+        tipo = "despesa"
+    elif sign == "+":
+        tipo = "receita"
+    else:
+        # Sem sinal: assume despesa (padrão)
+        tipo = "despesa"
+
+    return {
+        "tipo": tipo,
+        "valor": round(value, 2),
+        "descricao": desc if desc else "(sem descricao)",
+        "raw": raw,
+    }
+
+
+def append_to_sheet(user_wa: str, tipo: str, valor: float, descricao: str, raw: str):
+    ws = get_worksheet()
+    row = [now_iso(), user_wa, tipo, valor, descricao, raw]
+    ws.append_row(row, value_input_option="USER_ENTERED")
+
+
+def wa_send_text(to_number: str, message: str):
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
         "Content-Type": "application/json",
     }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": message},
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=30)
+    return r.status_code, r.text
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
-        status = r.status_code
-        try:
-            resp = r.json()
-        except Exception:
-            resp = r.text
-
-        ok = 200 <= status < 300
-        return ok, status, resp
-    except Exception as ex:
-        return False, 500, {"error": f"Erro requests: {str(ex)}"}
-
-def extract_incoming_messages(payload):
-    """Extrai lista de mensagens recebidas do webhook."""
-    messages = []
-    try:
-        for e in payload.get("entry", []):
-            for c in e.get("changes", []):
-                value = c.get("value") or {}
-                msgs = value.get("messages") or []
-                for m in msgs:
-                    messages.append(m)
-    except Exception as ex:
-        print("Erro ao extrair mensagens:", ex)
-    return messages
-
-def extract_statuses(payload):
-    """Extrai statuses (sent/delivered/read/failed) do webhook."""
-    statuses = []
-    try:
-        for e in payload.get("entry", []):
-            for c in e.get("changes", []):
-                value = c.get("value") or {}
-                sts = value.get("statuses") or []
-                for s in sts:
-                    statuses.append(s)
-    except Exception as ex:
-        print("Erro ao extrair statuses:", ex)
-    return statuses
 
 # =========================
-# Rotas básicas
+# Routes
 # =========================
-@app.get("/")
+@app.get("/health")
 def health():
-    return "OK", 200
+    return jsonify({"ok": True, "time": now_iso()})
 
-@app.get("/debug/env")
-def debug_env():
-    # NÃO mostra tokens
-    return jsonify({
-        "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
-        "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
-        "WA_PHONE_NUMBER_ID": WA_PHONE_NUMBER_ID,
-        "GRAPH_VERSION": GRAPH_VERSION,
-        "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
-        "WA_TEMPLATE_NAME": WA_TEMPLATE_NAME,
-        "WA_TEMPLATE_LANG": WA_TEMPLATE_LANG,
-    }), 200
 
-@app.get("/debug/last-status")
-def debug_last_status():
-    return jsonify({
-        "last_status": LAST_STATUS_EVENT,
-        "last_message": LAST_MESSAGE_EVENT,
-    }), 200
-
-# =========================
-# Webhook - Verificação (Meta)
-# =========================
 @app.get("/webhook")
-def verify_webhook():
-    mode = request.args.get("hub.mode", "")
-    token = request.args.get("hub.verify_token", "")
-    challenge = request.args.get("hub.challenge", "")
-
-    if DEBUG_LOG_PAYLOAD:
-        print("\n========== WEBHOOK VERIFY ==========")
-        print("mode:", mode)
-        print("token(recebido):", token)
-        print("token(ENV set):", bool(WA_VERIFY_TOKEN))
-        print("challenge:", challenge)
-        print("====================================\n")
+def webhook_verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
     if mode == "subscribe" and token == WA_VERIFY_TOKEN:
         return challenge, 200
-
     return "Forbidden", 403
 
-# =========================
-# Webhook - Recebimento (Meta)
-# =========================
+
 @app.post("/webhook")
-def receive_webhook():
-    global LAST_STATUS_EVENT, LAST_MESSAGE_EVENT
+def webhook_receive():
+    data = request.get_json(silent=True) or {}
 
-    payload = request.get_json(silent=True) or {}
-
-    print("\n========== INCOMING WEBHOOK ==========")
     if DEBUG_LOG_PAYLOAD:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    print("======================================\n")
+        print("==== INCOMING WEBHOOK ====")
+        print(json.dumps(data, ensure_ascii=False))
 
-    # 1) STATUS updates (sent/delivered/read/failed)
-    statuses = extract_statuses(payload)
-    for st in statuses:
-        # Exemplo de campos:
-        # st.get("status") -> sent/delivered/read/failed
-        # st.get("id") -> wamid...
-        # st.get("recipient_id")
-        # st.get("errors") -> lista com code, title, message, etc (quando falha)
-        LAST_STATUS_EVENT = {"at": _now_iso(), "data": st}
-        print("\n===== STATUS UPDATE =====")
-        print("status:", st.get("status"))
-        print("id:", st.get("id"))
-        print("recipient_id:", st.get("recipient_id"))
-        if st.get("errors"):
-            print("errors:", json.dumps(st.get("errors"), ensure_ascii=False))
-        print("=========================\n")
+    # Percorre eventos
+    try:
+        entry = data.get("entry", [])
+        for e in entry:
+            changes = e.get("changes", [])
+            for c in changes:
+                value = c.get("value", {})
+                messages = value.get("messages", [])
 
-    # 2) Incoming messages (quando alguém manda msg pro seu número)
-    msgs = extract_incoming_messages(payload)
-    for msg in msgs:
-        LAST_MESSAGE_EVENT = {"at": _now_iso(), "data": msg}
-        sender_wa_id = msg.get("from")
-        msg_type = msg.get("type")
-        text_body = (msg.get("text") or {}).get("body")
+                for msg in messages:
+                    from_wa = msg.get("from")  # número do usuário
+                    text_body = (msg.get("text") or {}).get("body", "")
 
-        print("\n===== INCOMING MESSAGE =====")
-        print("from:", sender_wa_id, "type:", msg_type, "text:", text_body)
-        print("============================\n")
+                    # Detecta lançamento
+                    tx = detect_transaction(text_body)
 
-        # Responder automaticamente (somente dentro da janela de 24h)
-        if msg_type == "text" and sender_wa_id and text_body:
-            reply = (
-                f"Recebi: {text_body}\n\n"
-                "Exemplos:\n"
-                "+ 35,90 mercado\n"
-                "- 120 aluguel"
-            )
-            send_text_message(sender_wa_id, reply)
+                    if tx:
+                        # Salva no Sheets
+                        append_to_sheet(
+                            user_wa=from_wa,
+                            tipo=tx["tipo"],
+                            valor=tx["valor"],
+                            descricao=tx["descricao"],
+                            raw=tx["raw"],
+                        )
+                        reply = (
+                            f"✅ Lançamento salvo!\n"
+                            f"Tipo: {tx['tipo']}\n"
+                            f"Valor: {tx['valor']}\n"
+                            f"Desc: {tx['descricao']}"
+                        )
+                    else:
+                        reply = (
+                            "Recebi: " + (text_body or "(vazio)") + "\n\n"
+                            "Exemplos:\n"
+                            "+ 35,90 mercado\n"
+                            "- 120 aluguel\n"
+                            "120 mercado"
+                        )
 
-    return "OK", 200
+                    # Responde no WhatsApp
+                    wa_send_text(from_wa, reply)
 
-# =========================
-# Enviar mensagem de TEXTO
-# =========================
-def send_text_message(to_wa_id: str, body: str):
-    to_wa_id = normalize_phone(to_wa_id)
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "text",
-        "text": {"body": body},
-    }
+    except Exception as ex:
+        print("ERROR webhook:", str(ex))
 
-    ok, status, resp = graph_post_messages(payload)
-    print("SEND_TEXT status:", status)
-    print("SEND_TEXT resp:", resp)
-    return ok, status, resp
+    # Sempre 200 para o WhatsApp não ficar reenviando
+    return jsonify({"ok": True}), 200
 
-# =========================
-# Enviar TEMPLATE (3 params)
-# =========================
-def send_template_message_3params(to_wa_id: str, p1: str, p2: str, p3: str,
-                                  template_name: str = None, lang: str = None):
-    to_wa_id = normalize_phone(to_wa_id)
-    template_name = template_name or WA_TEMPLATE_NAME
-    lang = lang or WA_TEMPLATE_LANG
 
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_wa_id,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": str(p1)},
-                        {"type": "text", "text": str(p2)},
-                        {"type": "text", "text": str(p3)},
-                    ],
-                }
-            ],
-        },
-    }
-
-    ok, status, resp = graph_post_messages(payload)
-    print("\n===== SEND TEMPLATE =====")
-    print("template:", template_name, "lang:", lang)
-    print("to:", to_wa_id)
-    print("status:", status)
-    print("resp:", resp)
-    print("=========================\n")
-    return ok, status, resp
-
-# =========================
-# Endpoint para testar envio (texto)
-# =========================
-@app.post("/send-test")
-def send_test():
-    payload = request.get_json(silent=True) or {}
-    to = (payload.get("to") or "").strip()
-    text = (payload.get("text") or "Teste do Railway").strip()
-
-    if not to:
-        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
-
-    ok, status, resp = send_text_message(to, text)
-    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
-
-# =========================
-# Endpoint para testar envio (template com 3 params)
-# =========================
-@app.post("/send-template")
-def send_template():
-    payload = request.get_json(silent=True) or {}
-
-    to = (payload.get("to") or "").strip()
-    if not to:
-        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
-
-    p1 = payload.get("p1", "David")
-    p2 = payload.get("p2", "12345")
-    p3 = payload.get("p3", "R$ 99,90")
-
-    template_name = (payload.get("template_name") or "").strip() or None
-    lang = (payload.get("lang") or "").strip() or None
-
-    ok, status, resp = send_template_message_3params(
-        to_wa_id=to,
-        p1=p1, p2=p2, p3=p3,
-        template_name=template_name,
-        lang=lang
-    )
-
-    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
-
-# =========================
-# Exec local
-# =========================
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+@app.get("/debug/env")
+def debug_env():
+    # NÃO exponha tokens aqui em produção; use só pra teste
+    return jsonify({
+        "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
+        "GRAPH_VERSION": GRAPH_VERSION,
+        "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
+        "WA_PHONE_NUMBER_ID": WA_PHONE_NUMBER_ID,
+        "GSHEET_ID_set": bool(GSHEET_ID),
+        "GSHEET_TAB": GSHEET_TAB,
+        "SERVICE_ACCOUNT_JSON_set": bool(SERVICE_ACCOUNT_JSON),
+    })
