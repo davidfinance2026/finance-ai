@@ -20,7 +20,7 @@ WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
 
 # Google Sheets
-GSHEET_ID = os.getenv("SPREADSHEET_ID", "")  # <-- como você pediu
+GSHEET_ID = os.getenv("SPREADSHEET_ID", "")
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "")
 
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "false").lower() == "true"
@@ -33,9 +33,31 @@ SCOPES = [
 _gs_client = None
 _gs_opened = None
 
+# Cache simples p/ reduzir leituras do Sheets
+_WA_LINK_CACHE = {}          # phone -> email
+_WA_LINK_CACHE_AT = 0.0
+_WA_LINK_CACHE_TTL = 30.0    # segundos
+
+EMAIL_RE = re.compile(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})")
+
+# =========================
+# Utils
+# =========================
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+def _today_ymd() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+def extract_email(text: str) -> str:
+    if not text:
+        return ""
+    m = EMAIL_RE.search(text.strip())
+    return (m.group(1) if m else "").lower().strip()
+
+# =========================
+# Google Sheets
+# =========================
 def get_gs_client() -> gspread.Client:
     global _gs_client
     if _gs_client:
@@ -70,15 +92,127 @@ def get_worksheet(title: str):
     try:
         return ss.worksheet(title)
     except gspread.WorksheetNotFound:
-        # cria se não existir
         return ss.add_worksheet(title=title, rows=2000, cols=20)
 
 def append_row(sheet_name: str, row: list):
     ws = get_worksheet(sheet_name)
     ws.append_row(row, value_input_option="USER_ENTERED")
 
+def ensure_headers(sheet_name: str, headers: list):
+    """
+    Garante que a linha 1 tenha cabeçalhos. Se estiver vazia, escreve.
+    """
+    ws = get_worksheet(sheet_name)
+    first_row = ws.row_values(1)
+    if not first_row:
+        ws.append_row(headers, value_input_option="RAW")
+
 # =========================
-# Parsing simples
+# WhatsApp <-> Email (Opção B)
+# =========================
+def _refresh_wa_link_cache(force=False):
+    global _WA_LINK_CACHE, _WA_LINK_CACHE_AT
+
+    now = time.time()
+    if (not force) and (now - _WA_LINK_CACHE_AT) < _WA_LINK_CACHE_TTL and _WA_LINK_CACHE:
+        return
+
+    ws = get_worksheet("WhatsApp")
+    # Espera cabeçalhos: wa_number | user_email | criado_em
+    # Se já existe, ok. Se não existir, apenas não quebra.
+    rows = ws.get_all_values()
+    mapping = {}
+
+    if len(rows) >= 2:
+        headers = [h.strip().lower() for h in rows[0]]
+        # tenta localizar colunas
+        def col_idx(name):
+            try:
+                return headers.index(name)
+            except ValueError:
+                return -1
+
+        idx_phone = col_idx("wa_number")
+        idx_email = col_idx("user_email")
+
+        # fallback por posição se não achar
+        if idx_phone < 0: idx_phone = 0
+        if idx_email < 0: idx_email = 1
+
+        for r in rows[1:]:
+            if not r:
+                continue
+            phone = (r[idx_phone] if idx_phone < len(r) else "").strip()
+            email = (r[idx_email] if idx_email < len(r) else "").strip().lower()
+            if phone and email:
+                mapping[phone] = email
+
+    _WA_LINK_CACHE = mapping
+    _WA_LINK_CACHE_AT = now
+
+def get_linked_email(phone: str) -> str:
+    if not phone:
+        return ""
+    _refresh_wa_link_cache()
+    return _WA_LINK_CACHE.get(phone, "")
+
+def upsert_whatsapp_link(phone: str, email: str):
+    """
+    Salva/atualiza o vínculo na aba WhatsApp:
+    wa_number | user_email | criado_em
+    """
+    ensure_headers("WhatsApp", ["wa_number", "user_email", "criado_em"])
+    ws = get_worksheet("WhatsApp")
+
+    # procura na coluna A (wa_number)
+    # (assumindo cabeçalho na linha 1)
+    col_a = ws.col_values(1)  # inclui header
+    target_row = None
+    for i, v in enumerate(col_a[1:], start=2):
+        if (v or "").strip() == phone:
+            target_row = i
+            break
+
+    if target_row:
+        ws.update(f"B{target_row}", [[email]], value_input_option="RAW")
+        # não mexe no criado_em
+    else:
+        append_row("WhatsApp", [phone, email, _now_iso()])
+
+    # atualiza cache imediatamente
+    _refresh_wa_link_cache(force=True)
+
+def ensure_user_exists(email: str, phone: str = ""):
+    """
+    Garante que exista uma linha na aba Usuarios com este email.
+    Cabeçalho esperado (como seu print):
+    email | senha | nome | nome_apelido | nome_completo | telefone
+    """
+    ensure_headers("Usuarios", ["email", "senha", "nome", "nome_apelido", "nome_completo", "telefone"])
+    ws = get_worksheet("Usuarios")
+
+    col_a = ws.col_values(1)  # email
+    for v in col_a[1:]:
+        if (v or "").strip().lower() == email.lower():
+            # opcionalmente atualizar telefone se vazio
+            if phone:
+                # acha linha
+                idx = None
+                for i, vv in enumerate(col_a[1:], start=2):
+                    if (vv or "").strip().lower() == email.lower():
+                        idx = i
+                        break
+                if idx:
+                    tel = (ws.cell(idx, 6).value or "").strip()
+                    if not tel:
+                        ws.update(f"F{idx}", [[phone]], value_input_option="RAW")
+            return
+
+    # não existe -> cria uma linha minimalista
+    append_row("Usuarios", [email, "", "", "", "", phone])
+
+# =========================
+# Parsing de lançamento
 # =========================
 VALUE_RE = re.compile(r"([-+])?\s*(?:R\$\s*)?(\d+(?:[.,]\d{1,2})?)", re.IGNORECASE)
 
@@ -122,7 +256,7 @@ def parse_lancamento(text: str):
         categoria = parts[0].strip().capitalize()
         descricao = " ".join(parts[1:]).strip() or categoria
 
-    data = datetime.now().strftime("%Y-%m-%d")
+    data = _today_ymd()
 
     return {"data": data, "tipo": tipo, "categoria": categoria, "descricao": descricao, "valor": valor}
 
@@ -172,13 +306,19 @@ def home():
 
 @app.get("/debug/env")
 def debug_env():
-    # não vaza secrets; só confirma presença
     sa_email = ""
     try:
         if SERVICE_ACCOUNT_JSON:
             sa_email = json.loads(SERVICE_ACCOUNT_JSON).get("client_email", "")
     except Exception:
         sa_email = "(erro ao ler JSON)"
+
+    # tenta contar vínculos
+    try:
+        _refresh_wa_link_cache(force=True)
+        links = len(_WA_LINK_CACHE)
+    except Exception:
+        links = -1
 
     return jsonify({
         "GRAPH_VERSION": GRAPH_VERSION,
@@ -189,16 +329,17 @@ def debug_env():
         "SERVICE_ACCOUNT_JSON_set": bool(SERVICE_ACCOUNT_JSON),
         "SERVICE_ACCOUNT_client_email": sa_email,
         "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
+        "WA_LINKS_cached": links,
     }), 200
 
 @app.get("/debug/sheets-write")
 def debug_sheets_write():
     """
     Teste rápido: tenta escrever 1 linha na aba Lancamentos.
-    Se falhar, retorna o erro.
     """
     try:
-        test_row = ["debug@test", datetime.now().strftime("%Y-%m-%d"), "GASTO", "Teste", "Rota debug", 1.23, _now_iso()]
+        ensure_headers("Lancamentos", ["user_email", "data", "tipo", "categoria", "descricao", "valor", "criado_em"])
+        test_row = ["debug@test", _today_ymd(), "GASTO", "Teste", "Rota debug", 1.23, _now_iso()]
         append_row("Lancamentos", test_row)
         return jsonify({"ok": True, "written": test_row}), 200
     except Exception as e:
@@ -227,11 +368,56 @@ def webhook_receive():
     if not msgs:
         return jsonify({"ok": True, "message": "no messages"}), 200
 
-    for m in msgs:
-        from_phone = m.get("from", "")
-        text = (m.get("text") or "").strip()
-        lanc = parse_lancamento(text)
+    # garante headers principais
+    ensure_headers("WhatsApp", ["wa_number", "user_email", "criado_em"])
+    ensure_headers("Usuarios", ["email", "senha", "nome", "nome_apelido", "nome_completo", "telefone"])
+    ensure_headers("Lancamentos", ["user_email", "data", "tipo", "categoria", "descricao", "valor", "criado_em"])
 
+    for m in msgs:
+        from_phone = (m.get("from") or "").strip()
+        text = (m.get("text") or "").strip()
+
+        # 1) Verifica se número já está vinculado
+        linked_email = get_linked_email(from_phone)
+
+        # 2) Se NÃO estiver vinculado, só aceita email
+        if not linked_email:
+            email = extract_email(text)
+
+            if not email:
+                wa_send_text(
+                    from_phone,
+                    "🔒 Antes de registrar lançamentos, preciso vincular seu número.\n\n"
+                    "Por favor, me envie seu email (ex: nome@dominio.com)."
+                )
+                continue
+
+            # salva vínculo e garante usuário
+            try:
+                upsert_whatsapp_link(from_phone, email)
+                ensure_user_exists(email, from_phone)
+
+                wa_send_text(
+                    from_phone,
+                    "✅ Número vinculado com sucesso!\n\n"
+                    f"Email: {email}\n\n"
+                    "Agora você pode enviar lançamentos.\n\n"
+                    "Exemplos:\n"
+                    "+ 35,90 mercado\n"
+                    "- 120 aluguel\n"
+                    "recebi 1000 salario"
+                )
+            except Exception as e:
+                print("ERROR linking:", repr(e))
+                wa_send_text(
+                    from_phone,
+                    "⚠️ Não consegui vincular agora.\n"
+                    "Erro: " + str(e)
+                )
+            continue
+
+        # 3) Se já estiver vinculado, processa lançamento
+        lanc = parse_lancamento(text)
         if not lanc:
             wa_send_text(
                 from_phone,
@@ -241,7 +427,7 @@ def webhook_receive():
             continue
 
         row = [
-            from_phone,
+            linked_email,
             lanc["data"],
             lanc["tipo"],
             lanc["categoria"],
@@ -254,11 +440,13 @@ def webhook_receive():
             append_row("Lancamentos", row)
             wa_send_text(
                 from_phone,
-                f"✅ Registrado!\n{lanc['tipo']} • {lanc['categoria']}\n"
-                f"{lanc['descricao']}\nValor: R$ {lanc['valor']:.2f}\nData: {lanc['data']}"
+                f"✅ Lançamento registrado!\n"
+                f"{lanc['tipo']} • {lanc['categoria']}\n"
+                f"{lanc['descricao']}\n"
+                f"Valor: R$ {lanc['valor']:.2f}\n"
+                f"Data: {lanc['data']}"
             )
         except Exception as e:
-            # Mostra no log e te avisa no WhatsApp com o erro
             print("ERROR append_row:", repr(e))
             wa_send_text(
                 from_phone,
