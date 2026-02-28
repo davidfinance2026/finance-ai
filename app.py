@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 
 app = Flask(__name__)
 
@@ -13,6 +13,22 @@ WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
 WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")  # ex: 1000378126494307
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "true").lower() == "true"
+
+
+# =========================
+# CORS simples (para testes no browser/Hoppscotch)
+# =========================
+@app.after_request
+def add_cors_headers(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+
+@app.route("/<path:_>", methods=["OPTIONS"])
+def options_any(_):
+    return ("", 204)
 
 
 # =========================
@@ -33,6 +49,39 @@ def debug_env():
         "GRAPH_VERSION": GRAPH_VERSION,
         "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
     }), 200
+
+
+# =========================
+# Helpers
+# =========================
+def graph_post_messages(payload: dict) -> tuple[bool, int, str]:
+    """
+    Faz POST no endpoint /{PHONE_NUMBER_ID}/messages
+    Retorna: (ok, status_code, response_text)
+    """
+    if not WA_ACCESS_TOKEN or not WA_PHONE_NUMBER_ID:
+        return (False, 0, "WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado (ENV).")
+
+    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        return (200 <= r.status_code < 300, r.status_code, r.text)
+    except Exception as ex:
+        return (False, 0, f"Exception requests: {ex}")
+
+
+def normalize_phone(to: str) -> str:
+    """
+    Espera E.164 só com dígitos. Ex: 5537998675231
+    Remove espaços, +, parênteses, traços.
+    """
+    digits = "".join(ch for ch in (to or "") if ch.isdigit())
+    return digits
 
 
 # =========================
@@ -65,9 +114,10 @@ def verify_webhook():
 def receive_webhook():
     payload = request.get_json(silent=True) or {}
 
-    print("\n========== INCOMING WEBHOOK ==========")
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    print("======================================\n")
+    if DEBUG_LOG_PAYLOAD:
+        print("\n========== INCOMING WEBHOOK ==========")
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print("======================================\n")
 
     msgs = extract_messages(payload)
 
@@ -84,12 +134,17 @@ def receive_webhook():
                 "+ 35,90 mercado\n"
                 "- 120 aluguel"
             )
-            send_text_message(sender_wa_id, reply)
+            ok, status, resp_text = send_text_message(sender_wa_id, reply)
+            print("AUTO_REPLY ok:", ok, "status:", status, "resp:", resp_text)
 
     return "OK", 200
 
 
 def extract_messages(payload):
+    """
+    Extrai mensagens do payload do WhatsApp Cloud API:
+    entry[].changes[].value.messages[]
+    """
     messages = []
     try:
         entry = payload.get("entry", [])
@@ -107,34 +162,44 @@ def extract_messages(payload):
 
 
 # =========================
-# Enviar mensagem (Cloud API)
+# Envio mensagem (Cloud API)
 # =========================
-def send_text_message(to_wa_id: str, body: str) -> bool:
-    if not WA_ACCESS_TOKEN or not WA_PHONE_NUMBER_ID:
-        print("⚠️ WA_ACCESS_TOKEN ou WA_PHONE_NUMBER_ID não configurado.")
-        return False
-
-    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    data = {
+def send_text_message(to_wa_id: str, body: str) -> tuple[bool, int, str]:
+    """
+    Envia TEXTO. Só funciona se:
+    - você está na janela de 24h, OU
+    - usuário iniciou conversa recentemente.
+    """
+    payload = {
         "messaging_product": "whatsapp",
-        "to": to_wa_id,
+        "to": normalize_phone(to_wa_id),
         "type": "text",
         "text": {"body": body},
     }
+    ok, status, resp = graph_post_messages(payload)
+    print("SEND_TEXT status:", status)
+    print("SEND_TEXT resp:", resp)
+    return ok, status, resp
 
-    try:
-        r = requests.post(url, headers=headers, json=data, timeout=20)
-        ok = 200 <= r.status_code < 300
-        print("SEND_TEXT status:", r.status_code)
-        print("SEND_TEXT resp:", r.text)
-        return ok
-    except Exception as ex:
-        print("❌ Erro requests send_text_message:", ex)
-        return False
+
+def send_template_hello_world(to_wa_id: str) -> tuple[bool, int, str]:
+    """
+    Envia TEMPLATE padrão 'hello_world' (sandbox/test)
+    Funciona fora da janela de 24h.
+    """
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": normalize_phone(to_wa_id),
+        "type": "template",
+        "template": {
+            "name": "hello_world",
+            "language": {"code": "en_US"}
+        }
+    }
+    ok, status, resp = graph_post_messages(payload)
+    print("SEND_TEMPLATE status:", status)
+    print("SEND_TEMPLATE resp:", resp)
+    return ok, status, resp
 
 
 # =========================
@@ -143,19 +208,97 @@ def send_text_message(to_wa_id: str, body: str) -> bool:
 @app.post("/send-test")
 def send_test():
     """
-    Use para testar envio manual:
     POST /send-test
     Body JSON: { "to": "5537998675231", "text": "teste" }
     """
     payload = request.get_json(silent=True) or {}
-    to = (payload.get("to") or "").strip()
+    to = normalize_phone((payload.get("to") or "").strip())
     text = (payload.get("text") or "Teste do Railway").strip()
 
     if not to:
         return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
 
-    ok = send_text_message(to, text)
-    return jsonify({"ok": ok}), 200 if ok else 500
+    ok, status, resp = send_text_message(to, text)
+    return jsonify({
+        "ok": ok,
+        "status": status,
+        "response": safe_json_or_text(resp)
+    }), 200 if ok else 500
+
+
+@app.post("/send-template")
+def send_template():
+    """
+    POST /send-template
+    Body JSON: { "to": "5537998675231" }
+    """
+    payload = request.get_json(silent=True) or {}
+    to = normalize_phone((payload.get("to") or "").strip())
+
+    if not to:
+        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+
+    ok, status, resp = send_template_hello_world(to)
+    return jsonify({
+        "ok": ok,
+        "status": status,
+        "response": safe_json_or_text(resp)
+    }), 200 if ok else 500
+
+
+@app.post("/send-any")
+def send_any():
+    """
+    POST /send-any
+    Body JSON:
+      {
+        "to": "5537998675231",
+        "text": "Teste backend",
+        "fallback_template": true
+      }
+
+    Tenta enviar texto.
+    Se falhar e fallback_template=true, tenta template hello_world.
+    """
+    payload = request.get_json(silent=True) or {}
+    to = normalize_phone((payload.get("to") or "").strip())
+    text = (payload.get("text") or "Teste backend").strip()
+    fallback = bool(payload.get("fallback_template", True))
+
+    if not to:
+        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+
+    ok, status, resp = send_text_message(to, text)
+    if ok:
+        return jsonify({"ok": True, "sent": "text", "status": status, "response": safe_json_or_text(resp)}), 200
+
+    if fallback:
+        ok2, status2, resp2 = send_template_hello_world(to)
+        return jsonify({
+            "ok": ok2,
+            "sent": "template" if ok2 else "none",
+            "text_status": status,
+            "text_response": safe_json_or_text(resp),
+            "template_status": status2,
+            "template_response": safe_json_or_text(resp2),
+        }), 200 if ok2 else 500
+
+    return jsonify({
+        "ok": False,
+        "sent": "none",
+        "status": status,
+        "response": safe_json_or_text(resp),
+    }), 500
+
+
+def safe_json_or_text(s: str):
+    """
+    Tenta converter texto JSON em dict pra facilitar ver no Hoppscotch.
+    """
+    try:
+        return json.loads(s)
+    except Exception:
+        return s
 
 
 # =========================
