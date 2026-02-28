@@ -3,7 +3,7 @@ import json
 import hmac
 import hashlib
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 
 app = Flask(__name__)
 
@@ -16,8 +16,7 @@ WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")  # ex: 1000378126494307
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v22.0")
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "true").lower() == "true"
 
-# Opcional (recomendado): App Secret do Meta Developers
-# Configure no Railway como META_APP_SECRET
+# App Secret (para validar assinatura do webhook)
 META_APP_SECRET = os.getenv("META_APP_SECRET", "")
 
 # Template default (pode trocar via body do /send-template)
@@ -35,32 +34,49 @@ def normalize_phone(phone: str) -> str:
     """
     if not phone:
         return ""
-    digits = "".join(ch for ch in phone if ch.isdigit())
-    return digits
+    return "".join(ch for ch in phone if ch.isdigit())
 
 
-def verify_meta_signature(req) -> bool:
+def corsify(resp):
+    # Ajuda Hoppscotch/Browser
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        return corsify(make_response("", 200))
+
+
+def verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
     """
-    Verifica assinatura do webhook (X-Hub-Signature-256).
-    Só valida se META_APP_SECRET estiver configurado.
+    Valida X-Hub-Signature-256: sha256=<hex>
     """
     if not META_APP_SECRET:
-        return True  # não valida se você não configurou
+        # Se não configurou o secret, não bloqueia, mas avisa
+        print("⚠️ META_APP_SECRET não configurado. Assinatura do webhook NÃO será validada.")
+        return True
 
-    sig = req.headers.get("X-Hub-Signature-256", "")
-    if not sig.startswith("sha256="):
+    if not signature_header:
         return False
 
-    received = sig.split("sha256=", 1)[1].strip()
-    body = req.get_data()  # bytes
+    try:
+        algo, their_sig = signature_header.split("=", 1)
+        if algo != "sha256":
+            return False
 
-    expected = hmac.new(
-        META_APP_SECRET.encode("utf-8"),
-        body,
-        hashlib.sha256
-    ).hexdigest()
+        expected = hmac.new(
+            META_APP_SECRET.encode("utf-8"),
+            msg=raw_body,
+            digestmod=hashlib.sha256
+        ).hexdigest()
 
-    return hmac.compare_digest(received, expected)
+        return hmac.compare_digest(expected, their_sig)
+    except Exception:
+        return False
 
 
 def graph_post_messages(payload: dict):
@@ -95,7 +111,7 @@ def graph_post_messages(payload: dict):
 
 def extract_messages(payload):
     """
-    Extrai mensagens recebidas do webhook (value.messages)
+    Extrai lista de mensagens recebidas do webhook.
     """
     messages = []
     try:
@@ -105,14 +121,13 @@ def extract_messages(payload):
                 for m in (value.get("messages") or []):
                     messages.append(m)
     except Exception as ex:
-        print("Erro ao extrair messages:", ex)
+        print("Erro ao extrair mensagens:", ex)
     return messages
 
 
 def extract_statuses(payload):
     """
-    Extrai statuses do webhook (value.statuses)
-    Isso é MUITO importante pra saber se entregou / falhou / motivo.
+    Extrai updates de status: sent/delivered/read/failed
     """
     statuses = []
     try:
@@ -131,22 +146,22 @@ def extract_statuses(payload):
 # =========================
 @app.get("/")
 def health():
-    return "OK", 200
+    return corsify(make_response("OK", 200))
 
 
 @app.get("/debug/env")
 def debug_env():
     # NÃO mostra tokens
-    return jsonify({
-        "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
+    return corsify(jsonify({
+        "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
+        "GRAPH_VERSION": GRAPH_VERSION,
+        "META_APP_SECRET_set": bool(META_APP_SECRET),
         "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
         "WA_PHONE_NUMBER_ID": WA_PHONE_NUMBER_ID,
-        "GRAPH_VERSION": GRAPH_VERSION,
-        "DEBUG_LOG_PAYLOAD": DEBUG_LOG_PAYLOAD,
-        "WA_TEMPLATE_NAME": WA_TEMPLATE_NAME,
         "WA_TEMPLATE_LANG": WA_TEMPLATE_LANG,
-        "META_APP_SECRET_set": bool(META_APP_SECRET),
-    }), 200
+        "WA_TEMPLATE_NAME": WA_TEMPLATE_NAME,
+        "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
+    }))
 
 
 # =========================
@@ -167,9 +182,9 @@ def verify_webhook():
         print("====================================\n")
 
     if mode == "subscribe" and token == WA_VERIFY_TOKEN:
-        return challenge, 200
+        return corsify(make_response(challenge, 200))
 
-    return "Forbidden", 403
+    return corsify(make_response("Forbidden", 403))
 
 
 # =========================
@@ -177,9 +192,12 @@ def verify_webhook():
 # =========================
 @app.post("/webhook")
 def receive_webhook():
-    # (Opcional) Validação de assinatura
-    if not verify_meta_signature(request):
-        return "Invalid signature", 403
+    raw_body = request.get_data()  # bytes
+    signature = request.headers.get("X-Hub-Signature-256", "")
+
+    if not verify_meta_signature(raw_body, signature):
+        print("❌ Assinatura inválida no webhook.")
+        return corsify(make_response("Invalid signature", 403))
 
     payload = request.get_json(silent=True) or {}
 
@@ -188,18 +206,16 @@ def receive_webhook():
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     print("======================================\n")
 
-    # 1) Statuses de entrega/falha
+    # Log de statuses (é isso que vai te dizer se entregou ou falhou!)
     statuses = extract_statuses(payload)
-    for st in statuses:
-        # exemplos: sent, delivered, read, failed
+    for s in statuses:
         print("\n---- STATUS UPDATE ----")
-        print(json.dumps(st, ensure_ascii=False, indent=2))
+        print(json.dumps(s, ensure_ascii=False, indent=2))
         print("-----------------------\n")
 
-    # 2) Mensagens recebidas
     msgs = extract_messages(payload)
 
-    # Auto-resposta (só funciona se estiver na janela de 24h)
+    # Responde quando receber texto (só funciona na janela de 24h)
     for msg in msgs:
         sender_wa_id = msg.get("from")
         msg_type = msg.get("type")
@@ -214,20 +230,14 @@ def receive_webhook():
             )
             send_text_message(sender_wa_id, reply)
 
-    return "OK", 200
+    return corsify(make_response("OK", 200))
 
 
 # =========================
 # Enviar mensagem de TEXTO (Cloud API)
 # =========================
 def send_text_message(to_wa_id: str, body: str):
-    """
-    IMPORTANTE:
-    - Texto só entrega se o usuário falou com você nas últimas 24h.
-    - Para iniciar conversa, use TEMPLATE (send_template_message_3params).
-    """
     to_wa_id = normalize_phone(to_wa_id)
-
     payload = {
         "messaging_product": "whatsapp",
         "to": to_wa_id,
@@ -244,18 +254,8 @@ def send_text_message(to_wa_id: str, body: str):
 # =========================
 # Enviar TEMPLATE (3 params)
 # =========================
-def send_template_message_3params(
-    to_wa_id: str,
-    p1: str,
-    p2: str,
-    p3: str,
-    template_name: str = None,
-    lang: str = None
-):
-    """
-    Template com 3 parâmetros no BODY:
-      {{1}}, {{2}}, {{3}}
-    """
+def send_template_message_3params(to_wa_id: str, p1: str, p2: str, p3: str,
+                                  template_name: str = None, lang: str = None):
     to_wa_id = normalize_phone(to_wa_id)
     template_name = template_name or WA_TEMPLATE_NAME
     lang = lang or WA_TEMPLATE_LANG
@@ -293,72 +293,61 @@ def send_template_message_3params(
 # =========================
 # Endpoint para testar envio (texto)
 # =========================
-@app.get("/send-test")
-def send_test_help():
-    return jsonify({
-        "how_to_use": "Faça POST em /send-test com JSON",
-        "example_body": {"to": "5537998675231", "text": "Teste do Railway"},
-        "important": "Mensagem TEXT só entrega se o usuário falou com você nas últimas 24h. Para iniciar conversa, use /send-template."
-    }), 200
-
-
 @app.post("/send-test")
 def send_test():
+    """
+    POST /send-test
+    Body JSON: { "to": "5537998675231", "text": "teste" }
+    """
     payload = request.get_json(silent=True) or {}
     to = (payload.get("to") or "").strip()
     text = (payload.get("text") or "Teste do Railway").strip()
 
     if not to:
-        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+        return corsify(make_response(jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400))
 
     ok, status, resp = send_text_message(to, text)
-    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
+    return corsify(make_response(jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)))
 
 
 # =========================
 # Endpoint para testar envio (template com 3 params)
 # =========================
-@app.get("/send-template")
-def send_template_help():
-    return jsonify({
-        "how_to_use": "Faça POST em /send-template com JSON",
-        "example_body": {
-            "to": "5537998675231",
-            "p1": "David",
-            "p2": "Pedido 12345",
-            "p3": "R$ 99,90",
-            "template_name": "jaspers_market_order_confirmation_v1",
-            "lang": "en_US"
-        },
-        "important": "TEMPLATE é o correto para iniciar conversa (fora da janela de 24h)."
-    }), 200
-
-
 @app.post("/send-template")
 def send_template():
+    """
+    POST /send-template
+    Body JSON:
+    {
+      "to": "5537998675231",
+      "p1": "David",
+      "p2": "Pedido 12345",
+      "p3": "Amanhã 10h",
+      "template_name": "jaspers_market_order_confirmation_v1",  # opcional
+      "lang": "en_US"                                          # opcional
+    }
+    """
     payload = request.get_json(silent=True) or {}
 
     to = (payload.get("to") or "").strip()
     if not to:
-        return jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400
+        return corsify(make_response(jsonify({"error": "Campo 'to' é obrigatório. Ex: 5537998675231"}), 400))
 
     p1 = payload.get("p1", "David")
     p2 = payload.get("p2", "12345")
-    p3 = payload.get("p3", "R$ 99,90")
+    p3 = payload.get("p3", "Amanhã 10h")
 
     template_name = (payload.get("template_name") or "").strip() or None
     lang = (payload.get("lang") or "").strip() or None
 
     ok, status, resp = send_template_message_3params(
         to_wa_id=to,
-        p1=p1,
-        p2=p2,
-        p3=p3,
+        p1=p1, p2=p2, p3=p3,
         template_name=template_name,
         lang=lang
     )
 
-    return jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)
+    return corsify(make_response(jsonify({"ok": ok, "status": status, "response": resp}), (200 if ok else 400)))
 
 
 # =========================
