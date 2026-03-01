@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 
 # -------------------------
 # App / Config
@@ -38,6 +39,8 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(64), nullable=False)
+    # Conta criada automaticamente (WhatsApp) pode não ter senha definida ainda.
+    password_set = db.Column(db.Boolean, nullable=False, server_default=text('false'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -82,6 +85,28 @@ def _create_tables_if_needed() -> None:
     """Create tables (simple approach: no migrations)."""
     try:
         db.create_all()
+
+        # Migração simples e idempotente (sem Alembic):
+        # adiciona colunas ausentes quando você atualiza o código e o Postgres já tem tabelas antigas.
+        insp = inspect(db.engine)
+        table_names = set(insp.get_table_names())
+        def _add_col_if_missing(table: str, col_name: str, ddl: str):
+            try:
+                cols = [c['name'] for c in insp.get_columns(table)]
+            except Exception:
+                return
+            if col_name not in cols:
+                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+                db.session.commit()
+
+        if 'users' in table_names:
+            _add_col_if_missing('users', 'password_set', 'password_set BOOLEAN NOT NULL DEFAULT false')
+        if 'wa_links' in table_names:
+            _add_col_if_missing('wa_links', 'wa_from', 'wa_from VARCHAR(40)')
+            _add_col_if_missing('wa_links', 'user_email', 'user_email VARCHAR(255)')
+            _add_col_if_missing('wa_links', 'created_at', 'created_at TIMESTAMP')
+        if 'processed_messages' in table_names:
+            _add_col_if_missing('processed_messages', 'wa_from', 'wa_from VARCHAR(40)')
     except Exception as e:
         # If DB isn't reachable, app should still boot and show a helpful status.
         print('DB create_all failed:', repr(e))
@@ -155,9 +180,14 @@ def _get_or_create_user(email: str, password: str | None = None) -> User:
     if user:
         return user
 
-    # If user doesn't exist and no password provided, create a placeholder (used only for WA link edge cases)
-    pw_hash = _hash_password(password or os.urandom(16).hex())
-    user = User(email=email, password_hash=pw_hash)
+    # Se password for None, significa conta criada automaticamente (WhatsApp): não “reivindicada” ainda.
+    if password is None:
+        pw_hash = _hash_password(os.urandom(16).hex())
+        user = User(email=email, password_hash=pw_hash, password_set=False)
+    else:
+        pw_hash = _hash_password(password)
+        user = User(email=email, password_hash=pw_hash, password_set=True)
+
     db.session.add(user)
     db.session.commit()
     return user
@@ -218,15 +248,41 @@ def api_register():
     if len(password) < 4:
         return jsonify({'error': 'Senha muito curta'}), 400
 
-    if User.query.filter_by(email=email).first():
+    existing = User.query.filter_by(email=email).first()
+    if existing:
+        # Se a conta foi criada automaticamente (WhatsApp), permita definir senha e “reivindicar”.
+        if getattr(existing, 'password_set', False) is False:
+            existing.password_hash = _hash_password(password)
+            existing.password_set = True
+            db.session.commit()
+            session['user_email'] = email
+            return jsonify({'ok': True, 'email': email, 'claimed': True})
         return jsonify({'error': 'Email já cadastrado'}), 409
 
-    user = User(email=email, password_hash=_hash_password(password))
-    db.session.add(user)
-    db.session.commit()
-
+    user = _get_or_create_user(email, password=password)
     session['user_email'] = email
     return jsonify({'ok': True, 'email': email})
+
+
+@app.post('/api/reset_password')
+def api_reset_password():
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    new_password = (data.get('newPassword') or data.get('password') or '').strip()
+
+    if not email or '@' not in email:
+        return jsonify({'error': 'Email inválido'}), 400
+    if len(new_password) < 4:
+        return jsonify({'error': 'Senha muito curta'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado'}), 404
+
+    user.password_hash = _hash_password(new_password)
+    user.password_set = True
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.post('/api/login')
