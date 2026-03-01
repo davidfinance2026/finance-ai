@@ -1,16 +1,18 @@
 import os
 import re
 import json
+import requests
 from datetime import datetime, date
 
-import requests
 from flask import Flask, request, jsonify, session, render_template, send_from_directory
 
 import bcrypt
 import gspread
 from google.oauth2.service_account import Credentials
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import (
+    create_engine, Column, Integer, String, DateTime, Text, ForeignKey
+)
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.exc import IntegrityError
 
@@ -25,7 +27,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
 )
-# Se quiser forçar secure (somente HTTPS), descomente:
+# Se quiser forçar secure (somente HTTPS):
 # app.config["SESSION_COOKIE_SECURE"] = True
 
 
@@ -53,9 +55,7 @@ def robots_txt():
 # =========================
 # ENV
 # =========================
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///finance_ai.db"  # fallback dev
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip() or "sqlite:///finance_ai.db"
 
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
@@ -65,7 +65,7 @@ GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0")
 # Sheets (backup/export)
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
-SHEETS_BACKUP_MODE = os.getenv("SHEETS_BACKUP_MODE", "auto").strip().lower()  # auto/manual/off
+SHEETS_BACKUP_MODE = os.getenv("SHEETS_BACKUP_MODE", "manual").strip().lower()  # auto/manual/off
 
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
 
@@ -76,7 +76,7 @@ SCOPES = [
 
 
 # =========================
-# DB (Postgres)
+# DB
 # =========================
 Base = declarative_base()
 
@@ -131,7 +131,7 @@ Base.metadata.create_all(engine)
 
 
 # =========================
-# Sheets client (cache) - opcional
+# Sheets client (cache)
 # =========================
 _gs_client = None
 _gs_spreadsheet = None
@@ -148,7 +148,6 @@ def gs_init_if_possible():
 
     if not _gs_enabled():
         return False
-
     if _gs_ws_lanc is not None:
         return True
 
@@ -174,10 +173,7 @@ def gs_init_if_possible():
 
 
 def sheets_append_rows(rows):
-    """
-    rows: list[list]
-    Nunca derruba o app. Se falhar, loga.
-    """
+    """Backup automático no Sheets. Nunca derruba o app."""
     if SHEETS_BACKUP_MODE != "auto":
         return
     if not gs_init_if_possible():
@@ -186,36 +182,6 @@ def sheets_append_rows(rows):
         _gs_ws_lanc.append_rows(rows, value_input_option="USER_ENTERED")
     except Exception as e:
         app.logger.warning("Sheets append falhou: %s", str(e))
-
-
-def sheets_export_month(user_email: str, tx_items: list[dict]):
-    """
-    Exporta lançamentos para aba "Lancamentos" (append).
-    Não apaga nada, só adiciona linhas.
-    """
-    if not gs_init_if_possible():
-        raise RuntimeError("Sheets não configurado (SPREADSHEET_ID/SERVICE_ACCOUNT_JSON) ou modo off.")
-
-    created_at = datetime.utcnow().isoformat()
-
-    rows = []
-    for it in tx_items:
-        rows.append([
-            user_email,
-            it["data"],
-            it["tipo"],
-            it["categoria"],
-            it.get("descricao", "") or "",
-            it["valor"],
-            it.get("origem", "APP"),
-            created_at
-        ])
-
-    if not rows:
-        return 0
-
-    _gs_ws_lanc.append_rows(rows, value_input_option="USER_ENTERED")
-    return len(rows)
 
 
 # =========================
@@ -243,13 +209,16 @@ def require_login():
 # =========================
 # Helpers gerais
 # =========================
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 def normalize_wa_number(raw) -> str:
     s = str(raw or "").strip().replace("+", "")
     s = re.sub(r"[^0-9]", "", s)
     return s
 
 
-def parse_money_to_float(v: str) -> float:
+def parse_money_to_float(v) -> float:
     s = str(v or "").strip()
     if "." in s and "," in s:
         s = s.replace(".", "").replace(",", ".")
@@ -267,7 +236,10 @@ def parse_money_to_float(v: str) -> float:
 # =========================
 def wa_send_text(to_number: str, text: str):
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN):
+        # sem credenciais => não derruba
+        app.logger.info("WA creds missing. Would send to %s: %s", to_number, text)
         return
+
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
     payload = {
@@ -285,18 +257,21 @@ def wa_send_text(to_number: str, text: str):
 
 
 def extract_text_messages(payload: dict):
+    """
+    Retorna lista de (msg_id, wa_from, body)
+    """
     out = []
     try:
         for e in payload.get("entry", []) or []:
             for ch in e.get("changes", []) or []:
                 v = ch.get("value", {}) or {}
                 for m in (v.get("messages", []) or []):
-                    if (m.get("type") == "text"):
+                    if m.get("type") == "text":
                         msg_id = m.get("id")
                         wa_from = m.get("from")
                         body = ((m.get("text") or {}) or {}).get("body", "")
-                        if msg_id and wa_from and body:
-                            out.append((msg_id, wa_from, body))
+                        if msg_id and wa_from and body is not None:
+                            out.append((str(msg_id), str(wa_from), str(body)))
     except Exception:
         return []
     return out
@@ -320,7 +295,6 @@ def parse_finance_line(line: str):
 
     low = raw.lower()
 
-    # prefixo textual
     if low.startswith(("receita ", "entrada ")):
         tipo = "RECEITA"
         raw2 = raw.split(" ", 1)[1].strip()
@@ -348,7 +322,6 @@ def parse_finance_line(line: str):
 
     valor = parse_money_to_float(val)
 
-    # categoria = 1a palavra, descricao = resto
     if rest:
         parts = rest.split(" ", 1)
         categoria = parts[0].strip().title() if parts[0].strip() else "Geral"
@@ -366,46 +339,62 @@ def parse_finance_line(line: str):
     }
 
 
-def find_user_by_wa(db, wa_number: str):
-    wa = normalize_wa_number(wa_number)
-    link = db.query(WaLink).filter(WaLink.wa_number == wa).first()
+def wa_find_user_by_number(db, wa_number: str):
+    wa_number = normalize_wa_number(wa_number)
+    link = db.query(WaLink).filter(WaLink.wa_number == wa_number).first()
     if not link:
         return None
-    u = db.query(User).filter(User.id == link.user_id).first()
-    return u
+    return db.query(User).filter(User.id == link.user_id).first()
 
 
-def link_wa_to_email(db, wa_number: str, email: str):
-    wa = normalize_wa_number(wa_number)
-    email = (email or "").lower().strip()
+def wa_link_number_to_email(db, wa_number: str, email: str):
+    wa_number = normalize_wa_number(wa_number)
+    email = str(email or "").lower().strip()
 
-    if not wa or not email:
+    if not wa_number or not email:
         return False, "Número e email são obrigatórios."
+    if not EMAIL_RE.match(email):
+        return False, "Email inválido. Ex: conectar seuemail@dominio.com"
 
     u = db.query(User).filter(User.email == email).first()
     if not u:
-        return False, "Email não encontrado no app. Crie a conta e tente de novo."
+        return False, "Email não encontrado no app. Crie a conta primeiro e tente de novo."
 
-    existing = db.query(WaLink).filter(WaLink.wa_number == wa).first()
+    existing = db.query(WaLink).filter(WaLink.wa_number == wa_number).first()
     if existing:
         existing.user_id = u.id
         db.commit()
-        return True, f"✅ WhatsApp conectado ao email {email} (atualizado)."
-
-    wl = WaLink(wa_number=wa, user_id=u.id)
-    db.add(wl)
+        return True, f"✅ WhatsApp conectado ao email {email}."
+    db.add(WaLink(wa_number=wa_number, user_id=u.id))
     db.commit()
     return True, f"✅ WhatsApp conectado ao email {email}."
 
 
-def unlink_wa(db, wa_number: str):
-    wa = normalize_wa_number(wa_number)
-    existing = db.query(WaLink).filter(WaLink.wa_number == wa).first()
+def wa_unlink_number(db, wa_number: str):
+    wa_number = normalize_wa_number(wa_number)
+    existing = db.query(WaLink).filter(WaLink.wa_number == wa_number).first()
     if not existing:
         return False, "Esse número não estava conectado."
     db.delete(existing)
     db.commit()
     return True, "✅ Número desconectado."
+
+
+def wa_is_duplicate(db, msg_id: str) -> bool:
+    if not msg_id:
+        return False
+    seen = db.query(ProcessedMessage).filter(ProcessedMessage.msg_id == msg_id).first()
+    return bool(seen)
+
+
+def wa_mark_processed(db, msg_id: str, wa_from: str):
+    if not msg_id:
+        return
+    try:
+        db.add(ProcessedMessage(msg_id=msg_id, wa_from=str(wa_from or "")))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 
 # =========================
@@ -418,6 +407,7 @@ def health():
 
 @app.get("/")
 def index():
+    # IMPORTANTE: o arquivo deve ser templates/index.html (minúsculo)
     return render_template("index.html")
 
 
@@ -448,6 +438,8 @@ def api_register():
 
     if not email or not senha:
         return jsonify(error="Email e senha obrigatórios"), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="Email inválido"), 400
     if senha != confirmar:
         return jsonify(error="Senhas não conferem"), 400
     if len(senha) < 6:
@@ -507,6 +499,8 @@ def api_reset_password():
 
     if not email or not nova:
         return jsonify(error="Email e nova senha obrigatórios"), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="Email inválido"), 400
     if nova != conf:
         return jsonify(error="Senhas não conferem"), 400
     if len(nova) < 6:
@@ -525,7 +519,7 @@ def api_reset_password():
 
 
 # =========================
-# Lancamentos API (Postgres)
+# Lancamentos API
 # =========================
 @app.get("/api/lancamentos")
 def api_list_lancamentos():
@@ -568,19 +562,25 @@ def api_create_lancamento():
     payload = request.get_json(force=True) or {}
     db = SessionLocal()
     try:
+        tipo = str(payload.get("tipo") or "GASTO").upper()
+        data_str = str(payload.get("data") or date.today().isoformat())
+        categoria = str(payload.get("categoria") or "Geral").strip().title() or "Geral"
+        descricao = str(payload.get("descricao") or "")
+        valor = f"{parse_money_to_float(payload.get('valor')):.2f}"
+
         t = Transaction(
             user_id=uid,
-            data=str(payload.get("data") or date.today().isoformat()),
-            tipo=str(payload.get("tipo") or "GASTO").upper(),
-            categoria=str(payload.get("categoria") or "Geral").strip().title(),
-            descricao=str(payload.get("descricao") or ""),
-            valor=f"{parse_money_to_float(payload.get('valor')):.2f}",
+            data=data_str,
+            tipo=tipo,
+            categoria=categoria,
+            descricao=descricao,
+            valor=valor,
             origem="APP",
         )
         db.add(t)
         db.commit()
 
-        # (Sheets AUTO) backup não derruba o app
+        # backup AUTO no Sheets (se mode=auto) sem derrubar o app
         sheets_append_rows([[
             session.get("email", ""),
             t.data,
@@ -593,6 +593,10 @@ def api_create_lancamento():
         ]])
 
         return jsonify(ok=True, id=t.id)
+    except Exception as e:
+        db.rollback()
+        app.logger.exception("Erro ao criar lançamento: %s", str(e))
+        return jsonify(error="Erro interno ao salvar lançamento"), 500
     finally:
         db.close()
 
@@ -612,7 +616,7 @@ def api_edit_lancamento(row_id: int):
 
         t.data = str(payload.get("data") or t.data)
         t.tipo = str(payload.get("tipo") or t.tipo).upper()
-        t.categoria = str(payload.get("categoria") or t.categoria).strip().title()
+        t.categoria = str(payload.get("categoria") or t.categoria).strip().title() or "Geral"
         t.descricao = str(payload.get("descricao") or "")
         t.valor = f"{parse_money_to_float(payload.get('valor')):.2f}"
         db.commit()
@@ -670,53 +674,7 @@ def api_dashboard():
 
 
 # =========================
-# (Export) Exportar mês -> Sheets (botão no dashboard)
-# =========================
-@app.post("/api/export-month")
-def api_export_month():
-    uid = require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    if SHEETS_BACKUP_MODE == "off":
-        return jsonify(error="Sheets está desligado (SHEETS_BACKUP_MODE=off)."), 400
-
-    dataj = request.get_json(force=True) or {}
-    mes = int(dataj.get("mes"))
-    ano = int(dataj.get("ano"))
-
-    db = SessionLocal()
-    try:
-        u = db.query(User).filter(User.id == uid).first()
-        if not u:
-            return jsonify(error="Usuário não encontrado"), 404
-
-        # pega lançamentos do mês
-        txs = db.query(Transaction).filter(Transaction.user_id == uid).all()
-        items = []
-        for t in txs:
-            try:
-                d = datetime.fromisoformat(t.data)
-            except:
-                continue
-            if d.month == mes and d.year == ano:
-                items.append({
-                    "data": t.data,
-                    "tipo": t.tipo,
-                    "categoria": t.categoria,
-                    "descricao": t.descricao or "",
-                    "valor": t.valor,
-                    "origem": t.origem,
-                })
-
-        count = sheets_export_month(u.email, items)
-        return jsonify(ok=True, exported=count)
-    finally:
-        db.close()
-
-
-# =========================
-# WhatsApp webhook
+# WhatsApp Webhook
 # =========================
 @app.get("/webhooks/whatsapp")
 def wa_verify():
@@ -731,126 +689,108 @@ def wa_verify():
 @app.post("/webhooks/whatsapp")
 def wa_webhook():
     payload = request.get_json(silent=True) or {}
-
     if DEBUG_LOG_PAYLOAD:
-        app.logger.info("INCOMING WA WEBHOOK: %s", json.dumps(payload, ensure_ascii=False)[:4000])
-
-    msgs = extract_text_messages(payload)
-    if not msgs:
-        return "ok", 200
+        app.logger.info("WA payload: %s", json.dumps(payload)[:2000])
 
     db = SessionLocal()
     try:
+        msgs = extract_text_messages(payload)
         for msg_id, wa_from, body in msgs:
-            # Dedup definitivo por msg_id
-            try:
-                db.add(ProcessedMessage(msg_id=msg_id, wa_from=normalize_wa_number(wa_from)))
-                db.commit()
-            except IntegrityError:
-                db.rollback()
+            # idempotência
+            if wa_is_duplicate(db, msg_id):
                 continue
+            wa_mark_processed(db, msg_id, wa_from)
 
-            cmd = (body or "").strip()
-            low = cmd.lower()
+            from_number = normalize_wa_number(wa_from)
+            text = (body or "").strip()
+            low = text.lower().strip()
 
+            # (A) conectar: aceita "conectar email" OU "email" sozinho
+            email_to_link = None
             if low.startswith("conectar "):
-                email = cmd.split(" ", 1)[1].strip()
-                ok, resp = link_wa_to_email(db, wa_from, email)
-                wa_send_text(wa_from, resp + "\n\nAgora envie: gasto 32,90 mercado")
+                email_to_link = text.split(" ", 1)[1].strip()
+            elif EMAIL_RE.match(text) and " " not in text:
+                # usuário mandou só o email (melhoria)
+                email_to_link = text.strip()
+
+            if email_to_link:
+                ok, resp = wa_link_number_to_email(db, from_number, email_to_link)
+                wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
                 continue
 
-            if low in ("desconectar", "desconectar whatsapp"):
-                ok, resp = unlink_wa(db, wa_from)
-                wa_send_text(wa_from, resp)
+            # (B) desconectar
+            if low in ("desconectar", "desconectar whatsapp", "sair", "unlink"):
+                ok, resp = wa_unlink_number(db, from_number)
+                wa_send_text(from_number, resp)
                 continue
 
-            u = find_user_by_wa(db, wa_from)
+            # (C) precisa estar conectado
+            u = wa_find_user_by_number(db, from_number)
             if not u:
-                wa_send_text(
-                    wa_from,
+                wa_send_text(from_number,
                     "🔒 Seu WhatsApp ainda não está conectado.\n\n"
-                    "Envie: conectar SEU_EMAIL_DO_APP\n"
+                    "Envie:\n"
+                    "• conectar SEU_EMAIL_DO_APP\n"
+                    "ou envie só o email (ex: seuemail@dominio.com)\n\n"
                     "Ex: conectar david@email.com"
                 )
                 continue
 
-            # permite múltiplas linhas em uma msg
-            lines = [ln.strip() for ln in cmd.splitlines() if ln.strip()]
-            parsed_list = []
-            for ln in lines:
-                p = parse_finance_line(ln)
-                if not p:
-                    parsed_list = []
-                    break
-                parsed_list.append(p)
-
-            if not parsed_list:
-                wa_send_text(
-                    wa_from,
+            # (D) parse lançamento
+            parsed = parse_finance_line(text)
+            if not parsed:
+                wa_send_text(from_number,
                     "Não entendi 😅\n\nUse assim:\n"
                     "• gasto 32,90 mercado\n"
                     "• receita 2500 salario\n"
-                    "• + 35,90 mercado\n"
-                    "• 55 mercado (assume gasto)\n"
-                    "Você pode enviar várias linhas também."
+                    "• 32,90 mercado (assume gasto)\n"
+                    "• + 100 extra (receita)\n"
+                    "• - 45 uber (gasto)"
                 )
                 continue
 
-            created_iso = datetime.utcnow().isoformat()
-
-            # grava no DB + Sheets auto (se ativo)
-            for p in parsed_list:
-                t = Transaction(
-                    user_id=u.id,
-                    data=p["data"],
-                    tipo=p["tipo"],
-                    categoria=p["categoria"],
-                    descricao=p["descricao"],
-                    valor=p["valor"],
-                    origem="WA",
-                )
-                db.add(t)
+            # salva no DB
+            t = Transaction(
+                user_id=u.id,
+                data=parsed["data"],
+                tipo=parsed["tipo"],
+                categoria=parsed["categoria"],
+                descricao=parsed["descricao"],
+                valor=parsed["valor"],
+                origem="WA",
+            )
+            db.add(t)
             db.commit()
 
-            # backup sheets (auto) em lote
-            sheets_rows = []
-            for p in parsed_list:
-                sheets_rows.append([
-                    u.email,
-                    p["data"],
-                    p["tipo"],
-                    p["categoria"],
-                    p["descricao"] or "",
-                    p["valor"],
-                    "WA",
-                    created_iso
-                ])
-            sheets_append_rows(sheets_rows)
+            # backup AUTO no Sheets (se mode=auto)
+            sheets_append_rows([[
+                u.email,
+                t.data,
+                t.tipo,
+                t.categoria,
+                t.descricao or "",
+                t.valor,
+                t.origem,
+                datetime.utcnow().isoformat()
+            ]])
 
-            if len(parsed_list) == 1:
-                p = parsed_list[0]
-                wa_send_text(
-                    wa_from,
-                    f"✅ Lançamento salvo!\n"
-                    f"Tipo: {p['tipo']}\n"
-                    f"Valor: R$ {p['valor'].replace('.', ',')}\n"
-                    f"Categoria: {p['categoria']}\n"
-                    f"Data: {p['data']}"
-                )
-            else:
-                wa_send_text(wa_from, f"✅ {len(parsed_list)} lançamentos salvos! Data: {date.today().isoformat()}")
+            wa_send_text(from_number,
+                "✅ Lançamento salvo!\n"
+                f"Tipo: {t.tipo}\n"
+                f"Valor: R$ {str(t.valor).replace('.', ',')}\n"
+                f"Categoria: {t.categoria}\n"
+                f"Data: {t.data}"
+            )
 
     except Exception as e:
         app.logger.exception("WA webhook error: %s", str(e))
+        # não retorna erro pra Meta ficar re-tentando infinito
     finally:
         db.close()
 
     return "ok", 200
 
 
-# =========================
-# Main
-# =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
