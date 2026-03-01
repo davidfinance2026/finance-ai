@@ -97,25 +97,25 @@ def _create_tables_if_needed() -> None:
 
         # Migração simples e idempotente (sem Alembic):
         # adiciona colunas ausentes quando você atualiza o código e o Postgres já tem tabelas antigas.
-	        insp = inspect(db.engine)
-	        table_names = set(insp.get_table_names())
-	        # Postgres suporta "ADD COLUMN IF NOT EXISTS". Isso evita problemas de cache do inspector
-	        # e torna a migração idempotente.
-	        def _add_col_if_missing(table: str, ddl: str):
-	            try:
-	                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {ddl}"))
-	                db.session.commit()
-	            except Exception:
-	                db.session.rollback()
+        insp = inspect(db.engine)
+        table_names = set(insp.get_table_names())
+        # Postgres suporta "ADD COLUMN IF NOT EXISTS". Isso evita problemas de cache do inspector
+        # e torna a migração idempotente.
+        def _add_col_if_missing(table: str, ddl: str):
+            try:
+                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {ddl}"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
-	        if 'users' in table_names:
-	            _add_col_if_missing('users', 'password_set BOOLEAN NOT NULL DEFAULT false')
-	        if 'wa_links' in table_names:
-	            _add_col_if_missing('wa_links', 'wa_from VARCHAR(40)')
-	            _add_col_if_missing('wa_links', 'user_email VARCHAR(255)')
-	            _add_col_if_missing('wa_links', 'created_at TIMESTAMP')
-	        if 'processed_messages' in table_names:
-	            _add_col_if_missing('processed_messages', 'wa_from VARCHAR(40)')
+        if 'users' in table_names:
+            _add_col_if_missing('users', 'password_set BOOLEAN NOT NULL DEFAULT false')
+        if 'wa_links' in table_names:
+            _add_col_if_missing('wa_links', 'wa_from VARCHAR(40)')
+            _add_col_if_missing('wa_links', 'user_email VARCHAR(255)')
+            _add_col_if_missing('wa_links', 'created_at TIMESTAMP')
+        if 'processed_messages' in table_names:
+            _add_col_if_missing('processed_messages', 'wa_from VARCHAR(40)')
     except Exception as e:
         # If DB isn't reachable, app should still boot and show a helpful status.
         print('DB create_all failed:', repr(e))
