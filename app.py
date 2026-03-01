@@ -11,9 +11,6 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "financeai-secret")
 app.config["JSON_AS_ASCII"] = False
 
-# =========================
-# Fix headers
-# =========================
 @app.after_request
 def headers_fix(response):
     mt = (response.mimetype or "").lower()
@@ -35,23 +32,17 @@ def headers_fix(response):
 def robots_txt():
     return send_from_directory("static", "robots.txt")
 
-# =========================
-# Google Sheets
-# =========================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-SHEET_NAME = "Controle Financeiro"           # sua planilha
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "").strip()  # opcional (recomendado)
-
+SHEET_NAME = "Controle Financeiro"
 ABA_USUARIOS = "Usuarios"
 ABA_LANCAMENTOS = "Lancamentos"
 ABA_WHATSAPP = "WhatsApp"
 
 _client = None
-_spreadsheet = None
 
 def get_client():
     global _client
@@ -68,21 +59,7 @@ def get_client():
     return _client
 
 def open_spreadsheet():
-    """
-    Preferência:
-    1) SPREADSHEET_ID (mais confiável)
-    2) Nome da planilha (SHEET_NAME)
-    """
-    global _spreadsheet
-    if _spreadsheet:
-        return _spreadsheet
-
-    gc = get_client()
-    if SPREADSHEET_ID:
-        _spreadsheet = gc.open_by_key(SPREADSHEET_ID)
-    else:
-        _spreadsheet = gc.open(SHEET_NAME)
-    return _spreadsheet
+    return get_client().open(SHEET_NAME)
 
 def get_sheet(nome_aba):
     sh = open_spreadsheet()
@@ -119,9 +96,6 @@ def ensure_headers():
     get_or_create_sheet(ABA_LANCAMENTOS, ["user_email","data","tipo","categoria","descricao","valor","criado_em"])
     get_or_create_sheet(ABA_WHATSAPP, ["wa_number","user_email","criado_em"])
 
-# =========================
-# Auth helpers
-# =========================
 def require_login():
     return session.get("user")
 
@@ -167,9 +141,7 @@ def unlink_wa(wa_number: str):
             return True, "✅ Número desconectado."
     return False, "Esse número não estava conectado."
 
-# =========================
 # WhatsApp Cloud API
-# =========================
 WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "")
 WA_PHONE_NUMBER_ID = os.environ.get("WA_PHONE_NUMBER_ID", "")
 WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
@@ -179,13 +151,14 @@ def wa_send_text(to_number: str, text: str):
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN):
         print("WA creds missing. Would send:", text)
         return
+
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
     payload = {
         "messaging_product": "whatsapp",
         "to": normalize_wa_number(to_number),
         "type": "text",
-        "text": {"body": text, "preview_url": False},
+        "text": {"body": text},
     }
     r = requests.post(url, headers=headers, json=payload, timeout=20)
     if r.status_code >= 400:
@@ -206,13 +179,12 @@ def parse_finance_command(text: str):
         tipo = "GASTO"
         t2 = t
 
-    m = re.search(r"(-?\d{1,3}(?:\.\d{3})*(?:,\d{2})|-?\d+(?:[\.,]\d{1,2})?)", t2)
+    m = re.search(r"(-?\d{1,3}(?:\.\d{3})*(?:,\d{2})|-?\d+(?:[\.,]\d{2})?)", t2)
     if not m:
         return None
 
     valor_raw = m.group(1)
     valor = parse_money(valor_raw)
-
     rest = (t2[m.end():] or "").strip(" -–—")
     if not rest:
         categoria = "Geral"
@@ -230,113 +202,7 @@ def parse_finance_command(text: str):
         "data": date.today().isoformat(),
     }
 
-def handle_whatsapp_webhook(payload: dict):
-    # Processa mensagens
-    for entry in payload.get("entry", []):
-        for change in entry.get("changes", []):
-            value = (change.get("value", {}) or {})
-            for msg in (value.get("messages", []) or []):
-                from_number = normalize_wa_number(msg.get("from"))
-                msg_type = msg.get("type")
-
-                # Texto
-                if msg_type == "text":
-                    body = ((msg.get("text") or {}) or {}).get("body", "") or ""
-                    cmd = body.strip()
-
-                    # Se mandou email puro, vincula
-                    if "@" in cmd and " " not in cmd and "." in cmd:
-                        ok, resp = link_wa_to_email(from_number, cmd)
-                        wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
-                        continue
-
-                    low = cmd.lower()
-
-                    if low.startswith("conectar "):
-                        email = cmd.split(" ", 1)[1].strip()
-                        _, resp = link_wa_to_email(from_number, email)
-                        wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
-                        continue
-
-                    if low in ("desconectar", "desconectar whatsapp"):
-                        _, resp = unlink_wa(from_number)
-                        wa_send_text(from_number, resp)
-                        continue
-
-                    user_email = find_user_by_wa(from_number)
-                    if not user_email:
-                        wa_send_text(
-                            from_number,
-                            "🔒 Antes de registrar lançamentos, preciso vincular seu número.\n\n"
-                            "Por favor, me envie seu email do app (ex: nome@dominio.com)\n"
-                            "ou envie: conectar SEU_EMAIL_DO_APP"
-                        )
-                        continue
-
-                    parsed = parse_finance_command(cmd)
-                    if not parsed:
-                        wa_send_text(
-                            from_number,
-                            "Não entendi 😅\n\nUse assim:\n"
-                            "• gasto 32,90 mercado\n"
-                            "• receita 2500 salario\n"
-                            "• 32,90 mercado (assume gasto)"
-                        )
-                        continue
-
-                    ensure_headers()
-                    ws_lanc = get_sheet(ABA_LANCAMENTOS)
-                    ws_lanc.append_row([
-                        user_email,
-                        parsed["data"],
-                        parsed["tipo"],
-                        parsed["categoria"],
-                        parsed["descricao"],
-                        parsed["valor"],
-                        datetime.utcnow().isoformat()
-                    ])
-
-                    wa_send_text(
-                        from_number,
-                        f"✅ Lançamento registrado!\n"
-                        f"{parsed['tipo']} • {parsed['categoria']}\n"
-                        f"{parsed['descricao']}\n"
-                        f"Valor: R$ {parsed['valor'].replace('.', ',')}\n"
-                        f"Data: {parsed['data']}"
-                    )
-                    continue
-
-                # Mídia (opcional)
-                if msg_type in ("image", "document", "audio", "video"):
-                    user_email = find_user_by_wa(from_number)
-                    if not user_email:
-                        wa_send_text(from_number, "🔒 Conecte primeiro com seu email do app.")
-                        continue
-
-                    media = msg.get(msg_type, {}) or {}
-                    media_id = media.get("id")
-                    caption = (media.get("caption") or "").strip()
-
-                    ensure_headers()
-                    ws_lanc = get_sheet(ABA_LANCAMENTOS)
-                    ws_lanc.append_row([
-                        user_email,
-                        date.today().isoformat(),
-                        "GASTO",
-                        "Comprovante",
-                        f"{caption} [MID:{media_id}]".strip(),
-                        "0.00",
-                        datetime.utcnow().isoformat()
-                    ])
-
-                    wa_send_text(
-                        from_number,
-                        "📎 Comprovante recebido!\n"
-                        "Salvei como 'Comprovante' (valor 0,00) para você editar depois no app."
-                    )
-                    continue
-
-# --- Endpoint correto do WhatsApp (recomendado) ---
+# ========= Webhook WhatsApp (rota principal) =========
 @app.get("/webhooks/whatsapp")
 def wa_verify():
     mode = request.args.get("hub.mode")
@@ -350,23 +216,119 @@ def wa_verify():
 def wa_webhook():
     payload = request.get_json(silent=True) or {}
     try:
-        handle_whatsapp_webhook(payload)
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {}) or {}
+                for msg in (value.get("messages", []) or []):
+                    from_number = normalize_wa_number(msg.get("from"))
+                    msg_type = msg.get("type")
+
+                    if msg_type == "text":
+                        body = ((msg.get("text") or {}) or {}).get("body", "") or ""
+                        cmd = body.strip()
+                        low = cmd.lower()
+
+                        if low.startswith("conectar "):
+                            email = cmd.split(" ", 1)[1].strip()
+                            _, resp = link_wa_to_email(from_number, email)
+                            wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
+                            continue
+
+                        if low in ("desconectar", "desconectar whatsapp"):
+                            _, resp = unlink_wa(from_number)
+                            wa_send_text(from_number, resp)
+                            continue
+
+                        user_email = find_user_by_wa(from_number)
+                        if not user_email:
+                            wa_send_text(from_number,
+                                "🔒 Seu WhatsApp ainda não está conectado.\n\n"
+                                "Envie: conectar SEU_EMAIL_DO_APP\n"
+                                "Ex: conectar david@email.com"
+                            )
+                            continue
+
+                        parsed = parse_finance_command(cmd)
+                        if not parsed:
+                            wa_send_text(from_number,
+                                "Não entendi 😅\n\nUse assim:\n"
+                                "• gasto 32,90 mercado\n"
+                                "• receita 2500 salario\n"
+                                "• 32,90 mercado (assume gasto)"
+                            )
+                            continue
+
+                        ensure_headers()
+                        ws_lanc = get_sheet(ABA_LANCAMENTOS)
+                        ws_lanc.append_row([
+                            user_email,
+                            parsed["data"],
+                            parsed["tipo"],
+                            parsed["categoria"],
+                            parsed["descricao"],
+                            parsed["valor"],
+                            datetime.utcnow().isoformat()
+                        ])
+
+                        wa_send_text(from_number,
+                            f"✅ Lançamento salvo!\n"
+                            f"Tipo: {parsed['tipo']}\n"
+                            f"Valor: R$ {parsed['valor'].replace('.', ',')}\n"
+                            f"Categoria: {parsed['categoria']}\n"
+                            f"Data: {parsed['data']}"
+                        )
+                        continue
+
+                    if msg_type in ("image", "document", "audio", "video"):
+                        user_email = find_user_by_wa(from_number)
+                        if not user_email:
+                            wa_send_text(from_number, "🔒 Conecte primeiro: conectar SEU_EMAIL_DO_APP")
+                            continue
+
+                        media = msg.get(msg_type, {}) or {}
+                        media_id = media.get("id")
+                        caption = (media.get("caption") or "").strip()
+
+                        ensure_headers()
+                        ws_lanc = get_sheet(ABA_LANCAMENTOS)
+                        ws_lanc.append_row([
+                            user_email,
+                            date.today().isoformat(),
+                            "GASTO",
+                            "Comprovante",
+                            f"{caption} [MID:{media_id}]".strip(),
+                            "0.00",
+                            datetime.utcnow().isoformat()
+                        ])
+
+                        wa_send_text(from_number,
+                            "📎 Comprovante recebido!\n"
+                            "Salvei como 'Comprovante' (valor 0,00) para você editar depois no app."
+                        )
+                        continue
     except Exception as e:
         print("WA webhook error:", str(e))
+
     return "ok", 200
 
-# --- ALIAS para compatibilidade (se o Meta estiver chamando /webhook) ---
+# ========= ALIASES (pra evitar 404) =========
+@app.get("/webhook/whatsapp")
+def wa_verify_alias_1():
+    return wa_verify()
+
+@app.post("/webhook/whatsapp")
+def wa_webhook_alias_1():
+    return wa_webhook()
+
 @app.get("/webhook")
-def wa_verify_alias():
+def wa_verify_alias_2():
     return wa_verify()
 
 @app.post("/webhook")
-def wa_webhook_alias():
+def wa_webhook_alias_2():
     return wa_webhook()
 
-# =========================
-# Web App (seu app antigo)
-# =========================
+# ------------------ Web app ------------------
 @app.get("/")
 def index():
     return render_template("index.html")
