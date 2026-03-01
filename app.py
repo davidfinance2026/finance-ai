@@ -1,398 +1,349 @@
 import os
 import json
+import time
 import hmac
 import hashlib
-import logging
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 
 import requests
 import gspread
-from flask import Flask, request, jsonify
-from google.oauth2.service_account import Credentials
+from flask import Flask, request, jsonify, abort
+
+# =========================
+# Config (env vars)
+# =========================
+WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
+WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
+WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")
+META_APP_SECRET = os.getenv("META_APP_SECRET", "")  # para validação do X-Hub-Signature-256
+
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
+SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "")
+
+DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
+
+# Abas padrão
+SHEET_LANCAMENTOS = os.getenv("SHEET_LANCAMENTOS", "Lancamentos")
+SHEET_DEDUP = os.getenv("SHEET_DEDUP", "Dedup")  # <-- CORRETO: Dedup
+SHEET_USERS = os.getenv("SHEET_USERS", "Usuarios")
+SHEET_PASSWORD_RESETS = os.getenv("SHEET_PASSWORD_RESETS", "PasswordResets")
 
 
-# =========================================================
-# Config
-# =========================================================
-APP = Flask(__name__)
-
-logging.basicConfig(level=logging.INFO)
-LOG = logging.getLogger("financeai")
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
-
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
-SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
-
-WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "").strip()
-WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "").strip()
-WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "").strip()
-
-# Proteção 2 (assinatura do webhook)
-META_APP_SECRET = os.getenv("META_APP_SECRET", "").strip()
-
-DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0").strip().lower() in ("1", "true", "yes", "y")
-
-# Abas
-LANCAMENTOS_SHEET = os.getenv("LANCAMENTOS_SHEET", "Lancamentos").strip()
-DEDUP_SHEET_NAME = os.getenv("DEDUP_SHEET_NAME", "Dedup").strip()
-
-# Cache simples em memória (proteção extra contra duplicado no curto prazo)
-_SEEN_CACHE = {}  # msg_id -> epoch_seconds
-CACHE_TTL_SECONDS = 60 * 10  # 10 min
-
+# =========================
+# Helpers: Google Sheets
+# =========================
 _gspread_client = None
+_spreadsheet = None
 
 
-# =========================================================
-# Helpers Google Sheets
-# =========================================================
 def get_gspread_client() -> gspread.Client:
     global _gspread_client
     if _gspread_client:
         return _gspread_client
 
     if not SERVICE_ACCOUNT_JSON:
-        raise RuntimeError("SERVICE_ACCOUNT_JSON não definido nas variáveis de ambiente.")
+        raise RuntimeError("SERVICE_ACCOUNT_JSON não definido.")
 
     try:
         info = json.loads(SERVICE_ACCOUNT_JSON)
-    except Exception as e:
-        raise RuntimeError(f"SERVICE_ACCOUNT_JSON inválido: {e}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError("SERVICE_ACCOUNT_JSON inválido (não é JSON).") from e
 
-    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    _gspread_client = gspread.authorize(creds)
+    _gspread_client = gspread.service_account_from_dict(info)
     return _gspread_client
 
 
-def open_spreadsheet():
+def get_spreadsheet():
+    global _spreadsheet
+    if _spreadsheet:
+        return _spreadsheet
+
     if not SPREADSHEET_ID:
-        raise RuntimeError("SPREADSHEET_ID não definido nas variáveis de ambiente.")
-    gc = get_gspread_client()
-    return gc.open_by_key(SPREADSHEET_ID)
+        raise RuntimeError("SPREADSHEET_ID não definido.")
+
+    client = get_gspread_client()
+    _spreadsheet = client.open_by_key(SPREADSHEET_ID)
+    return _spreadsheet
 
 
-def get_or_create_worksheet(sh, title: str, rows=2000, cols=20):
-    """Evita WorksheetNotFound e já cria se não existir."""
+def open_or_create_worksheet(title: str, rows: int = 2000, cols: int = 10):
+    sh = get_spreadsheet()
     try:
         return sh.worksheet(title)
     except gspread.exceptions.WorksheetNotFound:
-        LOG.warning("Aba '%s' não existe. Criando...", title)
         ws = sh.add_worksheet(title=title, rows=str(rows), cols=str(cols))
         return ws
 
 
-def ensure_headers(ws, headers):
-    """Garante cabeçalhos na primeira linha."""
-    try:
-        first_row = ws.row_values(1)
-    except Exception:
-        first_row = []
+def ensure_headers():
+    # Lancamentos
+    ws = open_or_create_worksheet(SHEET_LANCAMENTOS, rows=5000, cols=10)
+    header = ["user_id", "data", "tipo", "categoria", "descricao", "valor", "criado_em"]
+    if ws.row_values(1) != header:
+        ws.update("A1:G1", [header])
 
-    if [h.strip() for h in first_row] != headers:
-        ws.update("A1", [headers])
+    # Dedup
+    ws_d = open_or_create_worksheet(SHEET_DEDUP, rows=5000, cols=5)
+    header_d = ["msg_id", "from", "timestamp", "criado_em", "raw_type"]
+    if ws_d.row_values(1) != header_d:
+        ws_d.update("A1:E1", [header_d])
+
+    # Usuarios (opcional)
+    ws_u = open_or_create_worksheet(SHEET_USERS, rows=5000, cols=10)
+    header_u = ["user_id", "nome", "email", "criado_em"]
+    if ws_u.row_values(1) != header_u:
+        ws_u.update("A1:D1", [header_u])
+
+    # PasswordResets (opcional)
+    ws_p = open_or_create_worksheet(SHEET_PASSWORD_RESETS, rows=5000, cols=10)
+    header_p = ["email", "token", "expira_em", "criado_em", "usado_em"]
+    if ws_p.row_values(1) != header_p:
+        ws_p.update("A1:E1", [header_p])
 
 
-# =========================================================
-# Helpers Segurança (Proteções)
-# =========================================================
-def verify_signature(raw_body: bytes) -> bool:
+def now_utc_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def is_duplicate_message(msg_id: str, from_id: str, ts: str, raw_type: str = "") -> bool:
     """
-    Valida X-Hub-Signature-256 usando META_APP_SECRET.
-    Se META_APP_SECRET estiver vazio, NÃO valida (retorna True) para não travar o app,
-    mas loga um alerta.
+    Dedup simples via Google Sheets:
+    - se msg_id já existir na aba Dedup => duplicado
     """
-    if not META_APP_SECRET:
-        LOG.warning("META_APP_SECRET vazio. Validação de assinatura desabilitada.")
-        return True
-
-    signature = request.headers.get("X-Hub-Signature-256", "")
-    if not signature.startswith("sha256="):
+    if not msg_id:
         return False
 
-    sent_hash = signature.split("sha256=", 1)[1].strip()
-    computed = hmac.new(
+    ws = open_or_create_worksheet(SHEET_DEDUP, rows=5000, cols=5)
+
+    # Busca na coluna A (msg_id). Para baixo volume funciona bem.
+    # (Se crescer, dá pra otimizar com cache em memória + TTL.)
+    try:
+        col = ws.col_values(1)  # A
+    except Exception:
+        col = []
+
+    if msg_id in col:
+        return True
+
+    # Registrar
+    ws.append_row([msg_id, from_id, ts, now_utc_iso(), raw_type], value_input_option="RAW")
+    return False
+
+
+def append_lancamento(user_id: str, data: str, tipo: str, categoria: str, descricao: str, valor: float):
+    ws = open_or_create_worksheet(SHEET_LANCAMENTOS, rows=5000, cols=10)
+    ws.append_row(
+        [user_id, data, tipo, categoria, descricao, float(valor), now_utc_iso()],
+        value_input_option="USER_ENTERED"
+    )
+
+
+# =========================
+# Helpers: WhatsApp / Meta
+# =========================
+def verify_signature(req) -> bool:
+    """
+    Proteção #2: valida X-Hub-Signature-256.
+    Se META_APP_SECRET não estiver setado, não valida (não derruba).
+    """
+    if not META_APP_SECRET:
+        return True  # modo "compatível" (mas menos seguro)
+
+    sig = req.headers.get("X-Hub-Signature-256", "")
+    if not sig.startswith("sha256="):
+        return False
+
+    received = sig.split("=", 1)[1].strip()
+    raw_body = req.get_data() or b""
+
+    expected = hmac.new(
         META_APP_SECRET.encode("utf-8"),
         msg=raw_body,
         digestmod=hashlib.sha256
     ).hexdigest()
 
-    return hmac.compare_digest(computed, sent_hash)
+    return hmac.compare_digest(received, expected)
 
 
-def cleanup_cache(now_ts: int):
-    to_delete = [k for k, v in _SEEN_CACHE.items() if now_ts - v > CACHE_TTL_SECONDS]
-    for k in to_delete:
-        _SEEN_CACHE.pop(k, None)
-
-
-# =========================================================
-# Helpers WhatsApp
-# =========================================================
-def wa_send_message(to_phone: str, text: str):
+def wa_send_text(to: str, text: str):
     if not (WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID):
-        LOG.error("WA_ACCESS_TOKEN / WA_PHONE_NUMBER_ID não definidos.")
         return
 
-    url = f"https://graph.facebook.com/v19.0/{WA_PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/v21.0/{WA_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
         "messaging_product": "whatsapp",
-        "to": to_phone,
+        "to": to,
         "type": "text",
-        "text": {"body": text},
+        "text": {"body": text[:4000]},
     }
-
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
-        if r.status_code >= 300:
-            LOG.error("Erro ao enviar msg WA (%s): %s", r.status_code, r.text)
-    except Exception as e:
-        LOG.error("Exceção enviando msg WA: %s", e)
+        requests.post(url, headers=headers, json=payload, timeout=15)
+    except Exception:
+        pass
 
 
-# =========================================================
-# Parser de lançamentos (texto -> linhas)
-# =========================================================
-def parse_decimal_br(value_str: str) -> Decimal:
+def extract_messages(payload: dict):
+    """
+    Extrai mensagens do payload do WhatsApp Cloud API.
+    Retorna lista de dicts: {from, id, timestamp, text}
+    """
+    out = []
+    entry = (payload.get("entry") or [])
+    for e in entry:
+        changes = (e.get("changes") or [])
+        for ch in changes:
+            value = (ch.get("value") or {})
+            messages = (value.get("messages") or [])
+            for m in messages:
+                msg_from = str(m.get("from") or "")
+                msg_id = str(m.get("id") or "")
+                ts = str(m.get("timestamp") or "")
+
+                mtype = m.get("type")
+                if mtype == "text":
+                    body = (m.get("text") or {}).get("body", "")
+                    body = str(body)  # <-- evita 'int'.strip
+                else:
+                    body = ""
+
+                out.append({
+                    "from": msg_from,
+                    "id": msg_id,
+                    "timestamp": ts,
+                    "type": str(mtype or ""),
+                    "text": body,
+                })
+    return out
+
+
+def parse_lancamentos_from_text(text: str):
     """
     Aceita:
-    - "55"
-    - "55,5"
-    - "55,50"
-    - "1.234,56"
-    - "1234.56"
+      "55 mercado"
+      "60 futebol\n55 mercado\n80 internet"
+    Retorna lista de tuplas (valor, categoria, descricao).
     """
-    s = str(value_str).strip()
-    if not s:
-        raise InvalidOperation("valor vazio")
+    items = []
+    if text is None:
+        return items
 
-    # Remove moeda e espaços
-    s = s.replace("R$", "").replace(" ", "").strip()
-
-    # Se tem vírgula e ponto, assume padrão BR: 1.234,56
-    if "," in s and "." in s:
-        s = s.replace(".", "").replace(",", ".")
-    else:
-        # Se só vírgula, vira ponto
-        if "," in s:
-            s = s.replace(",", ".")
-
-    return Decimal(s)
-
-
-def parse_lines_to_entries(text: str):
-    """
-    Espera linhas tipo:
-      55 mercado
-      60 futebol
-      80 internet
-
-    Retorna lista de dicts {tipo, categoria, descricao, valor, data}.
-    """
-    entries = []
-    today = datetime.now(timezone.utc).astimezone().date().isoformat()
-
-    lines = (text or "").splitlines()
-    for raw in lines:
-        line = str(raw).strip()
-        if not line:
+    text = str(text)
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for ln in lines:
+        parts = ln.split()
+        if not parts:
             continue
 
-        parts = line.split()
-        if len(parts) < 2:
+        # primeiro token precisa ser número (aceita 55, 55.5, 55,50, +55, -10)
+        raw_val = parts[0].replace(".", "").replace(",", ".")  # 1.234,56 -> 1234.56
+        try:
+            val = float(raw_val)
+        except ValueError:
             continue
 
-        value_part = parts[0]
-        desc = " ".join(parts[1:]).strip()
+        categoria = parts[1] if len(parts) >= 2 else "Geral"
+        descricao = " ".join(parts[2:]) if len(parts) >= 3 else ""
+        items.append((val, categoria, descricao))
+    return items
+
+
+# =========================
+# Flask app
+# =========================
+def create_app() -> Flask:
+    app = Flask(__name__)
+
+    @app.get("/health")
+    def health():
+        return jsonify({"ok": True})
+
+    # Proteção #1 (verify token) - GET do webhook
+    @app.get("/webhooks/whatsapp")
+    def whatsapp_verify():
+        mode = request.args.get("hub.mode", "")
+        token = request.args.get("hub.verify_token", "")
+        challenge = request.args.get("hub.challenge", "")
+
+        if mode == "subscribe" and token and token == WA_VERIFY_TOKEN:
+            return challenge, 200
+        return "Unauthorized", 401
+
+    @app.post("/webhooks/whatsapp")
+    def whatsapp_webhook():
+        # Proteção #2 (assinatura)
+        if not verify_signature(request):
+            return "Invalid signature", 403
+
+        payload = request.get_json(silent=True) or {}
+
+        if DEBUG_LOG_PAYLOAD:
+            print("===== INCOMING WA WEBHOOK =====")
+            print(json.dumps(payload, ensure_ascii=False)[:20000])
 
         try:
-            valor = parse_decimal_br(value_part)
-        except Exception:
-            continue
+            ensure_headers()
 
-        entry = {
-            "tipo": "GASTO",           # default
-            "categoria": desc.title(), # simples
-            "descricao": desc,
-            "valor": valor,
-            "data": today,
-        }
-        entries.append(entry)
+            msgs = extract_messages(payload)
+            for m in msgs:
+                msg_id = m["id"]
+                from_id = m["from"]
+                ts = m["timestamp"]
+                mtype = m["type"]
 
-    return entries
+                if msg_id and is_duplicate_message(msg_id, from_id, ts, raw_type=mtype):
+                    continue
 
+                text = (m.get("text") or "")
+                text = str(text).strip()  # <-- garante string
 
-# =========================================================
-# Dedup (Google Sheet + cache)
-# =========================================================
-def is_duplicate_message(msg_id: str) -> bool:
-    msg_id = str(msg_id).strip()
-    if not msg_id:
-        return False
+                # Se não for texto, ignora com 200 (Meta exige 200 rápido)
+                if not text:
+                    continue
 
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    cleanup_cache(now_ts)
+                # Data do lançamento (hoje no fuso do servidor; se quiser BRT fixo depois a gente ajusta)
+                data = datetime.now().date().isoformat()
 
-    if msg_id in _SEEN_CACHE:
-        return True
+                # por padrão, trata como GASTO
+                itens = parse_lancamentos_from_text(text)
+                if not itens:
+                    wa_send_text(from_id, "Não entendi. Ex: 55 mercado (ou várias linhas).")
+                    continue
 
-    sh = open_spreadsheet()
-    ws = get_or_create_worksheet(sh, DEDUP_SHEET_NAME, rows=5000, cols=5)
-    ensure_headers(ws, ["msg_id", "created_at"])
+                for valor, categoria, descricao in itens:
+                    append_lancamento(
+                        user_id=from_id,
+                        data=data,
+                        tipo="GASTO",
+                        categoria=categoria.capitalize(),
+                        descricao=descricao,
+                        valor=valor
+                    )
 
-    try:
-        # find levanta CellNotFound se não achar
-        ws.find(msg_id)
-        # se achou, é duplicado
-        _SEEN_CACHE[msg_id] = now_ts
-        return True
-    except gspread.exceptions.CellNotFound:
-        # não existe, então registra
-        ws.append_row([msg_id, datetime.now(timezone.utc).isoformat()], value_input_option="RAW")
-        _SEEN_CACHE[msg_id] = now_ts
-        return False
-    except Exception as e:
-        # Se sheet der pau, não derruba o webhook; usa cache como fallback
-        LOG.error("Dedup falhou (fallback cache): %s", e)
-        if msg_id in _SEEN_CACHE:
-            return True
-        _SEEN_CACHE[msg_id] = now_ts
-        return False
+                # Confirmação
+                if len(itens) == 1:
+                    valor, categoria, _ = itens[0]
+                    wa_send_text(from_id, f"✅ Lançamento salvo!\nTipo: GASTO\nValor: R$ {valor:.2f}\nCategoria: {categoria}\nData: {data}")
+                else:
+                    wa_send_text(from_id, f"✅ {len(itens)} lançamentos salvos! Data: {data}")
 
-
-def save_entries(user_key: str, entries):
-    sh = open_spreadsheet()
-    ws = get_or_create_worksheet(sh, LANCAMENTOS_SHEET, rows=5000, cols=20)
-    ensure_headers(ws, ["user_email", "data", "tipo", "categoria", "descricao", "valor", "criado_em"])
-
-    created_at = datetime.now(timezone.utc).isoformat()
-
-    rows = []
-    for e in entries:
-        rows.append([
-            user_key,
-            e["data"],
-            e["tipo"],
-            e["categoria"],
-            e["descricao"],
-            float(e["valor"]),   # grava número
-            created_at
-        ])
-
-    if rows:
-        ws.append_rows(rows, value_input_option="USER_ENTERED")
-
-
-# =========================================================
-# Rotas
-# =========================================================
-@APP.get("/health")
-def health():
-    return jsonify({"ok": True})
-
-
-@APP.get("/webhooks/whatsapp")
-def whatsapp_verify():
-    """
-    Proteção adicional #1:
-    verificação do webhook (GET) usando WA_VERIFY_TOKEN.
-    """
-    mode = request.args.get("hub.mode", "")
-    token = request.args.get("hub.verify_token", "")
-    challenge = request.args.get("hub.challenge", "")
-
-    if mode == "subscribe" and token == WA_VERIFY_TOKEN:
-        return challenge, 200
-    return "Unauthorized", 401
-
-
-@APP.post("/webhooks/whatsapp")
-def whatsapp_webhook():
-    """
-    Proteção adicional #2:
-    valida assinatura X-Hub-Signature-256 (se META_APP_SECRET estiver definido).
-    """
-    raw = request.get_data() or b""
-    if not verify_signature(raw):
-        return "Invalid signature", 401
-
-    try:
-        payload = request.get_json(force=True, silent=False) or {}
-    except Exception:
-        return "Bad Request", 400
-
-    if DEBUG_LOG_PAYLOAD:
-        LOG.info("===== INCOMING WA WEBHOOK =====")
-        LOG.info(json.dumps(payload, ensure_ascii=False)[:8000])
-
-    # Estrutura padrão do WA Cloud API:
-    # entry[0].changes[0].value.messages[0] etc.
-    try:
-        entry = (payload.get("entry") or [])[0]
-        changes = (entry.get("changes") or [])[0]
-        value = changes.get("value") or {}
-
-        messages = value.get("messages") or []
-        if not messages:
-            # status updates etc.
+        except Exception as e:
+            # Não derrubar o webhook; mas logar para você ver no Railway
+            print(f"WA webhook error: {e}")
             return "OK", 200
-
-        msg = messages[0]
-
-        msg_id = str(msg.get("id", "")).strip()
-        if msg_id and is_duplicate_message(msg_id):
-            return "OK", 200
-
-        from_phone = str(msg.get("from", "")).strip()
-        msg_type = str(msg.get("type", "")).strip()
-
-        # Se for texto
-        text_body = ""
-        if msg_type == "text":
-            text_body = (msg.get("text") or {}).get("body", "")
-        else:
-            text_body = ""
-
-        text_body = str(text_body)  # evita erro de int/None
-
-        entries = parse_lines_to_entries(text_body)
-        if not entries:
-            wa_send_message(from_phone, "Não entendi. Envie assim:\n55 mercado\n60 futebol\n80 internet")
-            return "OK", 200
-
-        # user_key: pode ser o telefone (mais confiável no WA)
-        user_key = from_phone
-
-        save_entries(user_key, entries)
-
-        # Resposta amigável
-        if len(entries) == 1:
-            e = entries[0]
-            wa_send_message(
-                from_phone,
-                f"✅ Lançamento salvo!\nTipo: {e['tipo']}\nValor: R$ {e['valor']}\nCategoria: {e['categoria']}\nData: {e['data']}"
-            )
-        else:
-            wa_send_message(from_phone, f"✅ {len(entries)} lançamentos salvos com sucesso!")
 
         return "OK", 200
 
-    except Exception as e:
-        LOG.exception("WA webhook error: %s", e)
-        return "Internal Server Error", 500
+    return app
 
 
-# =========================================================
-# Main
-# =========================================================
+# Railway/Gunicorn procura "app" em "app.py" quando você usa: gunicorn app:app
+app = create_app()
+
 if __name__ == "__main__":
+    # local
     port = int(os.getenv("PORT", "8080"))
-    APP.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
