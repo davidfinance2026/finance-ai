@@ -1,57 +1,69 @@
-// Finance AI - Service Worker (v3) - avoids caching HTML
-const VERSION = "v3.0.0";
-const CACHE_NAME = `finance-ai-${VERSION}`;
-
+/* static/sw.js */
+const CACHE_NAME = "financeai-cache-v4";
 const CORE_ASSETS = [
+  "/",                      // HTML
   "/static/manifest.json",
-  "/static/sw.js",
-  "/static/icons/icon-192.png",
-  "/static/icons/icon-512.png",
+  // adicione aqui outros assets estáticos se você tiver (ícones, css, etc.)
 ];
 
+// Instala e faz cache do básico
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => {})
   );
 });
 
+// Ativa e limpa caches antigos
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())));
+    await self.clients.claim();
+  })());
 });
 
+// Network-first para API e HTML, cache-first para o resto
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  if (url.origin !== self.location.origin) return;
-
-  // Network-first for navigations (HTML)
-  if (req.mode === "navigate") {
-    event.respondWith(fetch(req));
-    return;
-  }
-
-  // Network-first for API
+  // Nunca cacheie a API
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(fetch(req));
     return;
   }
 
-  // Cache-first for static assets
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          if (req.method === "GET" && res.ok) cache.put(req, copy);
-        });
-        return res;
-      });
-    })
-  );
+  // HTML: network-first (evita ficar preso em versão velha)
+  const accept = req.headers.get("accept") || "";
+  const isHTML = accept.includes("text/html") || url.pathname === "/";
+
+  if (isHTML) {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(req, fresh.clone());
+        return fresh;
+      } catch (e) {
+        const cached = await caches.match(req);
+        return cached || new Response("Offline", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      }
+    })());
+    return;
+  }
+
+  // Outros: cache-first
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    if (cached) return cached;
+    try {
+      const fresh = await fetch(req);
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(req, fresh.clone());
+      return fresh;
+    } catch (e) {
+      return new Response("", { status: 504 });
+    }
+  })());
 });
