@@ -1,215 +1,396 @@
 import os
-from datetime import datetime
-from flask import Flask, request, jsonify, render_template
-from flask_sqlalchemy import SQLAlchemy
+import re
+import json
+import time
+import datetime as dt
+from dateutil import parser as dateparser
+
+from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
 
-app = Flask(__name__, template_folder="templates")
-CORS(app)
+# ----------------------------
+# Config / App
+# ----------------------------
+db = SQLAlchemy()
 
-# ===============================
-# DATABASE CONFIG
-# ===============================
+def _normalize_database_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    # Railway às vezes fornece "postgres://", SQLAlchemy quer "postgresql://"
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não configurada")
+def create_app() -> Flask:
+    app = Flask(__name__)
+    CORS(app)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
-db = SQLAlchemy(app)
+    database_url = _normalize_database_url(os.getenv("DATABASE_URL"))
+    if not database_url:
+        # fallback local
+        database_url = "sqlite:///local.db"
 
-# ===============================
-# MODELS
-# ===============================
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    db.init_app(app)
+
+    with app.app_context():
+        db.create_all()
+
+    return app
+
+app = create_app()
+
+# ----------------------------
+# Models
+# ----------------------------
 class User(db.Model):
     __tablename__ = "users"
-
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
 
 class Transaction(db.Model):
     __tablename__ = "transactions"
-
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, nullable=False)
-    date = db.Column(db.Date, nullable=False)
-    type = db.Column(db.String(20), nullable=False)
-    category = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(255))
-    value = db.Column(db.Float, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+
+    # Padronizei como "date" (não "data") pra evitar o erro que você teve
+    date = db.Column(db.Date, nullable=False, index=True)
+
+    # "RECEITA" ou "GASTO"
+    type = db.Column(db.String(20), nullable=False, index=True)
+
+    category = db.Column(db.String(120), nullable=False, default="Outros")
+    description = db.Column(db.String(255), nullable=True)
+
+    # valor em centavos (evita bug 360 -> 360000)
+    value_cents = db.Column(db.Integer, nullable=False)
+
+    origin = db.Column(db.String(30), nullable=False, default="APP")  # APP / WA / SHEETS
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
 
 class WaLink(db.Model):
     __tablename__ = "wa_links"
-
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(50), nullable=False)
-    user_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
+    wa_phone_number_id = db.Column(db.String(80), nullable=True)
+    wa_business_account_id = db.Column(db.String(80), nullable=True)
 
-# ===============================
-# CREATE TABLES
-# ===============================
+    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
 
-with app.app_context():
-    db.create_all()
+# ----------------------------
+# Helpers
+# ----------------------------
+def _json_error(message: str, status: int = 400):
+    return jsonify({"ok": False, "error": message}), status
 
-# ===============================
-# FRONTEND
-# ===============================
+def _make_token(user_id: int) -> str:
+    payload = {
+        "sub": str(user_id),
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 60 * 60 * 24 * 30,  # 30 dias
+    }
+    return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+def _get_bearer_user_id() -> int | None:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth.replace("Bearer ", "", 1).strip()
+    try:
+        payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
+        return int(payload["sub"])
+    except Exception:
+        return None
 
-# ===============================
-# AUTH
-# ===============================
+def _parse_money_to_cents(value) -> int:
+    """
+    Aceita:
+      360
+      "360"
+      "360,00"
+      "360.00"
+      "R$ 360,00"
+      "1.234,56"
+    Retorna centavos (int).
+    """
+    if value is None:
+        raise ValueError("Valor ausente")
 
-@app.route("/api/register", methods=["POST"])
+    if isinstance(value, (int, float)):
+        # 360.0 -> 36000
+        return int(round(float(value) * 100))
+
+    s = str(value).strip()
+    s = s.replace("R$", "").replace(" ", "")
+
+    # Se tem vírgula e ponto, assume pt-BR: 1.234,56
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        # Se só tem vírgula: 360,00
+        if "," in s:
+            s = s.replace(",", ".")
+        # Se só tem ponto: já ok
+
+    # Mantém só números e ponto
+    s = re.sub(r"[^0-9.]", "", s)
+    if s.count(".") > 1:
+        # algo estranho, remove todos os pontos e deixa o último como decimal
+        parts = s.split(".")
+        s = "".join(parts[:-1]) + "." + parts[-1]
+
+    amount = float(s) if s else 0.0
+    return int(round(amount * 100))
+
+def _parse_date(d) -> dt.date:
+    """
+    Aceita:
+      "01/03/2026"
+      "2026-03-01"
+      datetime/date
+    """
+    if isinstance(d, dt.date) and not isinstance(d, dt.datetime):
+        return d
+    if isinstance(d, dt.datetime):
+        return d.date()
+    if not d:
+        return dt.date.today()
+
+    s = str(d).strip()
+    # Força pt-BR dd/mm/yyyy quando tem "/"
+    if "/" in s:
+        day, month, year = s.split("/")
+        return dt.date(int(year), int(month), int(day))
+
+    # fallback ISO/geral
+    return dateparser.parse(s).date()
+
+# ----------------------------
+# Health / Root
+# ----------------------------
+@app.get("/")
+def root():
+    return "Finance AI 🚀\n\nBackend funcionando corretamente.\n", 200
+
+@app.get("/health")
+def health():
+    # Testa conexão rápida com banco
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        return jsonify({"ok": True, "db": True})
+    except Exception as e:
+        return jsonify({"ok": True, "db": False, "detail": str(e)}), 200
+
+# ----------------------------
+# Auth
+# ----------------------------
+@app.post("/api/register")
 def register():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
 
     if not email or not password:
-        return jsonify({"error": "Dados inválidos"}), 400
+        return _json_error("Email e senha são obrigatórios.", 400)
 
     if User.query.filter_by(email=email).first():
-        return jsonify({"error": "Usuário já existe"}), 400
+        return _json_error("Esse email já está cadastrado.", 409)
 
-    user = User(
-        email=email,
-        password=generate_password_hash(password)
-    )
-
-    db.session.add(user)
+    u = User(email=email, password_hash=generate_password_hash(password))
+    db.session.add(u)
     db.session.commit()
 
-    return jsonify({"message": "Usuário criado com sucesso"})
+    token = _make_token(u.id)
+    return jsonify({"ok": True, "token": token, "user": {"id": u.id, "email": u.email}})
 
-
-@app.route("/api/login", methods=["POST"])
+@app.post("/api/login")
 def login():
-    data = request.json
-    email = data.get("email")
-    password = data.get("password")
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
 
-    user = User.query.filter_by(email=email).first()
+    u = User.query.filter_by(email=email).first()
+    if not u or not check_password_hash(u.password_hash, password):
+        return _json_error("Credenciais inválidas.", 401)
 
-    if not user or not check_password_hash(user.password, password):
-        return jsonify({"error": "Credenciais inválidas"}), 401
+    token = _make_token(u.id)
+    return jsonify({"ok": True, "token": token, "user": {"id": u.id, "email": u.email}})
 
-    return jsonify({
-        "user_id": user.id,
-        "email": user.email
-    })
-
-# ===============================
-# TRANSACTIONS
-# ===============================
-
-@app.route("/api/lancamentos", methods=["POST"])
-def criar_lancamento():
-    data = request.json
-
-    user_id = data.get("user_id")
-    date_str = data.get("date")
-    type_ = data.get("type")
-    category = data.get("category")
-    description = data.get("description")
-    value = data.get("value")
-
+@app.get("/api/me")
+def me():
+    user_id = _get_bearer_user_id()
     if not user_id:
-        return jsonify({"error": "Usuário não autenticado"}), 401
+        return _json_error("Não autorizado.", 401)
+    u = User.query.get(user_id)
+    if not u:
+        return _json_error("Usuário não encontrado.", 404)
+    return jsonify({"ok": True, "user": {"id": u.id, "email": u.email}})
 
-    try:
-        date_obj = datetime.strptime(date_str, "%d/%m/%Y").date()
-    except:
-        return jsonify({"error": "Data inválida"}), 400
-
-    transaction = Transaction(
-        user_id=user_id,
-        date=date_obj,
-        type=type_,
-        category=category,
-        description=description,
-        value=float(value)
-    )
-
-    db.session.add(transaction)
-    db.session.commit()
-
-    return jsonify({"message": "Lançamento salvo"})
-
-
-@app.route("/api/lancamentos", methods=["GET"])
-def listar_lancamentos():
-    user_id = request.args.get("user_id")
-
+# ----------------------------
+# Transactions (Lançamentos)
+# ----------------------------
+@app.get("/api/lancamentos")
+def list_lancamentos():
+    user_id = _get_bearer_user_id()
     if not user_id:
-        return jsonify({"error": "Usuário não autenticado"}), 401
+        return _json_error("Não autorizado.", 401)
 
-    transactions = (
+    limit = int(request.args.get("limit", "30"))
+    q = (
         Transaction.query
         .filter_by(user_id=user_id)
         .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(limit)
         .all()
     )
 
-    return jsonify([
-        {
+    def to_dict(t: Transaction):
+        return {
             "id": t.id,
-            "date": t.date.strftime("%d/%m/%Y"),
+            "date": t.date.isoformat(),
             "type": t.type,
             "category": t.category,
             "description": t.description,
-            "value": t.value
-        } for t in transactions
-    ])
+            "value": round(t.value_cents / 100.0, 2),
+            "value_cents": t.value_cents,
+            "origin": t.origin,
+            "created_at": t.created_at.isoformat(),
+        }
 
-# ===============================
-# DASHBOARD
-# ===============================
+    return jsonify({"ok": True, "items": [to_dict(x) for x in q]})
 
-@app.route("/api/dashboard", methods=["GET"])
-def dashboard():
-    user_id = request.args.get("user_id")
-
+@app.post("/api/lancamentos")
+def create_lancamento():
+    user_id = _get_bearer_user_id()
     if not user_id:
-        return jsonify({"error": "Usuário não autenticado"}), 401
+        return _json_error("Não autorizado.", 401)
 
-    transactions = Transaction.query.filter_by(user_id=user_id).all()
+    data = request.get_json(silent=True) or {}
+    tx_type = (data.get("tipo") or data.get("type") or "").strip().upper()
+    if tx_type not in ("RECEITA", "GASTO"):
+        return _json_error("Tipo inválido (use RECEITA ou GASTO).", 400)
 
-    receitas = sum(t.value for t in transactions if t.type == "RECEITA")
-    gastos = sum(t.value for t in transactions if t.type == "DESPESA")
+    try:
+        date = _parse_date(data.get("data") or data.get("date"))
+        value_cents = _parse_money_to_cents(data.get("valor") or data.get("value"))
+    except Exception as e:
+        return _json_error(f"Dados inválidos: {e}", 400)
+
+    category = (data.get("categoria") or data.get("category") or "Outros").strip()
+    description = (data.get("descricao") or data.get("description") or "").strip() or None
+    origin = (data.get("origem") or data.get("origin") or "APP").strip().upper()
+
+    t = Transaction(
+        user_id=user_id,
+        date=date,
+        type=tx_type,
+        category=category,
+        description=description,
+        value_cents=value_cents,
+        origin=origin,
+    )
+    db.session.add(t)
+    db.session.commit()
+
+    return jsonify({"ok": True, "id": t.id})
+
+@app.delete("/api/lancamentos/<int:tx_id>")
+def delete_lancamento(tx_id: int):
+    user_id = _get_bearer_user_id()
+    if not user_id:
+        return _json_error("Não autorizado.", 401)
+
+    t = Transaction.query.filter_by(id=tx_id, user_id=user_id).first()
+    if not t:
+        return _json_error("Lançamento não encontrado.", 404)
+
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+# ----------------------------
+# Dashboard
+# ----------------------------
+@app.get("/api/dashboard")
+def dashboard():
+    user_id = _get_bearer_user_id()
+    if not user_id:
+        return _json_error("Não autorizado.", 401)
+
+    month = int(request.args.get("month", dt.date.today().month))
+    year = int(request.args.get("year", dt.date.today().year))
+
+    start = dt.date(year, month, 1)
+    # próximo mês
+    if month == 12:
+        end = dt.date(year + 1, 1, 1)
+    else:
+        end = dt.date(year, month + 1, 1)
+
+    rows = (
+        Transaction.query
+        .filter(Transaction.user_id == user_id)
+        .filter(Transaction.date >= start)
+        .filter(Transaction.date < end)
+        .all()
+    )
+
+    receitas = sum(t.value_cents for t in rows if t.type == "RECEITA")
+    gastos = sum(t.value_cents for t in rows if t.type == "GASTO")
+    saldo = receitas - gastos
 
     return jsonify({
-        "receitas": receitas,
-        "gastos": gastos,
-        "saldo": receitas - gastos
+        "ok": True,
+        "month": month,
+        "year": year,
+        "receitas": round(receitas / 100.0, 2),
+        "gastos": round(gastos / 100.0, 2),
+        "saldo": round(saldo / 100.0, 2),
     })
 
-# ===============================
-# WHATSAPP WEBHOOK
-# ===============================
+# ----------------------------
+# WhatsApp Webhook (Meta)
+# ----------------------------
+@app.get("/webhooks/whatsapp")
+def wa_verify():
+    verify_token = os.getenv("WA_VERIFY_TOKEN", "")
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
-@app.route("/webhooks/whatsapp", methods=["POST"])
-def whatsapp_webhook():
-    data = request.json
-    print("Mensagem recebida:", data)
-    return jsonify({"status": "ok"})
+    if mode == "subscribe" and token == verify_token and challenge:
+        return challenge, 200
+    return "forbidden", 403
 
+@app.post("/webhooks/whatsapp")
+def wa_incoming():
+    # Por enquanto apenas confirma recebimento (200) pra não quebrar o webhook
+    # Depois a gente implementa parse do texto e grava Transaction com origin="WA"
+    data = request.get_json(silent=True) or {}
+    debug = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
+    if debug:
+        print("WA payload:", json.dumps(data)[:4000])
 
-# ===============================
+    return jsonify({"ok": True}), 200
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# ----------------------------
+# Error handler (pra não virar 500 "mudo")
+# ----------------------------
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Loga no Railway
+    print("Unhandled error:", repr(e))
+    return jsonify({"ok": False, "error": "Erro interno", "detail": str(e)}), 500
