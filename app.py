@@ -1,338 +1,522 @@
 import os
-import re
 import json
-import time
-import datetime as dt
-from decimal import Decimal, InvalidOperation
-
+import re
 import requests
-from flask import Flask, request, jsonify
-
 import gspread
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
 from google.oauth2.service_account import Credentials
+from datetime import datetime, date
 
-from sqlalchemy import create_engine, Column, String, DateTime, Integer, Text
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.exc import IntegrityError
-
-
-# =========================
-# Config
-# =========================
-WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
-WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "")
-WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "")
-GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0")
-
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
-SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "")
-
-DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
-
-DATABASE_URL = (os.getenv("DATABASE_URL", "") or "").strip()
-
-# Corrige incompatibilidade comum: "postgres://" -> "postgresql://"
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-if not DATABASE_URL:
-    # fallback local (não recomendado em produção)
-    DATABASE_URL = "sqlite:///finance_ai.db"
-
-
-# =========================
-# Flask
-# =========================
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "financeai-secret")
+app.config["JSON_AS_ASCII"] = False
 
+# Cookies de sessão mais consistentes no Railway (HTTPS)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,
+)
+
+# ---------------------------
+# Headers / charset / cache
+# ---------------------------
+@app.after_request
+def headers_fix(response):
+    mt = (response.mimetype or "").lower()
+
+    # PWA: manifest + service worker com content-type correto
+    path = (request.path or "").lower()
+    if path.endswith("/static/manifest.json"):
+        response.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
+    if path.endswith("/static/sw.js"):
+        response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+
+    if mt in ("text/html", "text/plain", "text/css", "application/javascript", "text/javascript"):
+        response.headers["Content-Type"] = f"{mt}; charset=utf-8"
+    elif mt == "application/json":
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+    elif mt.startswith("text/"):
+        response.headers["Content-Type"] = f"{mt}; charset=utf-8"
+
+    # Evita HTML ficar cacheado (ajuda muito durante desenvolvimento)
+    if mt == "text/html":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+
+    return response
+
+# ---------------------------
+# Static extras
+# ---------------------------
+@app.get("/robots.txt")
+def robots_txt():
+    return send_from_directory("static", "robots.txt")
 
 # =========================
-# DB (Dedup definitivo)
+# Google Sheets (APP WEB)
 # =========================
-Base = declarative_base()
-
-class ProcessedMessage(Base):
-    __tablename__ = "processed_messages"
-    id = Column(Integer, primary_key=True)
-    msg_id = Column(String(128), nullable=False, unique=True)
-    wa_from = Column(String(64), nullable=True)
-    created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
-
-class Transaction(Base):
-    __tablename__ = "transactions"
-    id = Column(Integer, primary_key=True)
-    wa_from = Column(String(64), nullable=True)
-    date = Column(String(10), nullable=False)   # YYYY-MM-DD
-    type = Column(String(16), nullable=False)   # GASTO/RECEITA
-    value = Column(String(32), nullable=False)  # "55.00"
-    category = Column(String(64), nullable=False)
-    raw_text = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
-
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-Base.metadata.create_all(engine)
-
-
-# =========================
-# Google Sheets (BEST EFFORT)
-# - sem leituras repetidas
-# - se quota/erro, NÃO derruba WhatsApp
-# =========================
-_gspread_client = None
-_spreadsheet = None
-_ws_lanc = None
-
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-def _get_gspread_client():
-    global _gspread_client
-    if _gspread_client:
-        return _gspread_client
+# sua planilha por nome (como você disse)
+SHEET_NAME = "Controle Financeiro"
+ABA_USUARIOS = "Usuarios"
+ABA_LANCAMENTOS = "Lancamentos"
+ABA_WHATSAPP = "WhatsApp"
 
-    if not SERVICE_ACCOUNT_JSON:
-        raise RuntimeError("SERVICE_ACCOUNT_JSON não definido")
+_client = None
 
-    info = json.loads(SERVICE_ACCOUNT_JSON)
-    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    _gspread_client = gspread.authorize(creds)
-    return _gspread_client
+def get_client():
+    global _client
+    if _client:
+        return _client
 
-def _ensure_sheets_ready():
-    """
-    Roda sob demanda.
-    Evita leituras repetidas: após setar _ws_lanc, só append.
-    """
-    global _spreadsheet, _ws_lanc
-    if _ws_lanc is not None:
-        return
+    creds_json = os.environ.get("SERVICE_ACCOUNT_JSON")
+    if not creds_json:
+        raise Exception("SERVICE_ACCOUNT_JSON não configurado")
 
-    if not SPREADSHEET_ID:
-        raise RuntimeError("SPREADSHEET_ID não definido")
+    creds_dict = json.loads(creds_json)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    _client = gspread.authorize(creds)
+    return _client
 
-    gc = _get_gspread_client()
-    _spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+def open_spreadsheet():
+    return get_client().open(SHEET_NAME)
 
+def get_sheet(nome_aba):
+    sh = open_spreadsheet()
+    return sh.worksheet(nome_aba)
+
+def get_or_create_sheet(nome_aba, headers):
+    sh = open_spreadsheet()
     try:
-        _ws_lanc = _spreadsheet.worksheet("Lancamentos")
-    except gspread.exceptions.WorksheetNotFound:
-        _ws_lanc = _spreadsheet.add_worksheet(title="Lancamentos", rows=2000, cols=10)
-        _ws_lanc.append_row(["wa_from", "date", "type", "value", "category", "raw_text", "created_at"])
+        ws = sh.worksheet(nome_aba)
+    except Exception:
+        ws = sh.add_worksheet(title=nome_aba, rows=2000, cols=len(headers) + 5)
+        ws.update(f"A1:{chr(64+len(headers))}1", [headers])
+        return ws
 
-def sheets_append_transactions(rows, max_retries=3):
-    """
-    BEST EFFORT: tenta, mas se falhar, só loga e segue.
-    Retries com backoff para 429.
-    """
-    _ensure_sheets_ready()
+    cur = ws.row_values(1)
+    if cur != headers:
+        ws.update(f"A1:{chr(64+len(headers))}1", [headers])
+    return ws
 
-    for attempt in range(max_retries):
-        try:
-            _ws_lanc.append_rows(rows, value_input_option="USER_ENTERED")
-            return True
-        except Exception as e:
-            # backoff simples (especialmente para quota 429)
-            sleep_s = 2 ** attempt
-            app.logger.warning("Sheets append falhou (tentativa %s/%s): %s", attempt+1, max_retries, e)
-            time.sleep(sleep_s)
-
-    return False
-
-
-# =========================
-# Util: parse de valor PT-BR
-# =========================
-_money_re = re.compile(r"[-+]?\d[\d\.]*[,\.]?\d*")
-
-def parse_money_to_decimal(s: str) -> Decimal:
-    s = s.strip()
-    m = _money_re.search(s)
-    if not m:
-        raise ValueError("Sem número")
-    num = m.group(0)
-
-    if "," in num and "." in num:
-        if num.rfind(",") > num.rfind("."):
-            num = num.replace(".", "").replace(",", ".")
-        else:
-            num = num.replace(",", "")
-    else:
-        if "," in num:
-            num = num.replace(".", "").replace(",", ".")
-        else:
-            parts = num.split(".")
-            if len(parts) > 2:
-                num = "".join(parts[:-1]) + "." + parts[-1]
-
+def parse_money(v):
+    if v is None:
+        return 0.0
+    s = str(v).strip()
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    s = re.sub(r"[^0-9\.\-]", "", s)
     try:
-        return Decimal(num)
-    except InvalidOperation as e:
-        raise ValueError(f"Valor inválido: {s}") from e
+        return float(s)
+    except:
+        return 0.0
 
-def normalize_category(cat: str) -> str:
-    cat = cat.strip().lower()
-    cat = re.sub(r"\s+", " ", cat)
-    return cat[:64] if cat else "geral"
+def ensure_headers():
+    get_or_create_sheet(ABA_USUARIOS, ["email","senha","nome_apelido","nome_completo","telefone","criado_em"])
+    get_or_create_sheet(ABA_LANCAMENTOS, ["user_email","data","tipo","categoria","descricao","valor","criado_em"])
+    get_or_create_sheet(ABA_WHATSAPP, ["wa_number","user_email","criado_em"])
 
-RECEITA_HINTS = {"recebi", "receber", "receita", "salario", "salário", "pagamento", "pix recebido", "entrada"}
-GASTO_HINTS = {"gastei", "gasto", "despesa", "paguei", "saída", "saida"}
-
-def guess_type(text: str, category: str) -> str:
-    t = text.lower()
-    c = category.lower()
-
-    if any(h in t for h in RECEITA_HINTS) or c in {"salario", "salário"}:
-        return "RECEITA"
-    if any(h in t for h in GASTO_HINTS):
-        return "GASTO"
-
-    # default
-    return "GASTO"
-
-def parse_lines_to_transactions(wa_from: str, body_text: str, date_str: str):
-    lines = [ln.strip() for ln in body_text.splitlines() if ln.strip()]
-    txs = []
-
-    for ln in lines:
-        cleaned = ln.strip()
-        value = parse_money_to_decimal(cleaned)
-
-        cat = re.sub(_money_re, " ", cleaned)
-        cat = re.sub(r"[^\wÀ-ÿ\s]", " ", cat, flags=re.UNICODE)
-        cat = re.sub(r"\s+", " ", cat).strip()
-
-        category = normalize_category(cat) if cat else "geral"
-        tx_type = guess_type(cleaned, category)
-
-        txs.append({
-            "wa_from": wa_from,
-            "date": date_str,
-            "type": tx_type,
-            "value": str(value.quantize(Decimal("0.01"))),
-            "category": category,
-            "raw_text": ln,
-        })
-
-    return txs
-
+def require_login():
+    return session.get("user")
 
 # =========================
-# WhatsApp API
+# WhatsApp helpers (linking)
 # =========================
-def wa_send_text(to: str, text: str):
-    if not (WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID):
+def normalize_wa_number(raw: str) -> str:
+    s = (raw or "").strip().replace("+", "")
+    s = re.sub(r"[^0-9]", "", s)
+    return s
+
+def find_user_by_wa(wa_number: str):
+    ensure_headers()
+    ws = get_sheet(ABA_WHATSAPP)
+    rows = ws.get_all_records()
+    target = normalize_wa_number(wa_number)
+    for r in rows:
+        if normalize_wa_number(r.get("wa_number")) == target:
+            return str(r.get("user_email") or "").lower().strip() or None
+    return None
+
+def link_wa_to_email(wa_number: str, email: str):
+    ensure_headers()
+    ws = get_sheet(ABA_WHATSAPP)
+    wa_number = normalize_wa_number(wa_number)
+    email = (email or "").lower().strip()
+    if not wa_number or not email:
+        return False, "Número e email são obrigatórios."
+
+    rows = ws.get_all_records()
+    for i, r in enumerate(rows, start=2):
+        if normalize_wa_number(r.get("wa_number")) == wa_number:
+            ws.update_cell(i, 2, email)
+            return True, f"✅ Número atualizado para {email}."
+    ws.append_row([wa_number, email, datetime.utcnow().isoformat()])
+    return True, f"✅ Número conectado ao email {email}."
+
+def unlink_wa(wa_number: str):
+    ensure_headers()
+    ws = get_sheet(ABA_WHATSAPP)
+    wa_number = normalize_wa_number(wa_number)
+    rows = ws.get_all_records()
+    for i, r in enumerate(rows, start=2):
+        if normalize_wa_number(r.get("wa_number")) == wa_number:
+            ws.delete_rows(i)
+            return True, "✅ Número desconectado."
+    return False, "Esse número não estava conectado."
+
+# =========================
+# WhatsApp Cloud API
+# =========================
+WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "")
+WA_PHONE_NUMBER_ID = os.environ.get("WA_PHONE_NUMBER_ID", "")
+WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
+GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v20.0")
+DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
+
+def wa_send_text(to_number: str, text: str):
+    if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN):
+        print("WA creds missing. Would send:", text)
         return
-
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
-    payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text}}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": normalize_wa_number(to_number),
+        "type": "text",
+        "text": {"body": text},
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=20)
+    if r.status_code >= 400:
+        print("WA send error:", r.status_code, r.text)
 
-    try:
-        requests.post(url, headers=headers, json=payload, timeout=20)
-    except Exception:
-        pass
+def parse_finance_command(text: str):
+    t = (text or "").strip()
+    t = re.sub(r"\s+", " ", t)
+    low = t.lower()
 
-def extract_text_messages(payload: dict):
-    out = []
-    try:
-        for e in payload.get("entry", []):
-            for ch in e.get("changes", []):
-                v = ch.get("value", {})
-                for m in v.get("messages", []):
-                    msg_id = m.get("id")
-                    wa_from = m.get("from")
-                    if m.get("type") == "text":
-                        text = (m.get("text") or {}).get("body", "")
-                        if msg_id and wa_from and text:
-                            out.append((msg_id, wa_from, text))
-    except Exception:
-        return []
-    return out
+    if low.startswith(("gasto ", "despesa ")):
+        tipo = "GASTO"
+        t2 = t.split(" ", 1)[1].strip()
+    elif low.startswith(("receita ", "entrada ")):
+        tipo = "RECEITA"
+        t2 = t.split(" ", 1)[1].strip()
+    else:
+        tipo = "GASTO"
+        t2 = t
 
+    m = re.search(r"(-?\d{1,3}(?:\.\d{3})*(?:,\d{2})|-?\d+(?:[\.,]\d{2})?)", t2)
+    if not m:
+        return None
+
+    valor_raw = m.group(1)
+    valor = parse_money(valor_raw)
+    rest = (t2[m.end():] or "").strip(" -–—")
+    if not rest:
+        categoria = "Geral"
+        descricao = ""
+    else:
+        parts = rest.split(" ", 1)
+        categoria = (parts[0] or "Geral").strip().title()
+        descricao = parts[1].strip() if len(parts) > 1 else ""
+
+    return {
+        "tipo": tipo,
+        "valor": f"{valor:.2f}",
+        "categoria": categoria,
+        "descricao": descricao,
+        "data": date.today().isoformat(),
+    }
 
 # =========================
-# Routes
+# WhatsApp Webhook routes
 # =========================
-@app.get("/health")
-def health():
-    return jsonify({"ok": True})
-
 @app.get("/webhooks/whatsapp")
-def whatsapp_verify():
+def wa_verify():
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
-    if mode == "subscribe" and token == WA_VERIFY_TOKEN:
-        return challenge, 200
-    return "Forbidden", 403
+    if mode == "subscribe" and token and token == WA_VERIFY_TOKEN:
+        return challenge or "", 200
+    return "forbidden", 403
 
 @app.post("/webhooks/whatsapp")
-def whatsapp_webhook():
+def wa_webhook():
     payload = request.get_json(silent=True) or {}
+
     if DEBUG_LOG_PAYLOAD:
-        app.logger.info("INCOMING WA WEBHOOK: %s", json.dumps(payload)[:3000])
-
-    msgs = extract_text_messages(payload)
-    if not msgs:
-        return "OK", 200
-
-    today = dt.date.today().isoformat()
-    db = SessionLocal()
+        print("INCOMING WA WEBHOOK:", json.dumps(payload, ensure_ascii=False)[:4000])
 
     try:
-        for msg_id, wa_from, text in msgs:
-            # 1) Dedup definitivo no Postgres
-            try:
-                db.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from))
-                db.commit()
-            except IntegrityError:
-                db.rollback()
-                continue
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {}) or {}
+                for msg in (value.get("messages", []) or []):
+                    from_number = normalize_wa_number(msg.get("from"))
+                    msg_type = msg.get("type")
 
-            # 2) Parse
-            try:
-                txs = parse_lines_to_transactions(wa_from, text, today)
-            except Exception:
-                wa_send_text(wa_from, "Não entendi. Ex: 55 mercado (ou várias linhas).")
-                continue
+                    if msg_type == "text":
+                        body = ((msg.get("text") or {}) or {}).get("body", "") or ""
+                        cmd = body.strip()
+                        low = cmd.lower()
 
-            # 3) Salva no DB (fonte de verdade)
-            created_at = dt.datetime.utcnow().isoformat()
-            for t in txs:
-                db.add(Transaction(
-                    wa_from=t["wa_from"],
-                    date=t["date"],
-                    type=t["type"],
-                    value=t["value"],
-                    category=t["category"],
-                    raw_text=t["raw_text"],
-                ))
-            db.commit()
+                        if low.startswith("conectar "):
+                            email = cmd.split(" ", 1)[1].strip()
+                            _, resp = link_wa_to_email(from_number, email)
+                            wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
+                            continue
 
-            # 4) Planilha (best effort)
-            if SPREADSHEET_ID and SERVICE_ACCOUNT_JSON:
-                rows = [[
-                    t["wa_from"], t["date"], t["type"], t["value"],
-                    t["category"], t["raw_text"], created_at
-                ] for t in txs]
+                        if low in ("desconectar", "desconectar whatsapp"):
+                            _, resp = unlink_wa(from_number)
+                            wa_send_text(from_number, resp)
+                            continue
 
-                ok = sheets_append_transactions(rows)
-                if not ok:
-                    app.logger.warning("Sheets indisponível/quota. Dados ficaram salvos no Postgres.")
+                        user_email = find_user_by_wa(from_number)
+                        if not user_email:
+                            wa_send_text(from_number,
+                                "🔒 Seu WhatsApp ainda não está conectado.\n\n"
+                                "Envie: conectar SEU_EMAIL_DO_APP\n"
+                                "Ex: conectar david@email.com"
+                            )
+                            continue
 
-            # 5) Feedback
-            if len(txs) == 1:
-                t = txs[0]
-                wa_send_text(
-                    wa_from,
-                    f"✅ Lançamento salvo!\nTipo: {t['type']}\nValor: R$ {t['value']}\nCategoria: {t['category']}\nData: {today}"
-                )
-            else:
-                wa_send_text(wa_from, f"✅ {len(txs)} lançamentos salvos! Data: {today}")
+                        parsed = parse_finance_command(cmd)
+                        if not parsed:
+                            wa_send_text(from_number,
+                                "Não entendi 😅\n\nUse assim:\n"
+                                "• gasto 32,90 mercado\n"
+                                "• receita 2500 salario\n"
+                                "• 32,90 mercado (assume gasto)"
+                            )
+                            continue
 
-        return "OK", 200
-    finally:
-        db.close()
+                        ensure_headers()
+                        ws_lanc = get_sheet(ABA_LANCAMENTOS)
+                        ws_lanc.append_row([
+                            user_email,
+                            parsed["data"],
+                            parsed["tipo"],
+                            parsed["categoria"],
+                            parsed["descricao"],
+                            parsed["valor"],
+                            datetime.utcnow().isoformat()
+                        ], value_input_option="USER_ENTERED")
+
+                        wa_send_text(from_number,
+                            f"✅ Lançamento salvo!\n"
+                            f"Tipo: {parsed['tipo']}\n"
+                            f"Valor: R$ {parsed['valor'].replace('.', ',')}\n"
+                            f"Categoria: {parsed['categoria']}\n"
+                            f"Data: {parsed['data']}"
+                        )
+                        continue
+
+                    # mídia: registra stub
+                    if msg_type in ("image", "document", "audio", "video"):
+                        user_email = find_user_by_wa(from_number)
+                        if not user_email:
+                            wa_send_text(from_number, "🔒 Conecte primeiro: conectar SEU_EMAIL_DO_APP")
+                            continue
+
+                        media = msg.get(msg_type, {}) or {}
+                        media_id = media.get("id")
+                        caption = (media.get("caption") or "").strip()
+
+                        ensure_headers()
+                        ws_lanc = get_sheet(ABA_LANCAMENTOS)
+                        ws_lanc.append_row([
+                            user_email,
+                            date.today().isoformat(),
+                            "GASTO",
+                            "Comprovante",
+                            f"{caption} [MID:{media_id}]".strip(),
+                            "0.00",
+                            datetime.utcnow().isoformat()
+                        ], value_input_option="USER_ENTERED")
+
+                        wa_send_text(from_number,
+                            "📎 Comprovante recebido!\n"
+                            "Salvei como 'Comprovante' (valor 0,00) para você editar depois no app."
+                        )
+                        continue
+
+    except Exception as e:
+        print("WA webhook error:", str(e))
+
+    return "ok", 200
+
+# =========================
+# Web app
+# =========================
+@app.get("/")
+def index():
+    # IMPORTANTE: o arquivo deve ser templates/index.html (minúsculo)
+    return render_template("index.html")
+
+@app.post("/api/register")
+def register():
+    ensure_headers()
+    data = request.get_json(force=True) or {}
+    email = str(data.get("email","")).lower().strip()
+    senha = str(data.get("senha",""))
+    confirmar = str(data.get("confirmar_senha",""))
+
+    nome_apelido = str(data.get("nome_apelido",""))
+    nome_completo = str(data.get("nome_completo",""))
+    telefone = str(data.get("telefone",""))
+
+    if not email or not senha:
+        return jsonify(error="Email e senha obrigatórios"), 400
+    if senha != confirmar:
+        return jsonify(error="Senhas não conferem"), 400
+
+    ws = get_sheet(ABA_USUARIOS)
+    emails = [e.lower().strip() for e in ws.col_values(1)]
+    if email in emails:
+        return jsonify(error="Email já cadastrado"), 400
+
+    ws.append_row([email, senha, nome_apelido, nome_completo, telefone, datetime.utcnow().isoformat()])
+    session["user"] = email
+    return jsonify(email=email)
+
+@app.post("/api/login")
+def login():
+    ensure_headers()
+    data = request.get_json(force=True) or {}
+    email = str(data.get("email","")).lower().strip()
+    senha = str(data.get("senha",""))
+
+    ws = get_sheet(ABA_USUARIOS)
+    rows = ws.get_all_records()
+    for r in rows:
+        if str(r.get("email","")).lower().strip() == email and str(r.get("senha","")) == senha:
+            session["user"] = email
+            return jsonify(email=email)
+    return jsonify(error="Email ou senha inválidos"), 401
+
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify(ok=True)
+
+@app.post("/api/reset_password")
+def reset_password():
+    ensure_headers()
+    data = request.get_json(force=True) or {}
+    email = str(data.get("email","")).lower().strip()
+    nova = str(data.get("nova_senha",""))
+    conf = str(data.get("confirmar",""))
+
+    if not email or not nova:
+        return jsonify(error="Email e nova senha obrigatórios"), 400
+    if nova != conf:
+        return jsonify(error="Senhas não conferem"), 400
+
+    ws = get_sheet(ABA_USUARIOS)
+    rows = ws.get_all_records()
+    for i, r in enumerate(rows, start=2):
+        if str(r.get("email","")).lower().strip() == email:
+            ws.update_cell(i, 2, nova)
+            return jsonify(ok=True)
+    return jsonify(error="Email não encontrado"), 404
+
+@app.get("/api/lancamentos")
+def listar_lancamentos():
+    user = require_login()
+    if not user:
+        return jsonify(error="Não logado"), 401
+    limit = int(request.args.get("limit", 50))
+    ws = get_sheet(ABA_LANCAMENTOS)
+    rows = ws.get_all_records()
+    items = []
+    for idx, r in enumerate(rows, start=2):
+        if str(r.get("user_email","")).lower().strip() == user:
+            r["row"] = idx
+            items.append(r)
+    items.sort(key=lambda x: x.get("data",""), reverse=True)
+    return jsonify(items=items[:limit])
+
+@app.post("/api/lancamentos")
+def criar_lancamento():
+    user = require_login()
+    if not user:
+        return jsonify(error="Não logado"), 401
+    data = request.get_json(force=True) or {}
+    ws = get_sheet(ABA_LANCAMENTOS)
+    ws.append_row([
+        user,
+        data.get("data"),
+        data.get("tipo"),
+        data.get("categoria"),
+        data.get("descricao"),
+        data.get("valor"),
+        datetime.utcnow().isoformat()
+    ], value_input_option="USER_ENTERED")
+    return jsonify(ok=True)
+
+@app.put("/api/lancamentos/<int:row>")
+def editar_lancamento(row):
+    user = require_login()
+    if not user:
+        return jsonify(error="Não logado"), 401
+    data = request.get_json(force=True) or {}
+    ws = get_sheet(ABA_LANCAMENTOS)
+    if str(ws.cell(row,1).value).lower().strip() != user:
+        return jsonify(error="Sem permissão"), 403
+    ws.update(f"A{row}:G{row}", [[
+        user,
+        data.get("data"),
+        data.get("tipo"),
+        data.get("categoria"),
+        data.get("descricao"),
+        data.get("valor"),
+        datetime.utcnow().isoformat()
+    ]], value_input_option="USER_ENTERED")
+    return jsonify(ok=True)
+
+@app.delete("/api/lancamentos/<int:row>")
+def deletar_lancamento(row):
+    user = require_login()
+    if not user:
+        return jsonify(error="Não logado"), 401
+    ws = get_sheet(ABA_LANCAMENTOS)
+    if str(ws.cell(row,1).value).lower().strip() != user:
+        return jsonify(error="Sem permissão"), 403
+    ws.delete_rows(row)
+    return jsonify(ok=True)
+
+@app.get("/api/dashboard")
+def dashboard():
+    user = require_login()
+    if not user:
+        return jsonify(error="Não logado"), 401
+    mes = int(request.args.get("mes"))
+    ano = int(request.args.get("ano"))
+    ws = get_sheet(ABA_LANCAMENTOS)
+    rows = ws.get_all_records()
+    receitas = 0.0
+    gastos = 0.0
+    for r in rows:
+        if str(r.get("user_email","")).lower().strip() != user:
+            continue
+        dt_str = r.get("data")
+        if not dt_str:
+            continue
+        try:
+            d = datetime.fromisoformat(dt_str)
+        except:
+            continue
+        if d.month == mes and d.year == ano:
+            valor = parse_money(r.get("valor"))
+            if str(r.get("tipo","")).upper() == "RECEITA":
+                receitas += valor
+            elif str(r.get("tipo","")).upper() == "GASTO":
+                gastos += valor
+    return jsonify(receitas=receitas, gastos=gastos, saldo=receitas-gastos)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
