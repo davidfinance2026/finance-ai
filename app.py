@@ -10,9 +10,7 @@ import bcrypt
 import gspread
 from google.oauth2.service_account import Credentials
 
-from sqlalchemy import (
-    create_engine, Column, Integer, String, DateTime, Text, ForeignKey
-)
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.exc import IntegrityError
 
@@ -67,7 +65,7 @@ GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0")
 # Sheets (backup/export)
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
-SHEETS_BACKUP_MODE = os.getenv("SHEETS_BACKUP_MODE", "manual").strip().lower()  # auto/manual/off
+SHEETS_BACKUP_MODE = os.getenv("SHEETS_BACKUP_MODE", "auto").strip().lower()  # auto/manual/off
 
 DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
 
@@ -145,10 +143,7 @@ def _gs_enabled() -> bool:
 
 
 def gs_init_if_possible():
-    """
-    Inicializa Sheets se as env vars existirem. Nunca quebra o app se der erro.
-    Cria a aba Lancamentos se não existir e garante cabeçalho.
-    """
+    """Inicializa Sheets se as env vars existirem. Nunca quebra o app se der erro."""
     global _gs_client, _gs_spreadsheet, _gs_ws_lanc
 
     if not _gs_enabled():
@@ -167,12 +162,10 @@ def gs_init_if_possible():
             _gs_ws_lanc = _gs_spreadsheet.worksheet("Lancamentos")
         except gspread.exceptions.WorksheetNotFound:
             _gs_ws_lanc = _gs_spreadsheet.add_worksheet(title="Lancamentos", rows=3000, cols=10)
-
-        # garante cabeçalho
-        header = ["user_email", "data", "tipo", "categoria", "descricao", "valor", "origem", "criado_em"]
-        first = _gs_ws_lanc.row_values(1)
-        if first != header:
-            _gs_ws_lanc.update("A1:H1", [header])
+            _gs_ws_lanc.append_row(
+                ["user_email", "data", "tipo", "categoria", "descricao", "valor", "origem", "criado_em"],
+                value_input_option="USER_ENTERED"
+            )
 
         return True
     except Exception as e:
@@ -184,7 +177,6 @@ def sheets_append_rows(rows):
     """
     rows: list[list]
     Nunca derruba o app. Se falhar, loga.
-    Só roda quando SHEETS_BACKUP_MODE=auto
     """
     if SHEETS_BACKUP_MODE != "auto":
         return
@@ -196,9 +188,9 @@ def sheets_append_rows(rows):
         app.logger.warning("Sheets append falhou: %s", str(e))
 
 
-def sheets_export_month(user_email: str, mes: int, ano: int, tx_items: list[dict]):
+def sheets_export_month(user_email: str, tx_items: list[dict]):
     """
-    Exporta todos os lançamentos do mês para aba "Lancamentos" (append).
+    Exporta lançamentos para aba "Lancamentos" (append).
     Não apaga nada, só adiciona linhas.
     """
     if not gs_init_if_possible():
@@ -266,7 +258,7 @@ def parse_money_to_float(v: str) -> float:
     s = re.sub(r"[^0-9\.\-]", "", s)
     try:
         return float(s)
-    except Exception:
+    except:
         return 0.0
 
 
@@ -293,16 +285,13 @@ def wa_send_text(to_number: str, text: str):
 
 
 def extract_text_messages(payload: dict):
-    """
-    Retorna lista de (msg_id, wa_from, body)
-    """
     out = []
     try:
         for e in payload.get("entry", []) or []:
             for ch in e.get("changes", []) or []:
                 v = ch.get("value", {}) or {}
                 for m in (v.get("messages", []) or []):
-                    if m.get("type") == "text":
+                    if (m.get("type") == "text"):
                         msg_id = m.get("id")
                         wa_from = m.get("from")
                         body = ((m.get("text") or {}) or {}).get("body", "")
@@ -377,26 +366,7 @@ def parse_finance_line(line: str):
     }
 
 
-def parse_finance_text_multiline(text: str):
-    """
-    Permite múltiplas linhas no WhatsApp:
-    55 mercado
-    - 20 uber
-    + 1000 salario
-    """
-    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
-    items = []
-    for ln in lines:
-        it = parse_finance_line(ln)
-        if it:
-            items.append(it)
-    return items
-
-
-# =========================
-# Helpers WA link
-# =========================
-def wa_get_user_by_number(db, wa_number: str):
+def find_user_by_wa(db, wa_number: str):
     wa = normalize_wa_number(wa_number)
     link = db.query(WaLink).filter(WaLink.wa_number == wa).first()
     if not link:
@@ -405,29 +375,30 @@ def wa_get_user_by_number(db, wa_number: str):
     return u
 
 
-def wa_link_number_to_email(db, wa_number: str, email: str):
+def link_wa_to_email(db, wa_number: str, email: str):
     wa = normalize_wa_number(wa_number)
     email = (email or "").lower().strip()
+
     if not wa or not email:
         return False, "Número e email são obrigatórios."
 
     u = db.query(User).filter(User.email == email).first()
     if not u:
-        return False, "Não encontrei esse email no app. Crie a conta primeiro no app e tente novamente."
+        return False, "Email não encontrado no app. Crie a conta e tente de novo."
 
     existing = db.query(WaLink).filter(WaLink.wa_number == wa).first()
     if existing:
         existing.user_id = u.id
         db.commit()
-        return True, f"✅ WhatsApp atualizado para {email}."
+        return True, f"✅ WhatsApp conectado ao email {email} (atualizado)."
 
-    link = WaLink(wa_number=wa, user_id=u.id)
-    db.add(link)
+    wl = WaLink(wa_number=wa, user_id=u.id)
+    db.add(wl)
     db.commit()
     return True, f"✅ WhatsApp conectado ao email {email}."
 
 
-def wa_unlink_number(db, wa_number: str):
+def unlink_wa(db, wa_number: str):
     wa = normalize_wa_number(wa_number)
     existing = db.query(WaLink).filter(WaLink.wa_number == wa).first()
     if not existing:
@@ -609,7 +580,7 @@ def api_create_lancamento():
         db.add(t)
         db.commit()
 
-        # backup automático no Sheets (se mode=auto) sem derrubar o app
+        # (Sheets AUTO) backup não derruba o app
         sheets_append_rows([[
             session.get("email", ""),
             t.data,
@@ -685,7 +656,7 @@ def api_dashboard():
         for r in rows:
             try:
                 d = datetime.fromisoformat(r.data)
-            except Exception:
+            except:
                 continue
             if d.month == mes and d.year == ano:
                 v = parse_money_to_float(r.valor)
@@ -699,7 +670,7 @@ def api_dashboard():
 
 
 # =========================
-# Exportar mês -> Sheets (manual ou auto)
+# (Export) Exportar mês -> Sheets (botão no dashboard)
 # =========================
 @app.post("/api/export-month")
 def api_export_month():
@@ -718,34 +689,34 @@ def api_export_month():
     try:
         u = db.query(User).filter(User.id == uid).first()
         if not u:
-            return jsonify(error="Usuário inválido"), 400
+            return jsonify(error="Usuário não encontrado"), 404
 
         # pega lançamentos do mês
+        txs = db.query(Transaction).filter(Transaction.user_id == uid).all()
         items = []
-        rows = db.query(Transaction).filter(Transaction.user_id == uid).all()
-        for r in rows:
+        for t in txs:
             try:
-                d = datetime.fromisoformat(r.data)
-            except Exception:
+                d = datetime.fromisoformat(t.data)
+            except:
                 continue
             if d.month == mes and d.year == ano:
                 items.append({
-                    "data": r.data,
-                    "tipo": r.tipo,
-                    "categoria": r.categoria,
-                    "descricao": r.descricao or "",
-                    "valor": r.valor,
-                    "origem": r.origem,
+                    "data": t.data,
+                    "tipo": t.tipo,
+                    "categoria": t.categoria,
+                    "descricao": t.descricao or "",
+                    "valor": t.valor,
+                    "origem": t.origem,
                 })
 
-        n = sheets_export_month(u.email, mes, ano, items)
-        return jsonify(ok=True, exported=n)
+        count = sheets_export_month(u.email, items)
+        return jsonify(ok=True, exported=count)
     finally:
         db.close()
 
 
 # =========================
-# WhatsApp Webhook
+# WhatsApp webhook
 # =========================
 @app.get("/webhooks/whatsapp")
 def wa_verify():
@@ -760,8 +731,9 @@ def wa_verify():
 @app.post("/webhooks/whatsapp")
 def wa_webhook():
     payload = request.get_json(silent=True) or {}
+
     if DEBUG_LOG_PAYLOAD:
-        app.logger.info("WA payload: %s", json.dumps(payload)[:3000])
+        app.logger.info("INCOMING WA WEBHOOK: %s", json.dumps(payload, ensure_ascii=False)[:4000])
 
     msgs = extract_text_messages(payload)
     if not msgs:
@@ -770,103 +742,103 @@ def wa_webhook():
     db = SessionLocal()
     try:
         for msg_id, wa_from, body in msgs:
-            wa_from_n = normalize_wa_number(wa_from)
-            text = (body or "").strip()
-
-            # Dedup definitivo
+            # Dedup definitivo por msg_id
             try:
-                db.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from_n))
+                db.add(ProcessedMessage(msg_id=msg_id, wa_from=normalize_wa_number(wa_from)))
                 db.commit()
             except IntegrityError:
                 db.rollback()
                 continue
 
-            low = text.lower()
+            cmd = (body or "").strip()
+            low = cmd.lower()
 
-            # Conectar / desconectar
             if low.startswith("conectar "):
-                email = text.split(" ", 1)[1].strip()
-                ok, resp = wa_link_number_to_email(db, wa_from_n, email)
-                wa_send_text(wa_from_n, resp + "\n\nAgora envie algo como:\n55 mercado\n- 20 uber\n+ 1000 salario")
+                email = cmd.split(" ", 1)[1].strip()
+                ok, resp = link_wa_to_email(db, wa_from, email)
+                wa_send_text(wa_from, resp + "\n\nAgora envie: gasto 32,90 mercado")
                 continue
 
             if low in ("desconectar", "desconectar whatsapp"):
-                ok, resp = wa_unlink_number(db, wa_from_n)
-                wa_send_text(wa_from_n, resp)
+                ok, resp = unlink_wa(db, wa_from)
+                wa_send_text(wa_from, resp)
                 continue
 
-            # precisa estar conectado
-            u = wa_get_user_by_number(db, wa_from_n)
+            u = find_user_by_wa(db, wa_from)
             if not u:
                 wa_send_text(
-                    wa_from_n,
+                    wa_from,
                     "🔒 Seu WhatsApp ainda não está conectado.\n\n"
                     "Envie: conectar SEU_EMAIL_DO_APP\n"
                     "Ex: conectar david@email.com"
                 )
                 continue
 
-            # parse múltiplas linhas
-            items = parse_finance_text_multiline(text)
-            if not items:
+            # permite múltiplas linhas em uma msg
+            lines = [ln.strip() for ln in cmd.splitlines() if ln.strip()]
+            parsed_list = []
+            for ln in lines:
+                p = parse_finance_line(ln)
+                if not p:
+                    parsed_list = []
+                    break
+                parsed_list.append(p)
+
+            if not parsed_list:
                 wa_send_text(
-                    wa_from_n,
+                    wa_from,
                     "Não entendi 😅\n\nUse assim:\n"
-                    "• 55 mercado\n"
-                    "• - 20 uber\n"
-                    "• + 1000 salario\n"
-                    "• receita 2500 salario\n"
                     "• gasto 32,90 mercado\n"
+                    "• receita 2500 salario\n"
+                    "• + 35,90 mercado\n"
+                    "• 55 mercado (assume gasto)\n"
+                    "Você pode enviar várias linhas também."
                 )
                 continue
 
             created_iso = datetime.utcnow().isoformat()
 
-            # cria transações
-            created_tx = []
-            for it in items:
+            # grava no DB + Sheets auto (se ativo)
+            for p in parsed_list:
                 t = Transaction(
                     user_id=u.id,
-                    data=it["data"],
-                    tipo=it["tipo"],
-                    categoria=it["categoria"],
-                    descricao=it["descricao"],
-                    valor=it["valor"],
+                    data=p["data"],
+                    tipo=p["tipo"],
+                    categoria=p["categoria"],
+                    descricao=p["descricao"],
+                    valor=p["valor"],
                     origem="WA",
                 )
                 db.add(t)
-                created_tx.append(t)
-
             db.commit()
 
-            # backup auto Sheets (se estiver em auto) em lote
-            rows = []
-            for t in created_tx:
-                rows.append([
+            # backup sheets (auto) em lote
+            sheets_rows = []
+            for p in parsed_list:
+                sheets_rows.append([
                     u.email,
-                    t.data,
-                    t.tipo,
-                    t.categoria,
-                    t.descricao or "",
-                    t.valor,
-                    t.origem,
+                    p["data"],
+                    p["tipo"],
+                    p["categoria"],
+                    p["descricao"] or "",
+                    p["valor"],
+                    "WA",
                     created_iso
                 ])
-            sheets_append_rows(rows)
+            sheets_append_rows(sheets_rows)
 
-            # feedback
-            if len(created_tx) == 1:
-                t = created_tx[0]
+            if len(parsed_list) == 1:
+                p = parsed_list[0]
                 wa_send_text(
-                    wa_from_n,
+                    wa_from,
                     f"✅ Lançamento salvo!\n"
-                    f"Tipo: {t.tipo}\n"
-                    f"Valor: R$ {t.valor.replace('.', ',')}\n"
-                    f"Categoria: {t.categoria}\n"
-                    f"Data: {t.data}"
+                    f"Tipo: {p['tipo']}\n"
+                    f"Valor: R$ {p['valor'].replace('.', ',')}\n"
+                    f"Categoria: {p['categoria']}\n"
+                    f"Data: {p['data']}"
                 )
             else:
-                wa_send_text(wa_from_n, f"✅ {len(created_tx)} lançamentos salvos! (Data: {date.today().isoformat()})")
+                wa_send_text(wa_from, f"✅ {len(parsed_list)} lançamentos salvos! Data: {date.today().isoformat()}")
 
     except Exception as e:
         app.logger.exception("WA webhook error: %s", str(e))
@@ -876,6 +848,9 @@ def wa_webhook():
     return "ok", 200
 
 
+# =========================
+# Main
+# =========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
