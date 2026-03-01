@@ -1,1 +1,1 @@
-web: gunicorn -w 1 -k sync -t 90 app:app
+web: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
