@@ -1,21 +1,19 @@
 import os
 import re
 import json
-import time
 import datetime as dt
 from decimal import Decimal, InvalidOperation
 
 import requests
 from flask import Flask, request, jsonify
 
-import gspread
-from google.oauth2.service_account import Credentials
-
-from sqlalchemy import (
-    create_engine, Column, String, DateTime, Boolean, Integer, Text, UniqueConstraint
-)
+from sqlalchemy import create_engine, Column, String, DateTime, Integer, Text, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import IntegrityError
+
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 # =========================
@@ -29,12 +27,16 @@ GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0")
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "")
 
-DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
+# Nome da aba e range fixo (NÃO faz leitura de metadata)
+SHEET_LANC_NAME = os.getenv("SHEET_LANC_NAME", "Lancamentos")
+SHEET_LANC_RANGE = os.getenv("SHEET_LANC_RANGE", f"{SHEET_LANC_NAME}!A:H")
 
-# Banco (Railway -> adicione Postgres e pegue DATABASE_URL)
+DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///finance_ai.db"  # fallback (não ideal em produção, mas funciona)
+    DATABASE_URL = "sqlite:///finance_ai.db"  # fallback local
 
 # =========================
 # Flask
@@ -58,12 +60,16 @@ class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(Integer, primary_key=True)
     wa_from = Column(String(64), nullable=True)
-    date = Column(String(10), nullable=False)  # YYYY-MM-DD
-    type = Column(String(16), nullable=False)  # GASTO/RECEITA
-    value = Column(String(32), nullable=False) # "55.00"
+    date = Column(String(10), nullable=False)     # YYYY-MM-DD
+    type = Column(String(16), nullable=False)     # GASTO/RECEITA
+    value = Column(String(32), nullable=False)    # "55.00"
     category = Column(String(64), nullable=False)
     raw_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=dt.datetime.utcnow, nullable=False)
+
+    # Sync resiliente pro Sheets
+    synced_to_sheets = Column(Boolean, default=False, nullable=False)
+    sheets_error = Column(Text, nullable=True)
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -71,68 +77,47 @@ Base.metadata.create_all(engine)
 
 
 # =========================
-# Google Sheets (somente APPEND)
+# Google Sheets (WRITE-ONLY) via API
 # =========================
-_gspread_client = None
-_spreadsheet = None
-_ws_lanc = None
+_sheets_service = None
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
+def get_sheets_service():
+    """
+    Importantíssimo:
+    - Não usa gspread (que faz leituras de metadata).
+    - Só constrói o client 1x por processo.
+    """
+    global _sheets_service
+    if _sheets_service:
+        return _sheets_service
 
-def _get_gspread_client():
-    global _gspread_client
-    if _gspread_client:
-        return _gspread_client
+    if not (SPREADSHEET_ID and SERVICE_ACCOUNT_JSON):
+        return None
 
-    if not SERVICE_ACCOUNT_JSON:
-        raise RuntimeError("SERVICE_ACCOUNT_JSON não definido")
-
-    try:
-        info = json.loads(SERVICE_ACCOUNT_JSON)
-    except json.JSONDecodeError as e:
-        raise RuntimeError("SERVICE_ACCOUNT_JSON inválido (não é JSON).") from e
-
+    info = json.loads(SERVICE_ACCOUNT_JSON)
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    _gspread_client = gspread.authorize(creds)
-    return _gspread_client
+    _sheets_service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    return _sheets_service
 
-def _ensure_sheets_ready():
-    """
-    IMPORTANTÍSSIMO:
-    - Isso roda sob demanda e tenta 1x abrir/criar aba.
-    - Depois disso, no fluxo normal só faz append_rows (sem leitura de dados).
-    """
-    global _spreadsheet, _ws_lanc
-
-    if _ws_lanc is not None:
-        return
-
-    if not SPREADSHEET_ID:
-        raise RuntimeError("SPREADSHEET_ID não definido")
-
-    gc = _get_gspread_client()
-    _spreadsheet = gc.open_by_key(SPREADSHEET_ID)
-
-    # Aba de lançamentos
-    try:
-        _ws_lanc = _spreadsheet.worksheet("Lancamentos")
-    except gspread.exceptions.WorksheetNotFound:
-        _ws_lanc = _spreadsheet.add_worksheet(title="Lancamentos", rows=2000, cols=10)
-        # Cabeçalho
-        _ws_lanc.append_row(["wa_from", "date", "type", "value", "category", "raw_text", "created_at"])
-
-
-def sheets_append_transactions(rows):
+def sheets_append_rows(rows):
     """
     rows: list[list[str]]
-    Faz append em lote (1 request).
+    Faz append com values.append (WRITE).
+    Não faz leitura de spreadsheet/worksheet.
     """
-    _ensure_sheets_ready()
-    # value_input_option="USER_ENTERED" ajuda com números
-    _ws_lanc.append_rows(rows, value_input_option="USER_ENTERED")
+    service = get_sheets_service()
+    if not service:
+        return
+
+    body = {"values": rows}
+    service.spreadsheets().values().append(
+        spreadsheetId=SPREADSHEET_ID,
+        range=SHEET_LANC_RANGE,
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body=body
+    ).execute()
 
 
 # =========================
@@ -140,36 +125,22 @@ def sheets_append_transactions(rows):
 # =========================
 _money_re = re.compile(r"[-+]?\d[\d\.]*[,\.]?\d*")
 
-def parse_money_to_decimal(s: str) -> Decimal:
-    """
-    Aceita:
-    "55" -> 55
-    "55,50" -> 55.50
-    "2.100,00" -> 2100.00
-    "2,100.00" (menos comum) -> tenta resolver também
-    """
-    s = s.strip()
-    m = _money_re.search(s)
+def parse_money_to_decimal(text: str) -> Decimal:
+    text = text.strip()
+    m = _money_re.search(text)
     if not m:
         raise ValueError("Sem número")
     num = m.group(0)
 
-    # Heurística:
-    # Se tem ',' e '.', assume pt-BR quando '.' é milhar e ',' decimal.
     if "," in num and "." in num:
-        # se a última vírgula vem depois do último ponto -> pt-BR típico 2.100,00
-        if num.rfind(",") > num.rfind("."):
+        if num.rfind(",") > num.rfind("."):   # 2.100,00
             num = num.replace(".", "").replace(",", ".")
-        else:
-            # caso raro 2,100.00
+        else:                                  # 2,100.00
             num = num.replace(",", "")
     else:
-        # só vírgula: decimal
         if "," in num:
             num = num.replace(".", "").replace(",", ".")
-        # só ponto: decimal (ou inteiro)
         else:
-            # se tem muitos pontos pode ser milhar, ex 2.100
             parts = num.split(".")
             if len(parts) > 2:
                 num = "".join(parts[:-1]) + "." + parts[-1]
@@ -177,60 +148,72 @@ def parse_money_to_decimal(s: str) -> Decimal:
     try:
         return Decimal(num)
     except InvalidOperation as e:
-        raise ValueError(f"Valor inválido: {s}") from e
-
+        raise ValueError("Valor inválido") from e
 
 def normalize_category(cat: str) -> str:
     cat = cat.strip().lower()
     cat = re.sub(r"\s+", " ", cat)
+    # remove palavras “de comando” do começo
+    cat = re.sub(r"^(recebi|receber|entrada|ganhei|salario|salário|receita|gastei|gasto|despesa|paguei|saida|saída)\b\s*", "", cat).strip()
     return cat[:64] if cat else "geral"
 
+RECEITA_WORDS = {"recebi", "receber", "entrada", "ganhei", "receita", "salario", "salário"}
+GASTO_WORDS   = {"gastei", "gasto", "despesa", "paguei", "saida", "saída"}
 
-RECEITA_HINTS = {"recebi", "receber", "receita", "salario", "salário", "pagamento", "pix recebido", "entrada"}
-GASTO_HINTS = {"gastei", "gasto", "despesa", "paguei", "saída", "saida"}
-
-def guess_type(text: str, category: str) -> str:
-    t = text.lower()
+def infer_type_from_text(line: str, category: str) -> str:
+    t = line.lower()
     c = category.lower()
 
-    # Se mencionar explicitamente:
-    if any(h in t for h in RECEITA_HINTS) or c in {"salario", "salário"}:
+    # forçar RECEITA quando categoria é salário
+    if c in {"salario", "salário"}:
         return "RECEITA"
-    if any(h in t for h in GASTO_HINTS):
+
+    if any(w in t.split() for w in RECEITA_WORDS):
+        return "RECEITA"
+    if any(w in t.split() for w in GASTO_WORDS):
         return "GASTO"
 
-    # default (você pode trocar o padrão se preferir)
+    # default
     return "GASTO"
 
-
-def parse_lines_to_transactions(wa_from: str, body_text: str, date_str: str):
+def parse_line(line: str):
     """
-    Aceita:
+    Aceita formatos:
     - "55 mercado"
+    - "55,50 mercado"
+    - "2.100,00 salario"
     - "recebi 2100 salario"
-    - múltiplas linhas: "60 futebol\n55 mercado\n80 internet"
+    - "receita 2100 salario"
+    - "gasto 45 futebol"
     """
+    original = line.strip()
+    if not original:
+        return None
+
+    value = parse_money_to_decimal(original)
+
+    # categoria = texto removendo número e pontuações
+    cat = re.sub(_money_re, " ", original)
+    cat = re.sub(r"[^\wÀ-ÿ\s]", " ", cat, flags=re.UNICODE)
+    cat = re.sub(r"\s+", " ", cat).strip()
+
+    category = normalize_category(cat)
+
+    tx_type = infer_type_from_text(original, category)
+
+    return value, category, tx_type, original
+
+def parse_message_to_transactions(wa_from: str, body_text: str, date_str: str):
     lines = [ln.strip() for ln in body_text.splitlines() if ln.strip()]
+    if not lines:
+        raise ValueError("Vazio")
+
     txs = []
-
     for ln in lines:
-        # Remove palavras de controle comuns no começo
-        cleaned = ln.strip()
-
-        value = parse_money_to_decimal(cleaned)
-
-        # Remove o número do texto e pega o resto como categoria
-        # Ex: "55 mercado" -> "mercado"
-        # Ex: "recebi 2100 salario" -> categoria "salario"
-        # Estratégia: tira todos os números e símbolos adjacentes, sobra texto
-        cat = re.sub(_money_re, " ", cleaned)
-        cat = re.sub(r"[^\wÀ-ÿ\s]", " ", cat, flags=re.UNICODE)
-        cat = re.sub(r"\s+", " ", cat).strip()
-
-        # se ficou vazio, categoria genérica
-        category = normalize_category(cat) if cat else "geral"
-
-        tx_type = guess_type(cleaned, category)
+        parsed = parse_line(ln)
+        if not parsed:
+            continue
+        value, category, tx_type, raw = parsed
 
         txs.append({
             "wa_from": wa_from,
@@ -238,8 +221,11 @@ def parse_lines_to_transactions(wa_from: str, body_text: str, date_str: str):
             "type": tx_type,
             "value": str(value.quantize(Decimal("0.01"))),
             "category": category,
-            "raw_text": ln,
+            "raw_text": raw,
         })
+
+    if not txs:
+        raise ValueError("Nenhuma transação")
 
     return txs
 
@@ -264,24 +250,16 @@ def wa_send_text(to: str, text: str):
     except Exception:
         pass
 
-
 def extract_text_messages(payload: dict):
-    """
-    Retorna lista de tuplas (msg_id, wa_from, text)
-    """
     out = []
     try:
-        entry = payload.get("entry", [])
-        for e in entry:
-            changes = e.get("changes", [])
-            for ch in changes:
+        for e in payload.get("entry", []):
+            for ch in e.get("changes", []):
                 v = ch.get("value", {})
-                messages = v.get("messages", [])
-                for m in messages:
+                for m in v.get("messages", []):
                     msg_id = m.get("id")
                     wa_from = m.get("from")
-                    mtype = m.get("type")
-                    if mtype == "text":
+                    if m.get("type") == "text":
                         text = (m.get("text") or {}).get("body", "")
                         if msg_id and wa_from and text:
                             out.append((msg_id, wa_from, text))
@@ -307,7 +285,6 @@ def whatsapp_verify():
         return challenge, 200
     return "Forbidden", 403
 
-
 @app.post("/webhooks/whatsapp")
 def whatsapp_webhook():
     payload = request.get_json(silent=True) or {}
@@ -319,72 +296,140 @@ def whatsapp_webhook():
         return "OK", 200
 
     today = dt.date.today().isoformat()
-
     db = SessionLocal()
+
     try:
-        # Processa cada msg com dedup no banco
         for msg_id, wa_from, text in msgs:
 
-            # 1) Dedup definitivo (sem Google Sheets)
-            already = False
+            # 1) Dedup definitivo
             try:
                 db.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from))
                 db.commit()
             except IntegrityError:
                 db.rollback()
-                already = True
-
-            if already:
                 continue
 
-            # 2) Parse -> transações
+            # 2) Parse
             try:
-                txs = parse_lines_to_transactions(wa_from, text, today)
+                txs = parse_message_to_transactions(wa_from, text, today)
             except Exception:
-                wa_send_text(wa_from, "Não entendi. Ex: 55 mercado (ou várias linhas).")
+                wa_send_text(
+                    wa_from,
+                    "Não entendi. Exemplos:\n"
+                    "• 55 mercado\n"
+                    "• recebi 2100 salario\n"
+                    "• gasto 45 futebol\n"
+                    "(pode enviar várias linhas)"
+                )
                 continue
 
             # 3) Salva no DB
             created_at = dt.datetime.utcnow().isoformat()
+            tx_ids = []
             for t in txs:
-                db.add(Transaction(
+                tr = Transaction(
                     wa_from=t["wa_from"],
                     date=t["date"],
                     type=t["type"],
                     value=t["value"],
                     category=t["category"],
                     raw_text=t["raw_text"],
-                ))
+                )
+                db.add(tr)
+                db.flush()
+                tx_ids.append(tr.id)
             db.commit()
 
-            # 4) Append na planilha EM LOTE (1 request)
+            # 4) Tenta sync no Sheets (WRITE only). Se falhar, não derruba.
             try:
                 rows = []
                 for t in txs:
                     rows.append([
-                        t["wa_from"],
-                        t["date"],
-                        t["type"],
-                        t["value"],
-                        t["category"],
-                        t["raw_text"],
-                        created_at,
+                        t["wa_from"], t["date"], t["type"], t["value"],
+                        t["category"], t["raw_text"], created_at, "synced"
                     ])
-                sheets_append_transactions(rows)
-            except Exception as e:
-                # Não derruba o WhatsApp por causa da planilha
-                app.logger.exception("Erro ao escrever na planilha: %s", e)
+                sheets_append_rows(rows)
 
-            # 5) Feedback pro usuário
+                # marca como synced
+                for tid in tx_ids:
+                    tr = db.get(Transaction, tid)
+                    tr.synced_to_sheets = True
+                    tr.sheets_error = None
+                db.commit()
+
+            except HttpError as e:
+                # 429/403/etc: mantém pendente
+                err = str(e)
+                app.logger.exception("Sheets HttpError: %s", err)
+                for tid in tx_ids:
+                    tr = db.get(Transaction, tid)
+                    tr.synced_to_sheets = False
+                    tr.sheets_error = err[:2000]
+                db.commit()
+
+            except Exception as e:
+                err = str(e)
+                app.logger.exception("Erro ao escrever na planilha: %s", err)
+                for tid in tx_ids:
+                    tr = db.get(Transaction, tid)
+                    tr.synced_to_sheets = False
+                    tr.sheets_error = err[:2000]
+                db.commit()
+
+            # 5) Feedback
             if len(txs) == 1:
                 t = txs[0]
                 wa_send_text(
                     wa_from,
-                    f"✅ Lançamento salvo!\nTipo: {t['type']}\nValor: R$ {t['value']}\nCategoria: {t['category']}\nData: {today}"
+                    f"✅ Lançamento salvo!\n"
+                    f"Tipo: {t['type']}\n"
+                    f"Valor: R$ {t['value']}\n"
+                    f"Categoria: {t['category']}\n"
+                    f"Data: {today}"
                 )
             else:
                 wa_send_text(wa_from, f"✅ {len(txs)} lançamentos salvos! Data: {today}")
 
         return "OK", 200
+    finally:
+        db.close()
+
+# =========================
+# Sync manual (opcional) - resiliente
+# =========================
+@app.post("/admin/sync_sheets")
+def admin_sync_sheets():
+    # Proteção simples por header
+    if not SECRET_KEY:
+        return jsonify({"ok": False, "error": "SECRET_KEY não definido"}), 500
+
+    auth = request.headers.get("X-ADMIN-KEY", "")
+    if auth != SECRET_KEY:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    db = SessionLocal()
+    try:
+        pending = db.query(Transaction).filter(Transaction.synced_to_sheets == False).order_by(Transaction.id.asc()).limit(200).all()
+        if not pending:
+            return jsonify({"ok": True, "synced": 0})
+
+        rows = []
+        for tr in pending:
+            rows.append([
+                tr.wa_from, tr.date, tr.type, tr.value,
+                tr.category, tr.raw_text or "", tr.created_at.isoformat(), "synced_late"
+            ])
+
+        sheets_append_rows(rows)
+
+        for tr in pending:
+            tr.synced_to_sheets = True
+            tr.sheets_error = None
+        db.commit()
+
+        return jsonify({"ok": True, "synced": len(pending)})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
     finally:
         db.close()
