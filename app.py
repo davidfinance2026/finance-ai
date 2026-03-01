@@ -1,30 +1,29 @@
 import os
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates")
 CORS(app)
 
-# =========================
-# CONFIGURAÇÃO DATABASE
-# =========================
+# ===============================
+# DATABASE CONFIG
+# ===============================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não definida")
+    raise RuntimeError("DATABASE_URL não configurada")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# =========================
+# ===============================
 # MODELS
-# =========================
+# ===============================
 
 class User(db.Model):
     __tablename__ = "users"
@@ -40,40 +39,44 @@ class Transaction(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=False)
-
     date = db.Column(db.Date, nullable=False)
     type = db.Column(db.String(20), nullable=False)
     category = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255))
     value = db.Column(db.Float, nullable=False)
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# =========================
-# CRIAR TABELAS
-# =========================
+class WaLink(db.Model):
+    __tablename__ = "wa_links"
+
+    id = db.Column(db.Integer, primary_key=True)
+    phone = db.Column(db.String(50), nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+
+
+# ===============================
+# CREATE TABLES
+# ===============================
 
 with app.app_context():
     db.create_all()
 
-# =========================
-# ROTAS
-# =========================
+# ===============================
+# FRONTEND
+# ===============================
 
 @app.route("/")
-def home():
-    return "Finance AI rodando 🚀"
+def index():
+    return render_template("index.html")
 
-
-# =========================
-# REGISTER
-# =========================
+# ===============================
+# AUTH
+# ===============================
 
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.json
-
     email = data.get("email")
     password = data.get("password")
 
@@ -83,23 +86,20 @@ def register():
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "Usuário já existe"}), 400
 
-    hashed = generate_password_hash(password)
+    user = User(
+        email=email,
+        password=generate_password_hash(password)
+    )
 
-    user = User(email=email, password=hashed)
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({"message": "Usuário criado"})
+    return jsonify({"message": "Usuário criado com sucesso"})
 
-
-# =========================
-# LOGIN
-# =========================
 
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.json
-
     email = data.get("email")
     password = data.get("password")
 
@@ -108,12 +108,14 @@ def login():
     if not user or not check_password_hash(user.password, password):
         return jsonify({"error": "Credenciais inválidas"}), 401
 
-    return jsonify({"user_id": user.id, "email": user.email})
+    return jsonify({
+        "user_id": user.id,
+        "email": user.email
+    })
 
-
-# =========================
-# NOVO LANÇAMENTO
-# =========================
+# ===============================
+# TRANSACTIONS
+# ===============================
 
 @app.route("/api/lancamentos", methods=["POST"])
 def criar_lancamento():
@@ -146,12 +148,8 @@ def criar_lancamento():
     db.session.add(transaction)
     db.session.commit()
 
-    return jsonify({"message": "Lançamento criado"})
+    return jsonify({"message": "Lançamento salvo"})
 
-
-# =========================
-# LISTAR LANÇAMENTOS
-# =========================
 
 @app.route("/api/lancamentos", methods=["GET"])
 def listar_lancamentos():
@@ -167,24 +165,20 @@ def listar_lancamentos():
         .all()
     )
 
-    result = []
-
-    for t in transactions:
-        result.append({
+    return jsonify([
+        {
             "id": t.id,
             "date": t.date.strftime("%d/%m/%Y"),
             "type": t.type,
             "category": t.category,
             "description": t.description,
             "value": t.value
-        })
+        } for t in transactions
+    ])
 
-    return jsonify(result)
-
-
-# =========================
+# ===============================
 # DASHBOARD
-# =========================
+# ===============================
 
 @app.route("/api/dashboard", methods=["GET"])
 def dashboard():
@@ -204,8 +198,18 @@ def dashboard():
         "saldo": receitas - gastos
     })
 
+# ===============================
+# WHATSAPP WEBHOOK
+# ===============================
 
-# =========================
+@app.route("/webhooks/whatsapp", methods=["POST"])
+def whatsapp_webhook():
+    data = request.json
+    print("Mensagem recebida:", data)
+    return jsonify({"status": "ok"})
+
+
+# ===============================
 
 if __name__ == "__main__":
     app.run(debug=True)
