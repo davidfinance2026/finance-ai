@@ -6,7 +6,7 @@ import hmac
 import hashlib
 import requests
 import gspread
-from flask import Flask, render_template, request, jsonify, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, session, send_from_directory, abort
 from google.oauth2.service_account import Credentials
 from datetime import datetime, date
 
@@ -14,62 +14,61 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "financeai-secret")
 app.config["JSON_AS_ASCII"] = False
 
-# =========================
-# Proteção #1: Assinatura do Webhook (Meta)
-# =========================
-META_APP_SECRET = os.environ.get("META_APP_SECRET", "") or os.environ.get("APP_SECRET", "")
 
-def verify_meta_signature(req) -> bool:
+# =========================
+# Proteções adicionais (B)
+# =========================
+META_APP_SECRET = os.environ.get("META_APP_SECRET", "").strip()
+WA_DEDUP_TTL_SECONDS = int(os.environ.get("WA_DEDUP_TTL_SECONDS", "900"))  # 15 min default
+
+# Cache simples em memória para deduplicar msg.id
+_seen_msg_ids = {}  # {msg_id: expires_at_epoch}
+
+
+def _dedup_gc(now=None):
+    """Limpa ids expirados do cache."""
+    now = now or time.time()
+    expired = [k for k, exp in _seen_msg_ids.items() if exp <= now]
+    for k in expired:
+        _seen_msg_ids.pop(k, None)
+
+
+def _already_processed(msg_id: str) -> bool:
+    """Retorna True se msg_id já foi processado recentemente."""
+    if not msg_id:
+        return False
+    now = time.time()
+    _dedup_gc(now)
+    if msg_id in _seen_msg_ids:
+        return True
+    _seen_msg_ids[msg_id] = now + WA_DEDUP_TTL_SECONDS
+    return False
+
+
+def _verify_meta_signature(raw_body: bytes) -> bool:
     """
-    Verifica o header:
-      X-Hub-Signature-256: sha256=<HMAC_HEX>
-    usando o META_APP_SECRET / APP_SECRET.
+    Verifica a assinatura X-Hub-Signature-256 (Meta).
+    Header vem como: 'sha256=<hex>'
     """
     if not META_APP_SECRET:
-        # Se não configurou ainda, não bloqueia (mas recomendo configurar!)
+        # Se você não setou, não valida (mas recomendo MUITO setar).
         return True
 
-    sig = req.headers.get("X-Hub-Signature-256", "") or ""
+    sig = request.headers.get("X-Hub-Signature-256", "") or ""
     if not sig.startswith("sha256="):
         return False
 
     their_hex = sig.split("=", 1)[1].strip()
-    body = req.get_data()  # bytes
-
-    mac = hmac.new(META_APP_SECRET.encode("utf-8"), msg=body, digestmod=hashlib.sha256)
+    mac = hmac.new(META_APP_SECRET.encode("utf-8"), msg=raw_body, digestmod=hashlib.sha256)
     our_hex = mac.hexdigest()
-    return hmac.compare_digest(our_hex, their_hex)
+
+    # comparação em tempo constante
+    return hmac.compare_digest(their_hex, our_hex)
+
 
 # =========================
-# Proteção #2: Anti-duplicidade (idempotência)
+# Headers fix
 # =========================
-_seen_wa_ids = {}  # {msg_id: timestamp}
-SEEN_TTL_SECONDS = 6 * 60 * 60  # 6h
-
-def seen_before(msg_id: str) -> bool:
-    """
-    Retorna True se já vimos esse message.id (evita duplicar lançamento).
-    """
-    if not msg_id:
-        return False
-
-    now = time.time()
-
-    # limpeza leve
-    if len(_seen_wa_ids) > 2000:
-        cutoff = now - SEEN_TTL_SECONDS
-        for k, ts in list(_seen_wa_ids.items()):
-            if ts < cutoff:
-                _seen_wa_ids.pop(k, None)
-
-    ts = _seen_wa_ids.get(msg_id)
-    if ts and (now - ts) < SEEN_TTL_SECONDS:
-        return True
-
-    _seen_wa_ids[msg_id] = now
-    return False
-
-
 @app.after_request
 def headers_fix(response):
     mt = (response.mimetype or "").lower()
@@ -93,17 +92,24 @@ def robots_txt():
     return send_from_directory("static", "robots.txt")
 
 
+# =========================
+# Google Sheets
+# =========================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
 SHEET_NAME = "Controle Financeiro"
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "").strip()  # opcional: abre por ID
+
 ABA_USUARIOS = "Usuarios"
 ABA_LANCAMENTOS = "Lancamentos"
 ABA_WHATSAPP = "WhatsApp"
 
 _client = None
+_spreadsheet = None
+
 
 def get_client():
     global _client
@@ -119,12 +125,28 @@ def get_client():
     _client = gspread.authorize(creds)
     return _client
 
+
 def open_spreadsheet():
-    return get_client().open(SHEET_NAME)
+    """
+    Se SPREADSHEET_ID estiver definido, abre por ID.
+    Caso contrário, abre por nome (Controle Financeiro).
+    """
+    global _spreadsheet
+    if _spreadsheet:
+        return _spreadsheet
+
+    gc = get_client()
+    if SPREADSHEET_ID:
+        _spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    else:
+        _spreadsheet = gc.open(SHEET_NAME)
+    return _spreadsheet
+
 
 def get_sheet(nome_aba):
     sh = open_spreadsheet()
     return sh.worksheet(nome_aba)
+
 
 def get_or_create_sheet(nome_aba, headers):
     sh = open_spreadsheet()
@@ -140,6 +162,7 @@ def get_or_create_sheet(nome_aba, headers):
         ws.update(f"A1:{chr(64+len(headers))}1", [headers])
     return ws
 
+
 def parse_money(v):
     if v is None:
         return 0.0
@@ -152,21 +175,25 @@ def parse_money(v):
     except:
         return 0.0
 
+
 def ensure_headers():
     get_or_create_sheet(ABA_USUARIOS, ["email","senha","nome_apelido","nome_completo","telefone","criado_em"])
     get_or_create_sheet(ABA_LANCAMENTOS, ["user_email","data","tipo","categoria","descricao","valor","criado_em"])
     get_or_create_sheet(ABA_WHATSAPP, ["wa_number","user_email","criado_em"])
 
+
+# =========================
+# Auth helpers
+# =========================
 def require_login():
     return session.get("user")
 
-def normalize_wa_number(raw) -> str:
-    """
-    Proteção extra (já corrigida): raw pode vir como int/None.
-    """
+
+def normalize_wa_number(raw: str) -> str:
     s = str(raw or "").strip().replace("+", "")
     s = re.sub(r"[^0-9]", "", s)
     return s
+
 
 def find_user_by_wa(wa_number: str):
     ensure_headers()
@@ -177,6 +204,7 @@ def find_user_by_wa(wa_number: str):
         if normalize_wa_number(r.get("wa_number")) == target:
             return str(r.get("user_email") or "").lower().strip() or None
     return None
+
 
 def link_wa_to_email(wa_number: str, email: str):
     ensure_headers()
@@ -194,6 +222,7 @@ def link_wa_to_email(wa_number: str, email: str):
     ws.append_row([wa_number, email, datetime.utcnow().isoformat()])
     return True, f"✅ Número conectado ao email {email}."
 
+
 def unlink_wa(wa_number: str):
     ensure_headers()
     ws = get_sheet(ABA_WHATSAPP)
@@ -205,17 +234,21 @@ def unlink_wa(wa_number: str):
             return True, "✅ Número desconectado."
     return False, "Esse número não estava conectado."
 
+
+# =========================
 # WhatsApp Cloud API
+# =========================
 WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "")
 WA_PHONE_NUMBER_ID = os.environ.get("WA_PHONE_NUMBER_ID", "")
 WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
-WA_GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v20.0")
+GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v20.0")
+
 
 def wa_send_text(to_number: str, text: str):
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN):
         print("WA creds missing. Would send:", text)
         return
-    url = f"https://graph.facebook.com/{WA_GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
+    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
     payload = {
         "messaging_product": "whatsapp",
@@ -227,8 +260,9 @@ def wa_send_text(to_number: str, text: str):
     if r.status_code >= 400:
         print("WA send error:", r.status_code, r.text)
 
+
 def parse_finance_command(text: str):
-    t = (text or "").strip()
+    t = str(text or "").strip()
     t = re.sub(r"\s+", " ", t)
     low = t.lower()
 
@@ -248,7 +282,6 @@ def parse_finance_command(text: str):
 
     valor_raw = m.group(1)
     valor = parse_money(valor_raw)
-
     rest = (t2[m.end():] or "").strip(" -–—")
     if not rest:
         categoria = "Geral"
@@ -266,6 +299,7 @@ def parse_finance_command(text: str):
         "data": date.today().isoformat(),
     }
 
+
 @app.get("/webhooks/whatsapp")
 def wa_verify():
     mode = request.args.get("hub.mode")
@@ -275,10 +309,13 @@ def wa_verify():
         return challenge or "", 200
     return "forbidden", 403
 
+
 @app.post("/webhooks/whatsapp")
 def wa_webhook():
-    # Proteção #1 (assinatura)
-    if not verify_meta_signature(request):
+    # Proteção 1: assinatura da Meta (X-Hub-Signature-256)
+    raw = request.get_data(cache=False) or b""
+    if not _verify_meta_signature(raw):
+        # NÃO responda 500 aqui; responda 403
         return "invalid signature", 403
 
     payload = request.get_json(silent=True) or {}
@@ -288,15 +325,12 @@ def wa_webhook():
             for change in entry.get("changes", []):
                 value = change.get("value", {}) or {}
 
-                # Ignora "statuses" (callback de entrega/leitura), processa só "messages"
-                messages = (value.get("messages", []) or [])
-                if not messages:
-                    continue
+                # mensagens
+                for msg in (value.get("messages", []) or []):
+                    msg_id = str(msg.get("id") or "").strip()
 
-                for msg in messages:
-                    msg_id = str(msg.get("id") or "")
-                    if seen_before(msg_id):
-                        # Proteção #2 (anti duplicidade)
+                    # Proteção 2: dedupe por msg.id
+                    if _already_processed(msg_id):
                         continue
 
                     from_number = normalize_wa_number(msg.get("from"))
@@ -304,7 +338,7 @@ def wa_webhook():
 
                     if msg_type == "text":
                         body = ((msg.get("text") or {}) or {}).get("body", "") or ""
-                        cmd = body.strip()
+                        cmd = str(body).strip()
                         low = cmd.lower()
 
                         if low.startswith("conectar "):
@@ -321,9 +355,9 @@ def wa_webhook():
                         user_email = find_user_by_wa(from_number)
                         if not user_email:
                             wa_send_text(from_number,
-                                "🔒 Seu WhatsApp ainda não está conectado.\n\n"
-                                "Envie: conectar SEU_EMAIL_DO_APP\n"
-                                "Ex: conectar david@email.com"
+                                "🔒 Antes de registrar lançamentos, preciso vincular seu número.\n\n"
+                                "Envie seu email do app (ex: nome@dominio.com)\n"
+                                "ou use: conectar SEU_EMAIL_DO_APP"
                             )
                             continue
 
@@ -347,7 +381,7 @@ def wa_webhook():
                             parsed["descricao"],
                             parsed["valor"],
                             datetime.utcnow().isoformat()
-                        ])
+                        ], value_input_option="USER_ENTERED")
 
                         wa_send_text(from_number,
                             f"✅ Lançamento salvo!\n"
@@ -378,7 +412,7 @@ def wa_webhook():
                             f"{caption} [MID:{media_id}]".strip(),
                             "0.00",
                             datetime.utcnow().isoformat()
-                        ])
+                        ], value_input_option="USER_ENTERED")
 
                         wa_send_text(from_number,
                             "📎 Comprovante recebido!\n"
@@ -392,10 +426,13 @@ def wa_webhook():
     return "ok", 200
 
 
-# ------------------ Web app ------------------
+# =========================
+# Web app
+# =========================
 @app.get("/")
 def index():
     return render_template("index.html")
+
 
 @app.post("/api/register")
 def register():
@@ -415,13 +452,15 @@ def register():
         return jsonify(error="Senhas não conferem"), 400
 
     ws = get_sheet(ABA_USUARIOS)
-    emails = [e.lower().strip() for e in ws.col_values(1)]
+    emails = [str(e).lower().strip() for e in ws.col_values(1)]
     if email in emails:
         return jsonify(error="Email já cadastrado"), 400
 
-    ws.append_row([email, senha, nome_apelido, nome_completo, telefone, datetime.utcnow().isoformat()])
+    ws.append_row([email, senha, nome_apelido, nome_completo, telefone, datetime.utcnow().isoformat()],
+                  value_input_option="USER_ENTERED")
     session["user"] = email
     return jsonify(email=email)
+
 
 @app.post("/api/login")
 def login():
@@ -438,10 +477,12 @@ def login():
             return jsonify(email=email)
     return jsonify(error="Email ou senha inválidos"), 401
 
+
 @app.post("/api/logout")
 def logout():
     session.clear()
     return jsonify(ok=True)
+
 
 @app.post("/api/reset_password")
 def reset_password():
@@ -464,6 +505,7 @@ def reset_password():
             return jsonify(ok=True)
     return jsonify(error="Email não encontrado"), 404
 
+
 @app.get("/api/lancamentos")
 def listar_lancamentos():
     user = require_login()
@@ -480,6 +522,7 @@ def listar_lancamentos():
     items.sort(key=lambda x: x.get("data",""), reverse=True)
     return jsonify(items=items[:limit])
 
+
 @app.post("/api/lancamentos")
 def criar_lancamento():
     user = require_login()
@@ -495,8 +538,9 @@ def criar_lancamento():
         data.get("descricao"),
         data.get("valor"),
         datetime.utcnow().isoformat()
-    ])
+    ], value_input_option="USER_ENTERED")
     return jsonify(ok=True)
+
 
 @app.put("/api/lancamentos/<int:row>")
 def editar_lancamento(row):
@@ -515,8 +559,9 @@ def editar_lancamento(row):
         data.get("descricao"),
         data.get("valor"),
         datetime.utcnow().isoformat()
-    ]])
+    ]], value_input_option="USER_ENTERED")
     return jsonify(ok=True)
+
 
 @app.delete("/api/lancamentos/<int:row>")
 def deletar_lancamento(row):
@@ -528,6 +573,7 @@ def deletar_lancamento(row):
         return jsonify(error="Sem permissão"), 403
     ws.delete_rows(row)
     return jsonify(ok=True)
+
 
 @app.get("/api/dashboard")
 def dashboard():
@@ -557,6 +603,7 @@ def dashboard():
             elif str(r.get("tipo","")).upper() == "GASTO":
                 gastos += valor
     return jsonify(receitas=receitas, gastos=gastos, saldo=receitas-gastos)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
