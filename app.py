@@ -5,7 +5,7 @@ import hashlib
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, request, jsonify, send_from_directory, session
+from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_sqlalchemy import SQLAlchemy
 
 # -------------------------
@@ -13,7 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 # -------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 
 # Railway often provides DATABASE_URL or you create your own.
@@ -177,13 +177,26 @@ def _status_payload():
 
 @app.get('/')
 def home():
-    # If you use a SPA, change to send your index.html.
-    # Current project also works as API-only; front-end can be hosted elsewhere.
-    index_path = os.path.join(BASE_DIR, 'index.html')
-    if os.path.exists(index_path):
-        return send_from_directory(BASE_DIR, 'index.html')
-    return 'Finance AI 🚀 Backend funcionando corretamente.', 200
+    return render_template('index.html')
 
+@app.get('/offline.html')
+def offline_page():
+    return render_template('offline.html')
+
+@app.get('/manifest.json')
+def manifest():
+    return send_from_directory(app.static_folder, 'manifest.json')
+
+@app.get('/sw.js')
+def service_worker():
+    resp = send_from_directory(app.static_folder, 'sw.js')
+    # Ensure correct MIME for service worker
+    resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    return resp
+
+@app.get('/robots.txt')
+def robots():
+    return send_from_directory(app.static_folder, 'robots.txt')
 
 @app.get('/health')
 def health():
