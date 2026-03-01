@@ -7,6 +7,7 @@
   <title>Finance AI</title>
   <link rel="manifest" href="/static/manifest.json">
 
+  <!-- Chart.js (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <style>
@@ -104,6 +105,7 @@
     .hidden{display:none !important}
     .divider{height:1px;background:var(--border);margin:14px 0}
 
+    /* modal */
     .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;padding:16px;z-index:50}
     .overlay.show{display:flex}
     .modal{
@@ -121,12 +123,14 @@
     .seg.active{color:var(--text);background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));border:1px solid rgba(75,140,255,.35)}
     .hint{font-size:12px;color:var(--muted);margin-top:8px}
 
+    /* list cards */
     .miniCard{
       box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03);
       border:1px solid var(--border);padding:12px;
     }
     .kpi{font-weight:900}
 
+    /* chart */
     .chartBox{
       border:1px solid var(--border);
       background: rgba(0,0,0,.18);
@@ -144,6 +148,16 @@
     @media(min-width:840px){
       canvas{height:280px !important;}
     }
+
+    .callout{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      border-radius: 18px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .callout b{color: rgba(234,240,255,.92)}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
   </style>
 </head>
 
@@ -214,7 +228,20 @@
           <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
           <button id="btnExportMes" class="btn">📤 Exportar mês (Sheets)</button>
           <div class="spacer"></div>
-          <span class="hint" id="dashHint">Faça login para ver seus dados.</span>
+          <span class="hint">Faça login para ver seus dados.</span>
+        </div>
+
+        <div class="callout">
+          <div style="font-weight:900">📱 Conectar WhatsApp</div>
+          <div class="hint" style="margin-top:6px;line-height:1.5">
+            No WhatsApp, envie para o bot:<br/>
+            <span class="mono">conectar SEU_EMAIL_DO_APP</span><br/>
+            ou mande apenas seu email.
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn small" id="btnCopyWA">Copiar comando</button>
+            <span class="hint" id="waHint"></span>
+          </div>
         </div>
 
         <div id="toastDash" class="toast"></div>
@@ -323,7 +350,7 @@
       <div class="card">
         <h2>Investimentos</h2>
         <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no banco, eu adiciono:
+          Tela pronta para evoluir. Se você quiser registrar investimentos, eu adiciono:
           <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
         </p>
       </div>
@@ -493,9 +520,7 @@
       try { data = await res.json(); } catch(e) {}
       if (!res.ok) {
         const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
-        const err = new Error(msg);
-        err.status = res.status;
-        throw err;
+        throw new Error(msg);
       }
       return data;
     }
@@ -570,9 +595,9 @@
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
     // -----------------------
-    // Auth state (cookie real)
+    // Auth state (front only)
     // -----------------------
-    let currentUserEmail = "";
+    let currentUserEmail = localStorage.getItem("financeai_user") || "";
 
     function setLoggedUI(isLogged, email="") {
       const pill = $("userPill");
@@ -580,33 +605,36 @@
       $("btnLogout").classList.toggle("hidden", !isLogged);
       pill.classList.toggle("hidden", !isLogged);
       pill.textContent = isLogged ? email : "";
-      $("dashHint").textContent = isLogged ? "Você está logado." : "Faça login para ver seus dados.";
     }
 
-    async function syncSession() {
-      try {
-        const me = await api("/api/me", "GET");
-        if (me.logged) {
-          currentUserEmail = me.email || "";
-          setLoggedUI(true, currentUserEmail);
-        } else {
-          currentUserEmail = "";
-          setLoggedUI(false);
-        }
-      } catch {
-        currentUserEmail = "";
-        setLoggedUI(false);
-      }
-    }
+    if (currentUserEmail) setLoggedUI(true, currentUserEmail);
+    else setLoggedUI(false);
 
     $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
 
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
+      localStorage.removeItem("financeai_user");
       currentUserEmail = "";
       setLoggedUI(false);
       refreshDashboard().catch(()=>{});
       carregarUltimos().catch(()=>{});
+    });
+
+    // -----------------------
+    // WhatsApp helper UI
+    // -----------------------
+    $("btnCopyWA").addEventListener("click", async () => {
+      const hint = $("waHint");
+      hint.textContent = "";
+      const cmd = `conectar ${currentUserEmail || "SEU_EMAIL_DO_APP"}`;
+      try {
+        await navigator.clipboard.writeText(cmd);
+        hint.textContent = "Copiado!";
+      } catch(e) {
+        hint.textContent = cmd;
+      }
+      setTimeout(()=> hint.textContent="", 1800);
     });
 
     // -----------------------
@@ -618,6 +646,7 @@
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
         const res = await api("/api/login", "POST", { email, senha });
+        localStorage.setItem("financeai_user", res.email);
         currentUserEmail = res.email;
         setLoggedUI(true, res.email);
         showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
@@ -641,6 +670,7 @@
           nome_apelido, nome_completo, telefone, email, senha, confirmar_senha
         });
 
+        localStorage.setItem("financeai_user", res.email);
         currentUserEmail = res.email;
         setLoggedUI(true, res.email);
 
@@ -682,53 +712,16 @@
       if (c1 && !chartRG) {
         chartRG = new Chart(c1, {
           type: "doughnut",
-          data: {
-            labels: ["Receitas", "Gastos"],
-            datasets: [{
-              data: [0, 0],
-              backgroundColor: ["rgba(46,229,157,.85)", "rgba(255,75,110,.85)"],
-              borderColor: ["rgba(46,229,157,.20)", "rgba(255,75,110,.20)"],
-              borderWidth: 1,
-              hoverOffset: 6
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
-            },
-            cutout: "65%"
-          }
+          data: { labels: ["Receitas", "Gastos"], datasets: [{ data: [0,0] }] },
+          options: { responsive:true, maintainAspectRatio:false, cutout:"65%" }
         });
       }
 
       if (c2 && !chartSaldo) {
         chartSaldo = new Chart(c2, {
           type: "bar",
-          data: {
-            labels: ["Saldo"],
-            datasets: [{
-              label: "Saldo do mês",
-              data: [0],
-              backgroundColor: ["rgba(75,140,255,.75)"],
-              borderColor: ["rgba(75,140,255,.25)"],
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
-            },
-            scales: {
-              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
-              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
-            }
-          }
+          data: { labels: ["Saldo"], datasets: [{ label:"Saldo do mês", data:[0] }] },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
         });
       }
 
@@ -738,23 +731,12 @@
           data: {
             labels: [],
             datasets: [
-              { label: "Receitas (dia)", data: [], borderColor: "rgba(46,229,157,.9)", backgroundColor: "rgba(46,229,157,.12)", tension: 0.25, fill: true, pointRadius: 2 },
-              { label: "Gastos (dia)", data: [], borderColor: "rgba(255,75,110,.9)", backgroundColor: "rgba(255,75,110,.10)", tension: 0.25, fill: true, pointRadius: 2 },
-              { label: "Saldo acumulado", data: [], borderColor: "rgba(75,140,255,.95)", backgroundColor: "rgba(75,140,255,.12)", tension: 0.25, fill: false, pointRadius: 1 }
+              { label:"Receitas (dia)", data:[], tension:0.25, fill:true, pointRadius:2 },
+              { label:"Gastos (dia)", data:[], tension:0.25, fill:true, pointRadius:2 },
+              { label:"Saldo acumulado", data:[], tension:0.25, fill:false, pointRadius:1 }
             ]
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
-            },
-            scales: {
-              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
-              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
-            }
-          }
+          options: { responsive:true, maintainAspectRatio:false }
         });
       }
     }
@@ -762,14 +744,11 @@
     function updateChartsTotals(receitas, gastos, saldo) {
       ensureCharts();
       if (chartRG) {
-        chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)];
+        chartRG.data.datasets[0].data = [Number(receitas||0), Number(gastos||0)];
         chartRG.update();
       }
       if (chartSaldo) {
-        const s = Number(saldo || 0);
-        chartSaldo.data.datasets[0].data = [s];
-        chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"];
-        chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"];
+        chartSaldo.data.datasets[0].data = [Number(saldo||0)];
         chartSaldo.update();
       }
     }
@@ -801,7 +780,7 @@
       const gastosDia = Array.from({length: dim}, () => 0);
 
       try {
-        const res = await api("/api/lancamentos?limit=200", "GET");
+        const res = await api("/api/lancamentos?limit=400", "GET");
         const items = res.items || [];
 
         for (const it of items) {
@@ -865,9 +844,7 @@
         $("valSaldo").textContent = "R$ 0,00";
         updateChartsTotals(0, 0, 0);
         await updateDailyChart(mes, ano);
-
-        if (e.status === 401) showToast(toast, "err", "Faça login para ver o dashboard", e.message);
-        else showToast(toast, "err", "Erro no servidor", e.message);
+        showToast(toast, "err", "Faça login para ver o dashboard", e.message);
       }
     }
 
@@ -881,10 +858,9 @@
       const ano = Number($("dashAno").value);
       try {
         const res = await api("/api/export-month", "POST", { mes, ano });
-        showToast(toast, "ok", "Exportado para o Sheets", `Linhas exportadas: ${res.exported || 0}`);
-      } catch(e) {
-        if (e.status === 401) showToast(toast, "err", "Faça login antes de exportar", e.message);
-        else showToast(toast, "err", "Falha ao exportar", e.message);
+        showToast(toast, "ok", "Export concluído", `Linhas exportadas: ${res.exported}`);
+      } catch (e) {
+        showToast(toast, "err", "Falha ao exportar", e.message);
       }
     });
 
@@ -909,8 +885,7 @@
         refreshDashboard().catch(()=>{});
         carregarUltimos().catch(()=>{});
       }catch(e){
-        if (e.status === 401) showToast(toast, "err", "Você precisa estar logado", e.message);
-        else showToast(toast, "err", "Erro ao salvar", e.message);
+        showToast(toast, "err", "Erro ao salvar", e.message);
       }
     });
 
@@ -975,8 +950,7 @@
         }).join("");
 
       } catch (e) {
-        if (e.status === 401) showToast(toast, "err", "Faça login para ver seus lançamentos", e.message);
-        else showToast(toast, "err", "Erro ao carregar", e.message);
+        showToast(toast, "err", "Erro ao carregar", e.message);
       }
     }
 
@@ -1003,11 +977,13 @@
       $("editBlock").classList.remove("hidden");
       $("modalIcon").textContent = "✏️";
       $("modalTitle").textContent = "Editar lançamento";
-      $("modalSub").textContent = "Edite e salve. A alteração atualiza seu banco.";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza seus dados.";
       openModal();
     }
 
     window.abrirEdicao = (it) => {
+      if (!currentUserEmail) return openAuthModal("entrar");
+
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
       $("edtData").value = it.data || new Date().toISOString().slice(0,10);
@@ -1059,10 +1035,7 @@
     // -----------------------
     initMesAno();
     ensureCharts();
-    syncSession().then(() => {
-      refreshDashboard().catch(()=>{});
-      carregarUltimos().catch(()=>{});
-    });
+    refreshDashboard().catch(()=>{});
   </script>
 
   <script>
