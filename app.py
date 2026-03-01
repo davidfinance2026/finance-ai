@@ -4,409 +4,395 @@ import hmac
 import hashlib
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
-from flask import Flask, request, jsonify, abort
-
+import requests
 import gspread
+from flask import Flask, request, jsonify
 from google.oauth2.service_account import Credentials
 
 
-# -----------------------------------------------------------------------------
-# Config / Logging
-# -----------------------------------------------------------------------------
+# =========================================================
+# Config
+# =========================================================
+APP = Flask(__name__)
+
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("financeai")
+LOG = logging.getLogger("financeai")
 
-app = Flask(__name__)
-
-WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "").strip()
-META_APP_SECRET = os.getenv("META_APP_SECRET", "").strip()
-
-WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "").strip()          # opcional (proteção allowlist)
-WA_BUSINESS_ACCOUNT_ID = os.getenv("WA_BUSINESS_ACCOUNT_ID", "").strip()  # opcional (proteção allowlist)
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 SERVICE_ACCOUNT_JSON = os.getenv("SERVICE_ACCOUNT_JSON", "").strip()
 
-# Se você quiser logar payload (cuidado com dados sensíveis)
-DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0").strip() in ("1", "true", "True", "yes", "YES")
+WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "").strip()
+WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "").strip()
+WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "").strip()
 
+# Proteção 2 (assinatura do webhook)
+META_APP_SECRET = os.getenv("META_APP_SECRET", "").strip()
 
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
-def safe_str(x) -> str:
-    """Converte qualquer coisa para string segura e strip (evita 'int'.strip)."""
-    if x is None:
-        return ""
-    return str(x).strip()
+DEBUG_LOG_PAYLOAD = os.getenv("DEBUG_LOG_PAYLOAD", "0").strip().lower() in ("1", "true", "yes", "y")
 
+# Abas
+LANCAMENTOS_SHEET = os.getenv("LANCAMENTOS_SHEET", "Lancamentos").strip()
+DEDUP_SHEET_NAME = os.getenv("DEDUP_SHEET_NAME", "Dedup").strip()
 
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
+# Cache simples em memória (proteção extra contra duplicado no curto prazo)
+_SEEN_CACHE = {}  # msg_id -> epoch_seconds
+CACHE_TTL_SECONDS = 60 * 10  # 10 min
 
 _gspread_client = None
 
 
+# =========================================================
+# Helpers Google Sheets
+# =========================================================
 def get_gspread_client() -> gspread.Client:
     global _gspread_client
-    if _gspread_client is not None:
+    if _gspread_client:
         return _gspread_client
 
     if not SERVICE_ACCOUNT_JSON:
-        raise RuntimeError("SERVICE_ACCOUNT_JSON não configurado.")
+        raise RuntimeError("SERVICE_ACCOUNT_JSON não definido nas variáveis de ambiente.")
 
-    info = json.loads(SERVICE_ACCOUNT_JSON)
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = Credentials.from_service_account_info(info, scopes=scopes)
+    try:
+        info = json.loads(SERVICE_ACCOUNT_JSON)
+    except Exception as e:
+        raise RuntimeError(f"SERVICE_ACCOUNT_JSON inválido: {e}")
+
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     _gspread_client = gspread.authorize(creds)
     return _gspread_client
 
 
-def open_sheet(sheet_name: str):
+def open_spreadsheet():
     if not SPREADSHEET_ID:
-        raise RuntimeError("SPREADSHEET_ID não configurado.")
+        raise RuntimeError("SPREADSHEET_ID não definido nas variáveis de ambiente.")
     gc = get_gspread_client()
-    sh = gc.open_by_key(SPREADSHEET_ID)
-    return sh.worksheet(sheet_name)
+    return gc.open_by_key(SPREADSHEET_ID)
+
+
+def get_or_create_worksheet(sh, title: str, rows=2000, cols=20):
+    """Evita WorksheetNotFound e já cria se não existir."""
+    try:
+        return sh.worksheet(title)
+    except gspread.exceptions.WorksheetNotFound:
+        LOG.warning("Aba '%s' não existe. Criando...", title)
+        ws = sh.add_worksheet(title=title, rows=str(rows), cols=str(cols))
+        return ws
 
 
 def ensure_headers(ws, headers):
-    existing = ws.row_values(1)
-    if existing != headers:
-        ws.clear()
-        ws.append_row(headers)
-
-
-def hmac_sha256_hex(key: str, msg_bytes: bytes) -> str:
-    return hmac.new(key.encode("utf-8"), msg_bytes, hashlib.sha256).hexdigest()
-
-
-def verify_meta_signature(raw_body: bytes) -> bool:
-    """
-    Proteção #1: valida X-Hub-Signature-256.
-    Formato esperado: "sha256=<hexdigest>"
-    """
-    sig = request.headers.get("X-Hub-Signature-256", "")
-    sig = safe_str(sig)
-
-    if not META_APP_SECRET:
-        # Segurança: se você quer proteção por assinatura, não aceite sem secret.
-        logger.error("META_APP_SECRET vazio -> recusando POST por segurança.")
-        return False
-
-    if not sig.startswith("sha256="):
-        logger.warning("Header X-Hub-Signature-256 ausente ou inválido.")
-        return False
-
-    their = sig.split("=", 1)[1]
-    ours = hmac_sha256_hex(META_APP_SECRET, raw_body)
-    return hmac.compare_digest(their, ours)
-
-
-def extract_change_value(payload: dict) -> dict | None:
-    """
-    Retorna payload['entry'][0]['changes'][0]['value'] se existir.
-    """
+    """Garante cabeçalhos na primeira linha."""
     try:
-        entry = payload.get("entry") or []
-        if not entry:
-            return None
-        changes = entry[0].get("changes") or []
-        if not changes:
-            return None
-        return changes[0].get("value")
+        first_row = ws.row_values(1)
     except Exception:
-        return None
+        first_row = []
+
+    if [h.strip() for h in first_row] != headers:
+        ws.update("A1", [headers])
 
 
-def allowlist_check(payload: dict) -> bool:
+# =========================================================
+# Helpers Segurança (Proteções)
+# =========================================================
+def verify_signature(raw_body: bytes) -> bool:
     """
-    Proteção #2: valida se o evento é do seu WABA e/ou PHONE_NUMBER_ID.
-    - Se variáveis não estiverem setadas, não bloqueia por elas.
+    Valida X-Hub-Signature-256 usando META_APP_SECRET.
+    Se META_APP_SECRET estiver vazio, NÃO valida (retorna True) para não travar o app,
+    mas loga um alerta.
     """
-    value = extract_change_value(payload) or {}
-    metadata = value.get("metadata") or {}
+    if not META_APP_SECRET:
+        LOG.warning("META_APP_SECRET vazio. Validação de assinatura desabilitada.")
+        return True
 
-    payload_phone_number_id = safe_str(metadata.get("phone_number_id"))
-    payload_waba_id = safe_str(value.get("whatsapp_business_account_id") or (payload.get("id") if isinstance(payload, dict) else ""))
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not signature.startswith("sha256="):
+        return False
 
-    if WA_PHONE_NUMBER_ID:
-        if payload_phone_number_id != WA_PHONE_NUMBER_ID:
-            logger.warning(
-                "Bloqueado por allowlist phone_number_id. payload=%s expected=%s",
-                payload_phone_number_id, WA_PHONE_NUMBER_ID
-            )
-            return False
+    sent_hash = signature.split("sha256=", 1)[1].strip()
+    computed = hmac.new(
+        META_APP_SECRET.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
 
-    if WA_BUSINESS_ACCOUNT_ID:
-        # Nem sempre vem direto; quando vem, costuma estar em entry[0].id (WABA).
-        entry = (payload.get("entry") or [{}])[0]
-        entry_id = safe_str(entry.get("id"))
-        if entry_id and entry_id != WA_BUSINESS_ACCOUNT_ID:
-            logger.warning(
-                "Bloqueado por allowlist WABA. entry.id=%s expected=%s",
-                entry_id, WA_BUSINESS_ACCOUNT_ID
-            )
-            return False
-
-    return True
+    return hmac.compare_digest(computed, sent_hash)
 
 
-def parse_user_message(payload: dict):
+def cleanup_cache(now_ts: int):
+    to_delete = [k for k, v in _SEEN_CACHE.items() if now_ts - v > CACHE_TTL_SECONDS]
+    for k in to_delete:
+        _SEEN_CACHE.pop(k, None)
+
+
+# =========================================================
+# Helpers WhatsApp
+# =========================================================
+def wa_send_message(to_phone: str, text: str):
+    if not (WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID):
+        LOG.error("WA_ACCESS_TOKEN / WA_PHONE_NUMBER_ID não definidos.")
+        return
+
+    url = f"https://graph.facebook.com/v19.0/{WA_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "text",
+        "text": {"body": text},
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.status_code >= 300:
+            LOG.error("Erro ao enviar msg WA (%s): %s", r.status_code, r.text)
+    except Exception as e:
+        LOG.error("Exceção enviando msg WA: %s", e)
+
+
+# =========================================================
+# Parser de lançamentos (texto -> linhas)
+# =========================================================
+def parse_decimal_br(value_str: str) -> Decimal:
     """
-    Extrai:
-      - wa_id (telefone do usuário)
-      - nome (profile.name)
-      - message_id
-      - texto
+    Aceita:
+    - "55"
+    - "55,5"
+    - "55,50"
+    - "1.234,56"
+    - "1234.56"
     """
-    value = extract_change_value(payload) or {}
-    contacts = value.get("contacts") or []
-    messages = value.get("messages") or []
+    s = str(value_str).strip()
+    if not s:
+        raise InvalidOperation("valor vazio")
 
-    wa_id = ""
-    profile_name = ""
+    # Remove moeda e espaços
+    s = s.replace("R$", "").replace(" ", "").strip()
 
-    if contacts:
-        wa_id = safe_str((contacts[0].get("wa_id")))
-        profile = contacts[0].get("profile") or {}
-        profile_name = safe_str(profile.get("name"))
-
-    if not messages:
-        return wa_id, profile_name, "", ""
-
-    msg = messages[0]
-    msg_id = safe_str(msg.get("id"))
-
-    # texto pode estar em msg["text"]["body"]
-    text = ""
-    if msg.get("type") == "text":
-        text = safe_str(((msg.get("text") or {}).get("body")))
+    # Se tem vírgula e ponto, assume padrão BR: 1.234,56
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
     else:
-        # outros tipos: ignore por enquanto
-        text = ""
+        # Se só vírgula, vira ponto
+        if "," in s:
+            s = s.replace(",", ".")
 
-    return wa_id, profile_name, msg_id, text
+    return Decimal(s)
 
 
+def parse_lines_to_entries(text: str):
+    """
+    Espera linhas tipo:
+      55 mercado
+      60 futebol
+      80 internet
+
+    Retorna lista de dicts {tipo, categoria, descricao, valor, data}.
+    """
+    entries = []
+    today = datetime.now(timezone.utc).astimezone().date().isoformat()
+
+    lines = (text or "").splitlines()
+    for raw in lines:
+        line = str(raw).strip()
+        if not line:
+            continue
+
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+
+        value_part = parts[0]
+        desc = " ".join(parts[1:]).strip()
+
+        try:
+            valor = parse_decimal_br(value_part)
+        except Exception:
+            continue
+
+        entry = {
+            "tipo": "GASTO",           # default
+            "categoria": desc.title(), # simples
+            "descricao": desc,
+            "valor": valor,
+            "data": today,
+        }
+        entries.append(entry)
+
+    return entries
+
+
+# =========================================================
+# Dedup (Google Sheet + cache)
+# =========================================================
 def is_duplicate_message(msg_id: str) -> bool:
-    """
-    Idempotência simples: salva msg_id numa aba "Dedup".
-    """
-    msg_id = safe_str(msg_id)
+    msg_id = str(msg_id).strip()
     if not msg_id:
         return False
 
-    ws = open_sheet("Dedup")
-    ensure_headers(ws, ["message_id", "created_at"])
-    # Busca rápida: pega col A inteira (ok para planilhas pequenas/médias).
-    col = ws.col_values(1)
-    if msg_id in col:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    cleanup_cache(now_ts)
+
+    if msg_id in _SEEN_CACHE:
         return True
-    ws.append_row([msg_id, utc_now_iso()])
-    return False
+
+    sh = open_spreadsheet()
+    ws = get_or_create_worksheet(sh, DEDUP_SHEET_NAME, rows=5000, cols=5)
+    ensure_headers(ws, ["msg_id", "created_at"])
+
+    try:
+        # find levanta CellNotFound se não achar
+        ws.find(msg_id)
+        # se achou, é duplicado
+        _SEEN_CACHE[msg_id] = now_ts
+        return True
+    except gspread.exceptions.CellNotFound:
+        # não existe, então registra
+        ws.append_row([msg_id, datetime.now(timezone.utc).isoformat()], value_input_option="RAW")
+        _SEEN_CACHE[msg_id] = now_ts
+        return False
+    except Exception as e:
+        # Se sheet der pau, não derruba o webhook; usa cache como fallback
+        LOG.error("Dedup falhou (fallback cache): %s", e)
+        if msg_id in _SEEN_CACHE:
+            return True
+        _SEEN_CACHE[msg_id] = now_ts
+        return False
 
 
-def get_user_email_by_waid(wa_id: str) -> str | None:
-    wa_id = safe_str(wa_id)
-    ws = open_sheet("Usuarios")
-    ensure_headers(ws, ["wa_id", "email", "nome", "criado_em"])
-    rows = ws.get_all_records()
-    for r in rows:
-        if safe_str(r.get("wa_id")) == wa_id:
-            return safe_str(r.get("email")) or None
-    return None
-
-
-def link_user_email(wa_id: str, email: str, nome: str):
-    wa_id = safe_str(wa_id)
-    email = safe_str(email).lower()
-    nome = safe_str(nome)
-
-    ws = open_sheet("Usuarios")
-    ensure_headers(ws, ["wa_id", "email", "nome", "criado_em"])
-
-    # se já existe, atualiza
-    records = ws.get_all_records()
-    for idx, r in enumerate(records, start=2):  # linha 1 = header
-        if safe_str(r.get("wa_id")) == wa_id:
-            ws.update(f"B{idx}:D{idx}", [[email, nome, utc_now_iso()]])
-            return
-
-    ws.append_row([wa_id, email, nome, utc_now_iso()])
-
-
-def append_lancamento(user_email: str, data: str, tipo: str, categoria: str, descricao: str, valor: float):
-    ws = open_sheet("Lancamentos")
+def save_entries(user_key: str, entries):
+    sh = open_spreadsheet()
+    ws = get_or_create_worksheet(sh, LANCAMENTOS_SHEET, rows=5000, cols=20)
     ensure_headers(ws, ["user_email", "data", "tipo", "categoria", "descricao", "valor", "criado_em"])
-    ws.append_row([
-        safe_str(user_email),
-        safe_str(data),
-        safe_str(tipo),
-        safe_str(categoria),
-        safe_str(descricao),
-        float(valor),
-        utc_now_iso(),
-    ])
+
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    rows = []
+    for e in entries:
+        rows.append([
+            user_key,
+            e["data"],
+            e["tipo"],
+            e["categoria"],
+            e["descricao"],
+            float(e["valor"]),   # grava número
+            created_at
+        ])
+
+    if rows:
+        ws.append_rows(rows, value_input_option="USER_ENTERED")
 
 
-def parse_lines_to_lancamentos(text: str):
-    """
-    Converte texto multi-linha em lançamentos.
-    Exemplos:
-      "55 mercado"
-      "recebi 1000 salario"
-      "+ 35,90 mercado"
-      "- 120 aluguel"
-    Retorna lista de dicts: {tipo, valor, categoria, descricao}
-    """
-    text = safe_str(text)
-    lines = [safe_str(l) for l in text.splitlines() if safe_str(l)]
-    out = []
-
-    for line in lines:
-        low = line.lower()
-
-        tipo = "GASTO"
-        if low.startswith("recebi ") or low.startswith("receita ") or low.startswith("+"):
-            tipo = "RECEITA"
-        if low.startswith("gastei ") or low.startswith("gasto ") or low.startswith("-"):
-            tipo = "GASTO"
-
-        # Remove palavras guia
-        cleaned = line
-        for prefix in ("recebi ", "receita ", "gastei ", "gasto "):
-            if cleaned.lower().startswith(prefix):
-                cleaned = cleaned[len(prefix):]
-                break
-
-        cleaned = cleaned.lstrip("+").lstrip("-").strip()
-
-        # Primeiro token = valor
-        parts = cleaned.split()
-        if not parts:
-            continue
-
-        raw_val = safe_str(parts[0]).replace(".", "").replace(",", ".")
-        try:
-            valor = float(raw_val)
-        except ValueError:
-            # não é lançamento, ignore
-            continue
-
-        # resto = categoria/descrição
-        rest = " ".join(parts[1:]).strip()
-        categoria = rest.split()[0].capitalize() if rest else "Outros"
-        descricao = rest.capitalize() if rest else categoria
-
-        out.append({
-            "tipo": tipo,
-            "valor": valor,
-            "categoria": categoria,
-            "descricao": descricao
-        })
-
-    return out
+# =========================================================
+# Rotas
+# =========================================================
+@APP.get("/health")
+def health():
+    return jsonify({"ok": True})
 
 
-# -----------------------------------------------------------------------------
-# Routes
-# -----------------------------------------------------------------------------
-@app.get("/webhook/whatsapp")
-@app.get("/webhooks/whatsapp")
+@APP.get("/webhooks/whatsapp")
 def whatsapp_verify():
     """
-    Verificação do webhook (Meta):
-      GET ?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
+    Proteção adicional #1:
+    verificação do webhook (GET) usando WA_VERIFY_TOKEN.
     """
-    mode = safe_str(request.args.get("hub.mode"))
-    token = safe_str(request.args.get("hub.verify_token"))
-    challenge = request.args.get("hub.challenge")
+    mode = request.args.get("hub.mode", "")
+    token = request.args.get("hub.verify_token", "")
+    challenge = request.args.get("hub.challenge", "")
 
-    if mode == "subscribe" and token and token == WA_VERIFY_TOKEN:
-        return str(challenge), 200
+    if mode == "subscribe" and token == WA_VERIFY_TOKEN:
+        return challenge, 200
+    return "Unauthorized", 401
 
-    return "Forbidden", 403
 
-
-@app.post("/webhook/whatsapp")
-@app.post("/webhooks/whatsapp")
+@APP.post("/webhooks/whatsapp")
 def whatsapp_webhook():
+    """
+    Proteção adicional #2:
+    valida assinatura X-Hub-Signature-256 (se META_APP_SECRET estiver definido).
+    """
     raw = request.get_data() or b""
+    if not verify_signature(raw):
+        return "Invalid signature", 401
+
     try:
-        payload = request.get_json(force=True, silent=True) or {}
+        payload = request.get_json(force=True, silent=False) or {}
     except Exception:
-        payload = {}
+        return "Bad Request", 400
 
     if DEBUG_LOG_PAYLOAD:
-        logger.info("===== INCOMING WA WEBHOOK =====")
-        logger.info(json.dumps(payload, ensure_ascii=False)[:8000])
+        LOG.info("===== INCOMING WA WEBHOOK =====")
+        LOG.info(json.dumps(payload, ensure_ascii=False)[:8000])
 
-    # Proteção #1: assinatura
-    if not verify_meta_signature(raw):
-        return jsonify({"ok": False, "error": "invalid_signature"}), 401
+    # Estrutura padrão do WA Cloud API:
+    # entry[0].changes[0].value.messages[0] etc.
+    try:
+        entry = (payload.get("entry") or [])[0]
+        changes = (entry.get("changes") or [])[0]
+        value = changes.get("value") or {}
 
-    # Proteção #2: allowlist (WABA / phone_number_id)
-    if not allowlist_check(payload):
-        return jsonify({"ok": False, "error": "not_allowed"}), 401
+        messages = value.get("messages") or []
+        if not messages:
+            # status updates etc.
+            return "OK", 200
 
-    # parse
-    wa_id, profile_name, msg_id, text = parse_user_message(payload)
+        msg = messages[0]
 
-    # idempotência
-    if msg_id and is_duplicate_message(msg_id):
-        return jsonify({"ok": True, "dedup": True}), 200
+        msg_id = str(msg.get("id", "")).strip()
+        if msg_id and is_duplicate_message(msg_id):
+            return "OK", 200
 
-    # Se não tem texto ou não é mensagem
-    if not text:
-        return jsonify({"ok": True, "ignored": True}), 200
+        from_phone = str(msg.get("from", "")).strip()
+        msg_type = str(msg.get("type", "")).strip()
 
-    # Fluxo de vínculo (email)
-    user_email = get_user_email_by_waid(wa_id)
-
-    if not user_email:
-        # Se a mensagem parece email, vincula
-        t = safe_str(text).lower()
-        if "@" in t and "." in t and " " not in t:
-            link_user_email(wa_id=wa_id, email=t, nome=profile_name)
-            return jsonify({"ok": True, "linked": True}), 200
+        # Se for texto
+        text_body = ""
+        if msg_type == "text":
+            text_body = (msg.get("text") or {}).get("body", "")
         else:
-            # ainda não vinculado -> não registra lançamentos
-            return jsonify({"ok": True, "need_link": True}), 200
+            text_body = ""
 
-    # Parse lançamentos
-    lancs = parse_lines_to_lancamentos(text)
-    if not lancs:
-        return jsonify({"ok": True, "no_lancamentos": True}), 200
+        text_body = str(text_body)  # evita erro de int/None
 
-    # Salvar na planilha
-    today = datetime.now().date().isoformat()
-    for l in lancs:
-        append_lancamento(
-            user_email=user_email,
-            data=today,
-            tipo=l["tipo"],
-            categoria=l["categoria"],
-            descricao=l["descricao"],
-            valor=l["valor"],
-        )
+        entries = parse_lines_to_entries(text_body)
+        if not entries:
+            wa_send_message(from_phone, "Não entendi. Envie assim:\n55 mercado\n60 futebol\n80 internet")
+            return "OK", 200
 
-    return jsonify({"ok": True, "saved": len(lancs)}), 200
+        # user_key: pode ser o telefone (mais confiável no WA)
+        user_key = from_phone
+
+        save_entries(user_key, entries)
+
+        # Resposta amigável
+        if len(entries) == 1:
+            e = entries[0]
+            wa_send_message(
+                from_phone,
+                f"✅ Lançamento salvo!\nTipo: {e['tipo']}\nValor: R$ {e['valor']}\nCategoria: {e['categoria']}\nData: {e['data']}"
+            )
+        else:
+            wa_send_message(from_phone, f"✅ {len(entries)} lançamentos salvos com sucesso!")
+
+        return "OK", 200
+
+    except Exception as e:
+        LOG.exception("WA webhook error: %s", e)
+        return "Internal Server Error", 500
 
 
-@app.get("/health")
-def health():
-    return jsonify({"ok": True}), 200
-
-
-# -----------------------------------------------------------------------------
+# =========================================================
 # Main
-# -----------------------------------------------------------------------------
+# =========================================================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port)
+    APP.run(host="0.0.0.0", port=port)
