@@ -25,6 +25,15 @@ if _raw_db_url.startswith('postgres://'):
 app.config['SQLALCHEMY_DATABASE_URI'] = _raw_db_url or 'sqlite:///' + os.path.join(BASE_DIR, 'local.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Railway/free Postgres costuma ter limite baixo de conexões.
+# Cada worker do gunicorn cria seu próprio pool; então mantemos o pool pequeno.
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 280,
+    'pool_size': int(os.getenv('DB_POOL_SIZE', '3')),
+    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '2')),
+}
+
 DB_ENABLED = bool(_raw_db_url)
 
 # -------------------------
@@ -88,25 +97,25 @@ def _create_tables_if_needed() -> None:
 
         # Migração simples e idempotente (sem Alembic):
         # adiciona colunas ausentes quando você atualiza o código e o Postgres já tem tabelas antigas.
-        insp = inspect(db.engine)
-        table_names = set(insp.get_table_names())
-        def _add_col_if_missing(table: str, col_name: str, ddl: str):
-            try:
-                cols = [c['name'] for c in insp.get_columns(table)]
-            except Exception:
-                return
-            if col_name not in cols:
-                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
-                db.session.commit()
+	        insp = inspect(db.engine)
+	        table_names = set(insp.get_table_names())
+	        # Postgres suporta "ADD COLUMN IF NOT EXISTS". Isso evita problemas de cache do inspector
+	        # e torna a migração idempotente.
+	        def _add_col_if_missing(table: str, ddl: str):
+	            try:
+	                db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {ddl}"))
+	                db.session.commit()
+	            except Exception:
+	                db.session.rollback()
 
-        if 'users' in table_names:
-            _add_col_if_missing('users', 'password_set', 'password_set BOOLEAN NOT NULL DEFAULT false')
-        if 'wa_links' in table_names:
-            _add_col_if_missing('wa_links', 'wa_from', 'wa_from VARCHAR(40)')
-            _add_col_if_missing('wa_links', 'user_email', 'user_email VARCHAR(255)')
-            _add_col_if_missing('wa_links', 'created_at', 'created_at TIMESTAMP')
-        if 'processed_messages' in table_names:
-            _add_col_if_missing('processed_messages', 'wa_from', 'wa_from VARCHAR(40)')
+	        if 'users' in table_names:
+	            _add_col_if_missing('users', 'password_set BOOLEAN NOT NULL DEFAULT false')
+	        if 'wa_links' in table_names:
+	            _add_col_if_missing('wa_links', 'wa_from VARCHAR(40)')
+	            _add_col_if_missing('wa_links', 'user_email VARCHAR(255)')
+	            _add_col_if_missing('wa_links', 'created_at TIMESTAMP')
+	        if 'processed_messages' in table_names:
+	            _add_col_if_missing('processed_messages', 'wa_from VARCHAR(40)')
     except Exception as e:
         # If DB isn't reachable, app should still boot and show a helpful status.
         print('DB create_all failed:', repr(e))
