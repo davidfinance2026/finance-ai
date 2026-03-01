@@ -1,51 +1,88 @@
 import os
 import re
 import json
-import time
 import datetime as dt
-from dateutil import parser as dateparser
+from decimal import Decimal, InvalidOperation
 
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-import jwt
+
 
 # ----------------------------
-# Config / App
+# Helpers
 # ----------------------------
-db = SQLAlchemy()
-
-def _normalize_database_url(url: str | None) -> str | None:
+def normalize_database_url(url: str) -> str:
+    """
+    Railway às vezes entrega postgres://...
+    SQLAlchemy prefere postgresql+psycopg2://...
+    """
     if not url:
-        return None
-    # Railway às vezes fornece "postgres://", SQLAlchemy quer "postgresql://"
+        return ""
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
-def create_app() -> Flask:
-    app = Flask(__name__)
-    CORS(app)
 
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
+def parse_brl_number(text: str) -> Decimal:
+    """
+    Aceita:
+      "45", "45.00", "45,00", "1.234,56", "1234,56"
+    Retorna Decimal.
+    """
+    s = (text or "").strip()
+    if not s:
+        raise InvalidOperation("empty")
 
-    database_url = _normalize_database_url(os.getenv("DATABASE_URL"))
-    if not database_url:
-        # fallback local
-        database_url = "sqlite:///local.db"
+    # remove moeda e espaços
+    s = re.sub(r"[^\d,.\-]", "", s)
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    # se tiver vírgula e ponto, assume formato BR (1.234,56)
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    # se só tiver vírgula, troca por ponto
+    elif "," in s:
+        s = s.replace(",", ".")
+    return Decimal(s)
 
-    db.init_app(app)
 
-    with app.app_context():
-        db.create_all()
+def parse_iso_or_br_date(text: str) -> dt.date:
+    """
+    Aceita "2026-03-01" ou "01/03/2026"
+    """
+    t = (text or "").strip()
+    if not t:
+        return dt.date.today()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", t):
+        return dt.date.fromisoformat(t)
+    if re.match(r"^\d{2}/\d{2}/\d{4}$", t):
+        d, m, y = t.split("/")
+        return dt.date(int(y), int(m), int(d))
+    # fallback
+    return dt.date.today()
 
-    return app
 
-app = create_app()
+def require_env(name: str, default: str = "") -> str:
+    v = os.getenv(name, default)
+    return v
+
+
+# ----------------------------
+# Flask App
+# ----------------------------
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}, r"/webhooks/*": {"origins": "*"}})
+
+app.config["SECRET_KEY"] = require_env("SECRET_KEY", "dev-secret")
+db_url = normalize_database_url(require_env("DATABASE_URL", ""))
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url if db_url else "sqlite:///local.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
 
 # ----------------------------
 # Models
@@ -53,200 +90,117 @@ app = create_app()
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
-
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=dt.datetime.utcnow, nullable=False)
 
-    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
 
 class Transaction(db.Model):
     __tablename__ = "transactions"
     id = db.Column(db.Integer, primary_key=True)
-
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
-    # Padronizei como "date" (não "data") pra evitar o erro que você teve
-    date = db.Column(db.Date, nullable=False, index=True)
+    date = db.Column(db.Date, nullable=False, default=dt.date.today)
+    tipo = db.Column(db.String(20), nullable=False)  # "RECEITA" | "GASTO"
+    categoria = db.Column(db.String(80), nullable=False)
+    descricao = db.Column(db.String(255), nullable=True)
 
-    # "RECEITA" ou "GASTO"
-    type = db.Column(db.String(20), nullable=False, index=True)
+    valor = db.Column(db.Numeric(14, 2), nullable=False)  # 2 casas
+    origem = db.Column(db.String(30), nullable=False, default="APP")  # APP | WA | etc
 
-    category = db.Column(db.String(120), nullable=False, default="Outros")
-    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=dt.datetime.utcnow, nullable=False)
 
-    # valor em centavos (evita bug 360 -> 360000)
-    value_cents = db.Column(db.Integer, nullable=False)
-
-    origin = db.Column(db.String(30), nullable=False, default="APP")  # APP / WA / SHEETS
-    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
 
 class WaLink(db.Model):
     __tablename__ = "wa_links"
     id = db.Column(db.Integer, primary_key=True)
+    phone = db.Column(db.String(40), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=dt.datetime.utcnow, nullable=False)
 
-    wa_phone_number_id = db.Column(db.String(80), nullable=True)
-    wa_business_account_id = db.Column(db.String(80), nullable=True)
 
-    created_at = db.Column(db.DateTime, nullable=False, default=dt.datetime.utcnow)
+# cria tabelas no boot (evita “não apareceu tabelas” depois de recriar Postgres)
+with app.app_context():
+    db.create_all()
 
-# ----------------------------
-# Helpers
-# ----------------------------
-def _json_error(message: str, status: int = 400):
-    return jsonify({"ok": False, "error": message}), status
-
-def _make_token(user_id: int) -> str:
-    payload = {
-        "sub": str(user_id),
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 60 * 60 * 24 * 30,  # 30 dias
-    }
-    return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
-
-def _get_bearer_user_id() -> int | None:
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    token = auth.replace("Bearer ", "", 1).strip()
-    try:
-        payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
-        return int(payload["sub"])
-    except Exception:
-        return None
-
-def _parse_money_to_cents(value) -> int:
-    """
-    Aceita:
-      360
-      "360"
-      "360,00"
-      "360.00"
-      "R$ 360,00"
-      "1.234,56"
-    Retorna centavos (int).
-    """
-    if value is None:
-        raise ValueError("Valor ausente")
-
-    if isinstance(value, (int, float)):
-        # 360.0 -> 36000
-        return int(round(float(value) * 100))
-
-    s = str(value).strip()
-    s = s.replace("R$", "").replace(" ", "")
-
-    # Se tem vírgula e ponto, assume pt-BR: 1.234,56
-    if "," in s and "." in s:
-        s = s.replace(".", "").replace(",", ".")
-    else:
-        # Se só tem vírgula: 360,00
-        if "," in s:
-            s = s.replace(",", ".")
-        # Se só tem ponto: já ok
-
-    # Mantém só números e ponto
-    s = re.sub(r"[^0-9.]", "", s)
-    if s.count(".") > 1:
-        # algo estranho, remove todos os pontos e deixa o último como decimal
-        parts = s.split(".")
-        s = "".join(parts[:-1]) + "." + parts[-1]
-
-    amount = float(s) if s else 0.0
-    return int(round(amount * 100))
-
-def _parse_date(d) -> dt.date:
-    """
-    Aceita:
-      "01/03/2026"
-      "2026-03-01"
-      datetime/date
-    """
-    if isinstance(d, dt.date) and not isinstance(d, dt.datetime):
-        return d
-    if isinstance(d, dt.datetime):
-        return d.date()
-    if not d:
-        return dt.date.today()
-
-    s = str(d).strip()
-    # Força pt-BR dd/mm/yyyy quando tem "/"
-    if "/" in s:
-        day, month, year = s.split("/")
-        return dt.date(int(year), int(month), int(day))
-
-    # fallback ISO/geral
-    return dateparser.parse(s).date()
 
 # ----------------------------
 # Health / Root
 # ----------------------------
 @app.get("/")
 def root():
-    return "Finance AI 🚀\n\nBackend funcionando corretamente.\n", 200
+    return "Finance AI 🚀 Backend funcionando corretamente.", 200
+
 
 @app.get("/health")
 def health():
-    # Testa conexão rápida com banco
-    try:
-        db.session.execute(db.text("SELECT 1"))
-        return jsonify({"ok": True, "db": True})
-    except Exception as e:
-        return jsonify({"ok": True, "db": False, "detail": str(e)}), 200
+    return jsonify({"ok": True}), 200
+
 
 # ----------------------------
-# Auth
+# Auth (simples)
 # ----------------------------
 @app.post("/api/register")
 def register():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
 
     if not email or not password:
-        return _json_error("Email e senha são obrigatórios.", 400)
+        return jsonify({"error": "email e password são obrigatórios"}), 400
 
     if User.query.filter_by(email=email).first():
-        return _json_error("Esse email já está cadastrado.", 409)
+        return jsonify({"error": "email já cadastrado"}), 409
 
-    u = User(email=email, password_hash=generate_password_hash(password))
+    u = User(email=email, password=password)
     db.session.add(u)
     db.session.commit()
 
-    token = _make_token(u.id)
-    return jsonify({"ok": True, "token": token, "user": {"id": u.id, "email": u.email}})
+    return jsonify({"ok": True, "user_id": u.id, "email": u.email}), 201
+
 
 @app.post("/api/login")
 def login():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
 
     u = User.query.filter_by(email=email).first()
-    if not u or not check_password_hash(u.password_hash, password):
-        return _json_error("Credenciais inválidas.", 401)
+    if not u or u.password != password:
+        return jsonify({"error": "credenciais inválidas"}), 401
 
-    token = _make_token(u.id)
-    return jsonify({"ok": True, "token": token, "user": {"id": u.id, "email": u.email}})
+    # Token simples só pra destravar o front (em produção, use JWT)
+    token = f"u:{u.id}:{app.config['SECRET_KEY']}"
+    return jsonify({"ok": True, "token": token, "user_id": u.id, "email": u.email}), 200
 
-@app.get("/api/me")
-def me():
-    user_id = _get_bearer_user_id()
-    if not user_id:
-        return _json_error("Não autorizado.", 401)
-    u = User.query.get(user_id)
-    if not u:
-        return _json_error("Usuário não encontrado.", 404)
-    return jsonify({"ok": True, "user": {"id": u.id, "email": u.email}})
+
+def get_user_id_from_auth() -> int | None:
+    """
+    Espera header Authorization: Bearer u:<id>:<secret>
+    """
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth.replace("Bearer ", "", 1).strip()
+    parts = token.split(":")
+    if len(parts) < 3:
+        return None
+    if parts[0] != "u":
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
 
 # ----------------------------
-# Transactions (Lançamentos)
+# Transactions API
 # ----------------------------
 @app.get("/api/lancamentos")
 def list_lancamentos():
-    user_id = _get_bearer_user_id()
+    user_id = get_user_id_from_auth()
     if not user_id:
-        return _json_error("Não autorizado.", 401)
+        return jsonify({"error": "Você precisa estar logado."}), 401
 
     limit = int(request.args.get("limit", "30"))
     q = (
@@ -257,88 +211,70 @@ def list_lancamentos():
         .all()
     )
 
-    def to_dict(t: Transaction):
-        return {
+    out = []
+    for t in q:
+        out.append({
             "id": t.id,
             "date": t.date.isoformat(),
-            "type": t.type,
-            "category": t.category,
-            "description": t.description,
-            "value": round(t.value_cents / 100.0, 2),
-            "value_cents": t.value_cents,
-            "origin": t.origin,
-            "created_at": t.created_at.isoformat(),
-        }
+            "tipo": t.tipo,
+            "categoria": t.categoria,
+            "descricao": t.descricao,
+            "valor": float(t.valor),
+            "origem": t.origem,
+            "created_at": t.created_at.isoformat()
+        })
+    return jsonify({"items": out}), 200
 
-    return jsonify({"ok": True, "items": [to_dict(x) for x in q]})
 
 @app.post("/api/lancamentos")
 def create_lancamento():
-    user_id = _get_bearer_user_id()
+    user_id = get_user_id_from_auth()
     if not user_id:
-        return _json_error("Não autorizado.", 401)
+        return jsonify({"error": "Você precisa estar logado."}), 401
 
     data = request.get_json(silent=True) or {}
-    tx_type = (data.get("tipo") or data.get("type") or "").strip().upper()
-    if tx_type not in ("RECEITA", "GASTO"):
-        return _json_error("Tipo inválido (use RECEITA ou GASTO).", 400)
+    tipo = (data.get("tipo") or "").strip().upper()
+    categoria = (data.get("categoria") or "").strip()
+    descricao = (data.get("descricao") or "").strip() or None
+    origem = (data.get("origem") or "APP").strip().upper()
+    date = parse_iso_or_br_date(data.get("date") or data.get("data") or "")
+
+    if tipo not in ("RECEITA", "GASTO"):
+        return jsonify({"error": "tipo deve ser RECEITA ou GASTO"}), 400
+    if not categoria:
+        return jsonify({"error": "categoria é obrigatória"}), 400
 
     try:
-        date = _parse_date(data.get("data") or data.get("date"))
-        value_cents = _parse_money_to_cents(data.get("valor") or data.get("value"))
-    except Exception as e:
-        return _json_error(f"Dados inválidos: {e}", 400)
-
-    category = (data.get("categoria") or data.get("category") or "Outros").strip()
-    description = (data.get("descricao") or data.get("description") or "").strip() or None
-    origin = (data.get("origem") or data.get("origin") or "APP").strip().upper()
+        valor = parse_brl_number(str(data.get("valor") or data.get("value") or ""))
+    except Exception:
+        return jsonify({"error": "valor inválido"}), 400
 
     t = Transaction(
         user_id=user_id,
         date=date,
-        type=tx_type,
-        category=category,
-        description=description,
-        value_cents=value_cents,
-        origin=origin,
+        tipo=tipo,
+        categoria=categoria,
+        descricao=descricao,
+        valor=valor.quantize(Decimal("0.01")),
+        origem=origem,
     )
     db.session.add(t)
     db.session.commit()
 
-    return jsonify({"ok": True, "id": t.id})
+    return jsonify({"ok": True, "id": t.id}), 201
 
-@app.delete("/api/lancamentos/<int:tx_id>")
-def delete_lancamento(tx_id: int):
-    user_id = _get_bearer_user_id()
-    if not user_id:
-        return _json_error("Não autorizado.", 401)
 
-    t = Transaction.query.filter_by(id=tx_id, user_id=user_id).first()
-    if not t:
-        return _json_error("Lançamento não encontrado.", 404)
-
-    db.session.delete(t)
-    db.session.commit()
-    return jsonify({"ok": True})
-
-# ----------------------------
-# Dashboard
-# ----------------------------
 @app.get("/api/dashboard")
 def dashboard():
-    user_id = _get_bearer_user_id()
+    user_id = get_user_id_from_auth()
     if not user_id:
-        return _json_error("Não autorizado.", 401)
+        return jsonify({"error": "Você precisa estar logado."}), 401
 
-    month = int(request.args.get("month", dt.date.today().month))
-    year = int(request.args.get("year", dt.date.today().year))
+    mes = int(request.args.get("mes", dt.date.today().month))
+    ano = int(request.args.get("ano", dt.date.today().year))
 
-    start = dt.date(year, month, 1)
-    # próximo mês
-    if month == 12:
-        end = dt.date(year + 1, 1, 1)
-    else:
-        end = dt.date(year, month + 1, 1)
+    start = dt.date(ano, mes, 1)
+    end = dt.date(ano + (1 if mes == 12 else 0), 1 if mes == 12 else (mes + 1), 1)
 
     rows = (
         Transaction.query
@@ -348,49 +284,158 @@ def dashboard():
         .all()
     )
 
-    receitas = sum(t.value_cents for t in rows if t.type == "RECEITA")
-    gastos = sum(t.value_cents for t in rows if t.type == "GASTO")
+    receitas = Decimal("0.00")
+    gastos = Decimal("0.00")
+    for r in rows:
+        if r.tipo == "RECEITA":
+            receitas += Decimal(r.valor)
+        else:
+            gastos += Decimal(r.valor)
+
     saldo = receitas - gastos
-
     return jsonify({
-        "ok": True,
-        "month": month,
-        "year": year,
-        "receitas": round(receitas / 100.0, 2),
-        "gastos": round(gastos / 100.0, 2),
-        "saldo": round(saldo / 100.0, 2),
-    })
+        "mes": mes,
+        "ano": ano,
+        "receitas": float(receitas),
+        "gastos": float(gastos),
+        "saldo": float(saldo),
+    }), 200
+
 
 # ----------------------------
-# WhatsApp Webhook (Meta)
+# WhatsApp Webhook (Cloud API)
 # ----------------------------
+WA_VERIFY_TOKEN = require_env("WA_VERIFY_TOKEN", "")
+WA_ACCESS_TOKEN = require_env("WA_ACCESS_TOKEN", "")
+WA_PHONE_NUMBER_ID = require_env("WA_PHONE_NUMBER_ID", "")
+META_APP_SECRET = require_env("META_APP_SECRET", "")
+
+
 @app.get("/webhooks/whatsapp")
 def wa_verify():
-    verify_token = os.getenv("WA_VERIFY_TOKEN", "")
+    """
+    Verificação do webhook (GET) no Meta.
+    """
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
 
-    if mode == "subscribe" and token == verify_token and challenge:
-        return challenge, 200
-    return "forbidden", 403
+    if mode == "subscribe" and token and token == WA_VERIFY_TOKEN:
+        return challenge or "", 200
+    return "Forbidden", 403
+
+
+def wa_send_message(to_phone: str, text: str) -> None:
+    """
+    Envia mensagem via WhatsApp Cloud API.
+    """
+    if not (WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID):
+        return
+
+    url = f"https://graph.facebook.com/v19.0/{WA_PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "text",
+        "text": {"body": text},
+    }
+    try:
+        requests.post(url, headers=headers, json=payload, timeout=15)
+    except Exception:
+        pass
+
+
+def parse_wa_command(text: str):
+    """
+    Aceita mensagens tipo:
+      "gasto 32,90 mercado"
+      "salário 100"
+      "receita 1000 salario"
+    Retorna dict com tipo/categoria/valor/descricao
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+
+    lower = t.lower()
+
+    # padrão: "gasto 32,90 mercado"
+    m = re.match(r"^(gasto|despesa|receita|salario|salário)\s+([\d.,]+)\s*(.*)$", lower, re.IGNORECASE)
+    if not m:
+        return None
+
+    kind = m.group(1)
+    val_s = m.group(2)
+    rest = (m.group(3) or "").strip()
+
+    tipo = "GASTO" if kind in ("gasto", "despesa") else "RECEITA"
+    categoria = "Mercado" if "mercado" in rest else (rest.title() if rest else ("Salário" if "sal" in kind else "Geral"))
+    descricao = None
+
+    try:
+        valor = parse_brl_number(val_s).quantize(Decimal("0.01"))
+    except Exception:
+        return None
+
+    return {"tipo": tipo, "categoria": categoria, "descricao": descricao, "valor": valor}
+
 
 @app.post("/webhooks/whatsapp")
-def wa_incoming():
-    # Por enquanto apenas confirma recebimento (200) pra não quebrar o webhook
-    # Depois a gente implementa parse do texto e grava Transaction com origin="WA"
-    data = request.get_json(silent=True) or {}
-    debug = os.getenv("DEBUG_LOG_PAYLOAD", "0") == "1"
-    if debug:
-        print("WA payload:", json.dumps(data)[:4000])
+def wa_webhook():
+    """
+    Recebe mensagens e grava no banco quando houver link phone->user.
+    """
+    payload = request.get_json(silent=True) or {}
 
-    return jsonify({"ok": True}), 200
+    # extrai texto do webhook (estrutura padrão)
+    try:
+        entry = (payload.get("entry") or [])[0]
+        changes = (entry.get("changes") or [])[0]
+        value = changes.get("value") or {}
+        messages = value.get("messages") or []
+        if not messages:
+            return "OK", 200
+
+        msg = messages[0]
+        from_phone = msg.get("from")  # ex: "5531..."
+        text = (msg.get("text") or {}).get("body") or ""
+    except Exception:
+        return "OK", 200
+
+    # encontra vínculo
+    link = WaLink.query.filter_by(phone=from_phone).order_by(WaLink.id.desc()).first()
+    if not link:
+        wa_send_message(from_phone, "❗Seu WhatsApp ainda não está vinculado a um usuário do app.")
+        return "OK", 200
+
+    cmd = parse_wa_command(text)
+    if not cmd:
+        wa_send_message(from_phone, "Envie assim: gasto 32,90 mercado  |  receita 1000 salario")
+        return "OK", 200
+
+    t = Transaction(
+        user_id=link.user_id,
+        date=dt.date.today(),
+        tipo=cmd["tipo"],
+        categoria=cmd["categoria"],
+        descricao=cmd["descricao"],
+        valor=cmd["valor"],
+        origem="WA",
+    )
+    db.session.add(t)
+    db.session.commit()
+
+    wa_send_message(
+        from_phone,
+        f"✅ Lançamento salvo!\nTipo: {t.tipo}\nValor: R$ {t.valor}\nCategoria: {t.categoria}\nData: {t.date.isoformat()}"
+    )
+    return "OK", 200
+
 
 # ----------------------------
-# Error handler (pra não virar 500 "mudo")
+# Run local
 # ----------------------------
-@app.errorhandler(Exception)
-def handle_exception(e):
-    # Loga no Railway
-    print("Unhandled error:", repr(e))
-    return jsonify({"ok": False, "error": "Erro interno", "detail": str(e)}), 500
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port)
