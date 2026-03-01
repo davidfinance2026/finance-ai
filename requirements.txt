@@ -1,8 +1,7 @@
 Flask==3.0.3
+gspread==6.0.2
+google-auth==2.35.0
 requests==2.32.3
-
 SQLAlchemy==2.0.32
 psycopg2-binary==2.9.9
-
-google-auth==2.33.0
-google-api-python-client==2.141.0
+gunicorn==21.2.0
