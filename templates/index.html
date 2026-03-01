@@ -1,774 +1,1083 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
+  <meta name="theme-color" content="#0b1020">
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b1020" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Finance AI</title>
+  <link rel="manifest" href="/static/manifest.json">
 
-  <!-- PWA -->
-  <link rel="manifest" href="/static/manifest.json" />
-  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <style>
     :root{
-      --bg:#070b18;
-      --panel:#0b1020;
-      --panel2:#0e1630;
-      --text:#eaf0ff;
-      --muted:#a9b6d6;
-      --line:rgba(255,255,255,.08);
-      --blue1:#2b6cff;
-      --blue2:#60a5ff;
-      --green:#2ee59d;
-      --red:#ff4d6d;
-      --shadow: 0 24px 70px rgba(0,0,0,.45);
-      --radius: 22px;
+      --bg:#070B18; --panel:#0B1024; --text:#EAF0FF; --muted:#93A4C7;
+      --brand:#4B8CFF; --danger:#FF4B6E; --ok:#2EE59D;
+      --border:rgba(255,255,255,.10); --shadow:0 14px 50px rgba(0,0,0,.55);
+      --radius:18px; --radius2:26px;
     }
-    *{ box-sizing:border-box; }
+    *{box-sizing:border-box}
     body{
-      margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: radial-gradient(1200px 800px at 20% 10%, rgba(96,165,255,.18), transparent 60%),
-                  radial-gradient(900px 700px at 80% 30%, rgba(46,229,157,.10), transparent 55%),
-                  linear-gradient(180deg, #060a16, #070b18 40%, #060a16);
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 700px at 10% 0%, rgba(75,140,255,.20), transparent 55%),
+                  radial-gradient(900px 600px at 90% 25%, rgba(46,229,157,.10), transparent 60%),
+                  var(--bg);
       color:var(--text);
-      min-height:100vh;
     }
-    .wrap{ max-width: 980px; margin: 0 auto; padding: 22px 16px 70px; }
-    header{
-      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
-      padding: 8px 6px 16px;
-    }
-    .brand h1{ margin:0; font-weight: 800; letter-spacing:.4px; font-size: 44px; }
-    .brand p{ margin: 6px 0 0; color:var(--muted); }
-    .top-actions{ display:flex; align-items:center; gap:10px; }
-    .pill{
-      border:1px solid var(--line);
-      background: rgba(255,255,255,.03);
-      border-radius: 999px;
-      padding: 10px 14px;
-      color:var(--text);
-      display:flex; align-items:center; gap:8px;
-      box-shadow: 0 14px 40px rgba(0,0,0,.25);
-    }
+    code{opacity:.9}
+    .wrap{max-width:980px;margin:0 auto;padding:22px 16px 70px}
+    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+    .brand h1{margin:0;font-size:28px}
+    .brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
+
     .btn{
-      border:1px solid var(--line);
-      background: linear-gradient(180deg, rgba(96,165,255,.25), rgba(96,165,255,.10));
-      color: var(--text);
-      border-radius: 999px;
-      padding: 10px 14px;
-      cursor:pointer;
-      transition: transform .06s ease, filter .15s ease;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      color:var(--text);
+      padding:10px 14px;border-radius:999px;cursor:pointer;
+      transition:.15s transform,.2s background;
+      display:inline-flex;align-items:center;gap:8px;user-select:none;
     }
-    .btn:hover{ filter: brightness(1.08); }
-    .btn:active{ transform: translateY(1px); }
-    .btn.secondary{
-      background: rgba(255,255,255,.03);
+    .btn:hover{transform:translateY(-1px)}
+    .btn.primary{
+      border-color:rgba(75,140,255,.45);
+      background: linear-gradient(180deg, rgba(75,140,255,.35), rgba(45,107,255,.18));
     }
     .btn.danger{
-      background: linear-gradient(180deg, rgba(255,77,109,.22), rgba(255,77,109,.10));
+      border-color:rgba(255,75,110,.45);
+      background: linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
+    .btn.small{padding:8px 12px;font-size:13px}
 
-    .nav{
-      margin: 14px 0 18px;
-      padding: 14px;
-      border-radius: 28px;
-      background: rgba(255,255,255,.03);
-      border:1px solid var(--line);
-      box-shadow: var(--shadow);
-      display:flex; gap:10px; flex-wrap: wrap;
+    .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .spacer{flex:1}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:14px}
+    @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
+
+    .tabs{
+      display:flex;gap:10px;flex-wrap:wrap;
+      padding:8px;border-radius:999px;border:1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      margin:14px 0 16px;width:fit-content;
     }
     .tab{
-      flex: 0 0 auto;
-      padding: 12px 16px;
-      border-radius: 999px;
-      border:1px solid transparent;
-      background: transparent;
-      color: var(--muted);
-      cursor:pointer;
-      font-weight: 650;
+      padding:10px 14px;border-radius:999px;cursor:pointer;
+      color:var(--muted);border:1px solid transparent;user-select:none;font-weight:700;font-size:14px;
     }
     .tab.active{
-      color: var(--text);
-      background: linear-gradient(180deg, rgba(43,108,255,.35), rgba(96,165,255,.12));
-      border-color: rgba(96,165,255,.20);
+      color:var(--text);
+      border-color:rgba(75,140,255,.35);
+      background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
     }
 
     .card{
-      background: rgba(255,255,255,.03);
-      border:1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 16px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border-radius: var(--radius2);
       box-shadow: var(--shadow);
-      margin-bottom: 16px;
-    }
-    .card h2{
-      margin:0 0 12px;
-      font-size: 16px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: rgba(234,240,255,.75);
-    }
-    .grid2{ display:grid; gap:14px; grid-template-columns: 1fr; }
-    @media (min-width: 860px){
-      .grid2{ grid-template-columns: 1fr 1fr; }
-    }
-    label{ display:block; color: rgba(234,240,255,.80); font-size: 12px; letter-spacing:.06em; text-transform: uppercase; margin-bottom:8px; }
-    input, select, textarea{
-      width:100%;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      background: rgba(0,0,0,.18);
-      color: var(--text);
-      padding: 12px 14px;
-      outline: none;
-    }
-    textarea{ min-height: 92px; resize: vertical; }
-    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .row > *{ flex: 1 1 160px; }
-    .kpi{
-      display:flex; justify-content:space-between; align-items:center;
-      border-radius: 18px;
-      padding: 14px 16px;
-      background: rgba(0,0,0,.18);
-      border:1px solid rgba(255,255,255,.06);
-      margin-top: 10px;
-    }
-    .kpi .name{ color: rgba(234,240,255,.70); font-weight: 750; letter-spacing:.06em; }
-    .kpi .val{ font-weight: 850; font-size: 20px; }
-    .kpi.green .val{ color: #bfffe6; }
-    .kpi.red .val{ color: #ffd0d9; }
-    .kpi.blue .val{ color: #d7e6ff; }
-
-    .hint{ color: var(--muted); font-size: 13px; margin-top: 10px; }
-    .alert{
-      margin-top: 12px;
-      border-radius: 16px;
-      padding: 12px 14px;
-      border:1px solid rgba(255,77,109,.35);
-      background: rgba(255,77,109,.10);
-      color: #ffe6eb;
-    }
-    .ok{
-      border-color: rgba(46,229,157,.35);
-      background: rgba(46,229,157,.08);
-      color: #ddfff3;
-    }
-
-    .hidden{ display:none !important; }
-
-    /* Modal */
-    .modal-backdrop{
-      position:fixed; inset:0;
-      background: rgba(0,0,0,.55);
-      display:flex; align-items:flex-end; justify-content:center;
-      padding: 18px 12px;
-      z-index: 50;
-    }
-    .modal{
-      width:min(700px, 100%);
-      border-radius: 26px;
-      background: linear-gradient(180deg, rgba(14,22,48,.95), rgba(11,16,32,.95));
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow: 0 40px 120px rgba(0,0,0,.60);
+      padding:16px;
       overflow:hidden;
     }
-    .modal-head{
-      display:flex; justify-content:space-between; align-items:center;
-      padding: 16px 16px 10px;
-      border-bottom: 1px solid rgba(255,255,255,.08);
-    }
-    .modal-head .title{
-      display:flex; align-items:center; gap:10px;
-      font-weight: 850;
-      font-size: 18px;
-    }
-    .modal-head .title .lock{ filter: drop-shadow(0 6px 14px rgba(96,165,255,.25)); }
-    .modal-body{ padding: 16px; }
-    .segmented{
-      display:flex; gap:8px; background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 999px;
-      padding: 6px;
-      margin-bottom: 14px;
-    }
-    .segmented button{
-      flex:1;
-      border-radius: 999px;
-      border:1px solid transparent;
-      padding: 10px 12px;
-      background: transparent;
-      color: rgba(234,240,255,.70);
-      cursor:pointer;
-      font-weight: 750;
-    }
-    .segmented button.active{
-      background: linear-gradient(180deg, rgba(43,108,255,.35), rgba(96,165,255,.12));
-      border-color: rgba(96,165,255,.18);
-      color: var(--text);
-    }
-    .modal-foot{
-      padding: 14px 16px 16px;
-      display:flex; gap:10px; justify-content:flex-end;
-      border-top: 1px solid rgba(255,255,255,.08);
-    }
+    .card h2{margin:0 0 8px;font-size:14px;letter-spacing:.4px;color:var(--muted);text-transform:uppercase}
 
-    table{ width:100%; border-collapse: collapse; }
-    th, td{ text-align:left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 13px; }
-    th{ color: rgba(234,240,255,.70); font-weight: 850; letter-spacing:.05em; text-transform: uppercase; font-size: 11px; }
-    .money{ font-variant-numeric: tabular-nums; font-weight: 750; }
-    .tag{
-      display:inline-flex; align-items:center; gap:6px;
-      padding: 6px 10px; border-radius: 999px;
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(0,0,0,.16);
-      color: rgba(234,240,255,.85);
-      font-size: 12px;
-      white-space:nowrap;
+    .field{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    label{font-size:12px;color:var(--muted);letter-spacing:.2px}
+    input,select,textarea{
+      width:100%;border-radius:14px;padding:12px 12px;border:1px solid var(--border);
+      background: rgba(0,0,0,.20);color:var(--text);outline:none;
     }
-    .tag.green{ border-color: rgba(46,229,157,.35); background: rgba(46,229,157,.10); }
-    .tag.red{ border-color: rgba(255,77,109,.35); background: rgba(255,77,109,.10); }
-    .actions{ display:flex; gap:8px; justify-content:flex-end; }
-    .mini{ padding: 8px 10px; border-radius: 999px; font-size: 13px; }
+    textarea{min-height:92px;resize:vertical}
+    .split{display:grid;gap:10px}
+    @media(min-width:640px){.split{grid-template-columns:1fr 1fr}}
+
+    .toast{margin-top:12px;padding:12px 12px;border-radius:16px;border:1px solid var(--border);
+      background: rgba(0,0,0,.25);display:none}
+    .toast.show{display:block}
+    .toast.ok{border-color:rgba(46,229,157,.35)}
+    .toast.err{border-color:rgba(255,75,110,.35)}
+    .toast .t{font-weight:800}
+    .toast .d{color:var(--muted);font-size:13px;margin-top:4px}
+
+    .hidden{display:none !important}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+
+    /* modal */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;padding:16px;z-index:50}
+    .overlay.show{display:flex}
+    .modal{
+      width:min(560px, 100%);
+      border-radius:26px;border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
+      box-shadow: var(--shadow);padding:16px;
+    }
+    .modalHead{display:flex;align-items:center;gap:12px}
+    .modalHead h3{margin:0;font-size:20px}
+    .x{margin-left:auto;width:42px;height:42px;border-radius:999px;border:1px solid var(--border);
+      background: rgba(255,255,255,.05);cursor:pointer;color:var(--text);font-size:18px}
+    .segTabs{margin-top:12px;display:flex;gap:8px;padding:6px;border-radius:999px;border:1px solid var(--border);background: rgba(255,255,255,.04)}
+    .seg{flex:1;text-align:center;padding:10px 12px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:800;user-select:none}
+    .seg.active{color:var(--text);background: linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));border:1px solid rgba(75,140,255,.35)}
+    .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+    /* list cards */
+    .miniCard{
+      box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03);
+      border:1px solid var(--border);padding:12px;
+    }
+    .kpi{font-weight:900}
+
+    /* chart */
+    .chartBox{
+      border:1px solid var(--border);
+      background: rgba(0,0,0,.18);
+      border-radius: 18px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    .chartTitle{
+      display:flex;align-items:center;gap:10px;
+      font-weight:900;
+      margin:0 0 8px;
+    }
+    .chartHint{color:var(--muted);font-size:12px;margin:0 0 10px}
+    canvas{width:100% !important; height:260px !important;}
+    @media(min-width:840px){
+      canvas{height:280px !important;}
+    }
   </style>
 </head>
 
 <body>
   <div class="wrap">
-    <header>
+    <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
         <p>Controle financeiro • simples e rápido</p>
       </div>
-      <div class="top-actions">
-        <div id="userPill" class="pill hidden">
-          <span id="userEmail" style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-          <button class="btn danger mini" id="btnLogout">Sair</button>
-        </div>
-        <button class="btn" id="btnOpenAuth">🔒 Login</button>
+      <div class="row">
+        <span id="userPill" class="pill hidden"></span>
+        <button id="btnLogin" class="btn primary">🔒 Login</button>
+        <button id="btnLogout" class="btn danger hidden">Sair</button>
       </div>
-    </header>
-
-    <div class="nav" role="tablist" aria-label="Navegação">
-      <button class="tab active" data-tab="lancar">Lançar</button>
-      <button class="tab" data-tab="ultimos">Últimos</button>
-      <button class="tab" data-tab="dashboard">Dashboard</button>
-      <button class="tab" data-tab="invest">Investimentos</button>
     </div>
 
-    <!-- Lançar -->
-    <section id="tab-lancar" class="card">
-      <h2>Novo lançamento</h2>
-      <div class="grid2">
-        <div>
-          <label>Tipo</label>
-          <select id="inpTipo">
-            <option value="RECEITA">RECEITA</option>
-            <option value="GASTO">GASTO</option>
-          </select>
+    <div class="tabs" role="tablist" aria-label="Navegação">
+      <div class="tab" data-tab="lancar">Lançar</div>
+      <div class="tab" data-tab="ultimos">Últimos</div>
+      <div class="tab active" data-tab="dashboard">Dashboard</div>
+      <div class="tab" data-tab="investimentos">Investimentos</div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="grid cols2">
+      <div class="card">
+        <h2>Dashboard do mês</h2>
+
+        <div class="split">
+          <div class="field">
+            <label>Mês</label>
+            <select id="dashMes"></select>
+          </div>
+          <div class="field">
+            <label>Ano</label>
+            <input id="dashAno" inputmode="numeric" placeholder="2026" />
+          </div>
         </div>
-        <div>
-          <label>Data</label>
-          <input id="inpData" type="date" />
+
+        <div class="divider"></div>
+
+        <div class="grid" style="gap:10px">
+          <div class="miniCard">
+            <div class="row">
+              <div class="muted" style="font-weight:900">RECEITAS</div>
+              <div class="spacer"></div>
+              <div id="valReceitas" class="kpi">R$ 0,00</div>
+            </div>
+          </div>
+          <div class="miniCard">
+            <div class="row">
+              <div class="muted" style="font-weight:900">GASTOS</div>
+              <div class="spacer"></div>
+              <div id="valGastos" class="kpi">R$ 0,00</div>
+            </div>
+          </div>
+          <div class="miniCard">
+            <div class="row">
+              <div class="muted" style="font-weight:900">SALDO</div>
+              <div class="spacer"></div>
+              <div id="valSaldo" class="kpi">R$ 0,00</div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label>Categoria</label>
-          <input id="inpCategoria" type="text" placeholder="Ex: Salário, Mercado, Transporte" />
+
+        <div class="row" style="margin-top:14px">
+          <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
+          <div class="spacer"></div>
+          <span class="hint" id="dashHint">Faça login para ver seus dados.</span>
         </div>
-        <div>
-          <label>Valor (R$)</label>
-          <input id="inpValor" type="text" inputmode="decimal" placeholder="Ex: 360,00" />
+
+        <div id="toastDash" class="toast"></div>
+      </div>
+
+      <!-- Gráficos -->
+      <div class="card">
+        <h2>Visual</h2>
+
+        <div class="chartBox">
+          <div class="chartTitle">📊 Receitas x Gastos</div>
+          <p class="chartHint">Atualiza automaticamente com o mês/ano selecionados.</p>
+          <canvas id="chartRG"></canvas>
         </div>
-        <div style="grid-column:1/-1">
+
+        <div class="chartBox">
+          <div class="chartTitle">📈 Saldo do mês</div>
+          <p class="chartHint">Verde (positivo) ou vermelho (negativo).</p>
+          <canvas id="chartSaldo"></canvas>
+        </div>
+
+        <div class="chartBox">
+          <div class="chartTitle">🗓️ Evolução diária</div>
+          <p class="chartHint">Receitas e Gastos por dia + <b>Saldo acumulado</b>.</p>
+          <canvas id="chartDaily"></canvas>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <button class="btn" id="goLancar">➕ Lançar agora</button>
+          <button class="btn" id="openLogin2">🔒 Abrir login</button>
+          <button class="btn" id="goUltimos">🧾 Ver últimos</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- LANÇAR -->
+    <section id="tab-lancar" class="hidden">
+      <div class="card">
+        <h2>Novo lançamento</h2>
+
+        <div class="split">
+          <div class="field">
+            <label>Tipo</label>
+            <select id="lanTipo">
+              <option value="RECEITA">RECEITA</option>
+              <option value="GASTO">GASTO</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Data</label>
+            <input id="lanData" type="date" />
+          </div>
+        </div>
+
+        <div class="split">
+          <div class="field">
+            <label>Categoria</label>
+            <input id="lanCategoria" placeholder="Ex: Salário, Mercado, Transporte..." />
+          </div>
+
+          <div class="field">
+            <label>Valor (R$)</label>
+            <input id="lanValor" inputmode="decimal" placeholder="Ex: 100,00" />
+          </div>
+        </div>
+
+        <div class="field">
           <label>Descrição</label>
-          <textarea id="inpDescricao" placeholder="Opcional"></textarea>
+          <textarea id="lanDescricao" placeholder="Opcional..."></textarea>
         </div>
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn" id="btnSalvarLanc">Salvar lançamento</button>
-        <div class="hint" id="hintLanc">Você precisa estar logado para salvar.</div>
-      </div>
-      <div id="alertLanc" class="alert hidden"></div>
-    </section>
 
-    <!-- Últimos -->
-    <section id="tab-ultimos" class="card hidden">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <h2 style="margin:0">Últimos lançamentos</h2>
-        <button class="btn secondary mini" id="btnRecarregar">Recarregar</button>
-      </div>
-      <p class="hint">Mostra os últimos lançamentos do seu usuário. Você pode editar ou apagar.</p>
-      <div id="alertUlt" class="alert hidden"></div>
-      <div style="overflow:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Tipo</th>
-              <th>Categoria</th>
-              <th>Descrição</th>
-              <th>Valor</th>
-              <th style="text-align:right">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tblLanc"></tbody>
-        </table>
+        <div class="row" style="margin-top:12px">
+          <button id="btnSalvarLanc" class="btn primary">Salvar</button>
+          <button id="btnLimparLanc" class="btn">Limpar</button>
+          <div class="spacer"></div>
+          <span class="hint" id="lancarHint">Você precisa estar logado.</span>
+        </div>
+
+        <div id="toastLanc" class="toast"></div>
       </div>
     </section>
 
-    <!-- Dashboard -->
-    <section id="tab-dashboard" class="card hidden">
-      <h2>Dashboard do mês</h2>
-      <div class="grid2">
-        <div>
-          <label>Mês</label>
-          <select id="selMes"></select>
+    <!-- ÚLTIMOS -->
+    <section id="tab-ultimos" class="hidden">
+      <div class="card">
+        <div class="row" style="align-items:center">
+          <h2 style="margin:0">Últimos lançamentos</h2>
+          <div class="spacer"></div>
+          <button class="btn primary" id="btnRecarregarUltimos">Recarregar</button>
         </div>
-        <div>
-          <label>Ano</label>
-          <input id="inpAno" type="number" min="2000" max="2100" />
+
+        <div class="hint" style="margin-top:8px">
+          Mostra os últimos lançamentos do seu usuário. Você pode <b>editar</b> ou <b>apagar</b>.
         </div>
-      </div>
 
-      <div class="row" style="margin-top:12px; justify-content:space-between">
-        <button class="btn" id="btnAtualizarDash">Atualizar Dashboard</button>
-        <div class="hint" id="hintDash">Faça login para ver seus dados.</div>
+        <div id="toastUltimos" class="toast"></div>
+        <div id="listaUltimos" style="margin-top:12px;display:grid;gap:10px"></div>
       </div>
-
-      <div class="kpi blue">
-        <div class="name">Receitas</div>
-        <div class="val money" id="kpiReceitas">R$ 0,00</div>
-      </div>
-      <div class="kpi red">
-        <div class="name">Gastos</div>
-        <div class="val money" id="kpiGastos">R$ 0,00</div>
-      </div>
-      <div class="kpi green">
-        <div class="name">Saldo</div>
-        <div class="val money" id="kpiSaldo">R$ 0,00</div>
-      </div>
-
-      <div id="alertDash" class="alert hidden"></div>
     </section>
 
-    <!-- Investimentos (placeholder) -->
-    <section id="tab-invest" class="card hidden">
-      <h2>Investimentos</h2>
-      <p class="hint">Esta área fica pronta para sua próxima etapa (carteira, aportes e rentabilidade).</p>
-      <div class="alert ok">Tudo certo: base e autenticação funcionando no Railway.</div>
+    <!-- INVESTIMENTOS -->
+    <section id="tab-investimentos" class="hidden">
+      <div class="card">
+        <h2>Investimentos</h2>
+        <p class="muted" style="margin:0;line-height:1.6">
+          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono:
+          <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
+        </p>
+      </div>
     </section>
   </div>
 
-  <!-- Modal Auth -->
-  <div id="authBackdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Autenticação">
-    <div class="modal">
-      <div class="modal-head">
-        <div class="title"><span class="lock">🔒</span> <span id="authTitle">Login</span></div>
-        <button class="btn secondary mini" id="btnCloseAuth">✕</button>
+  <!-- MODAL AUTH + EDIT -->
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHead">
+        <div style="font-size:22px" id="modalIcon">🔒</div>
+        <div>
+          <h3 id="modalTitle">Login</h3>
+          <div class="hint" id="modalSub">Entre com seu e-mail e senha.</div>
+        </div>
+        <button class="x" id="closeModal">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="segmented" role="tablist">
-          <button id="segLogin" class="active" data-pane="login">Entrar</button>
-          <button id="segRegister" data-pane="register">Criar conta</button>
-          <button id="segReset" data-pane="reset">Resetar senha</button>
+
+      <!-- AUTH MODE -->
+      <div id="authBlock">
+        <div class="segTabs">
+          <div class="seg active" data-seg="entrar">Entrar</div>
+          <div class="seg" data-seg="criar">Criar conta</div>
+          <div class="seg" data-seg="reset">Resetar senha</div>
         </div>
 
-        <!-- Login -->
-        <div id="pane-login">
-          <div class="grid2">
-            <div>
-              <label>E-mail</label>
-              <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
+        <div id="seg-entrar" style="margin-top:12px">
+          <div class="field">
+            <label>E-mail</label>
+            <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
+          </div>
+          <div class="field">
+            <label>Senha</label>
+            <input id="loginSenha" type="password" placeholder="Sua senha" />
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnEntrar" class="btn primary" style="flex:1">Entrar</button>
+            <button class="btn" id="btnFechar1">Sair</button>
+          </div>
+
+          <div id="toastAuth1" class="toast"></div>
+        </div>
+
+        <div id="seg-criar" class="hidden" style="margin-top:12px">
+          <div class="split">
+            <div class="field">
+              <label>Nome / Apelido</label>
+              <input id="regApelido" placeholder="Ex: David" />
             </div>
-            <div>
-              <label>Senha</label>
-              <input id="loginSenha" type="password" placeholder="Sua senha" />
+            <div class="field">
+              <label>Telefone</label>
+              <input id="regTelefone" inputmode="tel" placeholder="(37) 99999-9999" />
             </div>
           </div>
-          <div id="authAlertLogin" class="alert hidden"></div>
-        </div>
 
-        <!-- Register -->
-        <div id="pane-register" class="hidden">
-          <div class="grid2">
-            <div>
-              <label>Nome / apelido</label>
-              <input id="regApelido" type="text" placeholder="Ex: David" />
-            </div>
-            <div>
-              <label>Nome completo</label>
-              <input id="regNome" type="text" placeholder="Ex: David da Fonseca Ferreira" />
-            </div>
-            <div>
-              <label>Telefone (DDD + número)</label>
-              <input id="regFone" type="tel" placeholder="(37) 99873-8228" />
-            </div>
-            <div>
-              <label>E-mail</label>
-              <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
-            </div>
-            <div>
+          <div class="field">
+            <label>Nome completo</label>
+            <input id="regNomeCompleto" placeholder="Seu nome completo" />
+          </div>
+
+          <div class="field">
+            <label>E-mail</label>
+            <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
+          </div>
+
+          <div class="split">
+            <div class="field">
               <label>Senha</label>
-              <input id="regSenha" type="password" placeholder="Crie uma senha" />
+              <input id="regSenha" type="password" placeholder="Mínimo 6 caracteres" />
             </div>
-            <div>
+            <div class="field">
               <label>Confirmar senha</label>
-              <input id="regSenha2" type="password" placeholder="Repita a senha" />
+              <input id="regConf" type="password" placeholder="Repita a senha" />
             </div>
           </div>
-          <div id="authAlertReg" class="alert hidden"></div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnCriarConta" class="btn primary" style="flex:1">Criar conta</button>
+            <button class="btn" id="btnFechar2">Sair</button>
+          </div>
+
+          <div id="toastAuth2" class="toast"></div>
         </div>
 
-        <!-- Reset -->
-        <div id="pane-reset" class="hidden">
-          <div class="grid2">
-            <div>
-              <label>E-mail</label>
-              <input id="resetEmail" type="email" placeholder="seuemail@dominio.com" />
-            </div>
-            <div>
+        <div id="seg-reset" class="hidden" style="margin-top:12px">
+          <div class="field">
+            <label>E-mail</label>
+            <input id="rstEmail" type="email" placeholder="seuemail@dominio.com" />
+          </div>
+          <div class="split">
+            <div class="field">
               <label>Nova senha</label>
-              <input id="resetSenha" type="password" placeholder="Nova senha" />
+              <input id="rstSenha" type="password" placeholder="Mínimo 6 caracteres" />
             </div>
-            <div>
-              <label>Confirmar senha</label>
-              <input id="resetSenha2" type="password" placeholder="Repita a nova senha" />
+            <div class="field">
+              <label>Confirmar</label>
+              <input id="rstConf" type="password" placeholder="Repita a senha" />
             </div>
           </div>
-          <div id="authAlertReset" class="alert hidden"></div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnResetar" class="btn primary" style="flex:1">Resetar senha</button>
+            <button class="btn" id="btnFechar3">Sair</button>
+          </div>
+
+          <div id="toastAuth3" class="toast"></div>
+        </div>
+      </div>
+
+      <!-- EDIT MODE -->
+      <div id="editBlock" class="hidden" style="margin-top:12px">
+        <div class="split">
+          <div class="field">
+            <label>Tipo</label>
+            <select id="edtTipo">
+              <option value="RECEITA">RECEITA</option>
+              <option value="GASTO">GASTO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Data</label>
+            <input id="edtData" type="date" />
+          </div>
         </div>
 
+        <div class="split">
+          <div class="field">
+            <label>Categoria</label>
+            <input id="edtCategoria" placeholder="Ex: Mercado" />
+          </div>
+          <div class="field">
+            <label>Valor (R$)</label>
+            <input id="edtValor" inputmode="decimal" placeholder="Ex: 50,00" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Descrição</label>
+          <textarea id="edtDescricao" placeholder="Opcional..."></textarea>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button id="btnSalvarEdicao" class="btn primary" style="flex:1">Salvar edição</button>
+          <button class="btn" id="btnCancelarEdicao">Cancelar</button>
+        </div>
+
+        <div id="toastEdit" class="toast"></div>
       </div>
-      <div class="modal-foot">
-        <button class="btn secondary" id="btnAuthCancel">Sair</button>
-        <button class="btn" id="btnAuthPrimary">Entrar</button>
-      </div>
+
     </div>
   </div>
 
   <script>
-    // Register SW with cache-busting
+    const $ = (id) => document.getElementById(id);
+
+    const moneyBR = (n) => {
+      const v = Number(n || 0);
+      return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+    };
+
+    async function api(path, method="GET", body=null) {
+      const opt = { method, headers: { "Content-Type":"application/json" }, credentials:"include" };
+      if (body) opt.body = JSON.stringify(body);
+
+      const res = await fetch(path, opt);
+      let data = null;
+      try { data = await res.json(); } catch(e) {}
+
+      if (!res.ok) {
+        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        err.payload = data;
+        throw err;
+      }
+      return data;
+    }
+
+    function showToast(el, type, title, desc="") {
+      el.className = "toast show " + (type === "ok" ? "ok" : "err");
+      el.innerHTML = `<div class="t">${title}</div>` + (desc ? `<div class="d">${desc}</div>` : "");
+    }
+    function hideToast(el) { el.className = "toast"; el.innerHTML = ""; }
+
+    // -----------------------
+    // Tabs
+    // -----------------------
+    const tabEls = Array.from(document.querySelectorAll(".tab"));
+    function setTab(name) {
+      tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+      ["dashboard","lancar","ultimos","investimentos"].forEach(n => {
+        $("tab-" + n).classList.toggle("hidden", n !== name);
+      });
+      if (name === "dashboard") refreshDashboard().catch(()=>{});
+      if (name === "ultimos") carregarUltimos().catch(()=>{});
+    }
+    tabEls.forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
+    $("goLancar").addEventListener("click", () => setTab("lancar"));
+    $("goUltimos").addEventListener("click", () => setTab("ultimos"));
+    $("openLogin2").addEventListener("click", () => openAuthModal("entrar"));
+
+    // -----------------------
+    // Modal (auth + edit)
+    // -----------------------
+    const overlay = $("overlay");
+    const segs = Array.from(document.querySelectorAll(".seg"));
+
+    function openModal() {
+      overlay.classList.add("show");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    function closeModal() {
+      overlay.classList.remove("show");
+      overlay.setAttribute("aria-hidden", "true");
+      ["toastAuth1","toastAuth2","toastAuth3","toastEdit"].forEach(id => hideToast($(id)));
+    }
+
+    $("closeModal").addEventListener("click", closeModal);
+    $("btnFechar1").addEventListener("click", closeModal);
+    $("btnFechar2").addEventListener("click", closeModal);
+    $("btnFechar3").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    function setSeg(seg) {
+      segs.forEach(s => s.classList.toggle("active", s.dataset.seg === seg));
+      $("seg-entrar").classList.toggle("hidden", seg !== "entrar");
+      $("seg-criar").classList.toggle("hidden", seg !== "criar");
+      $("seg-reset").classList.toggle("hidden", seg !== "reset");
+
+      $("modalIcon").textContent = "🔒";
+      $("modalTitle").textContent = seg === "entrar" ? "Login" : (seg === "criar" ? "Criar conta" : "Resetar senha");
+      $("modalSub").textContent = seg === "entrar"
+        ? "Entre com seu e-mail e senha."
+        : (seg === "criar" ? "Crie sua conta para acessar seus lançamentos." : "Defina uma nova senha para sua conta.");
+
+      $("authBlock").classList.remove("hidden");
+      $("editBlock").classList.add("hidden");
+      openModal();
+    }
+    segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
+    function openAuthModal(seg="entrar") { setSeg(seg); }
+
+    // -----------------------
+    // Auth state (cookie é o que manda)
+    // -----------------------
+    let rememberedEmail = localStorage.getItem("financeai_user") || "";
+    let isAuthed = false;
+
+    function setLoggedUI(logged, email="") {
+      isAuthed = !!logged;
+      const pill = $("userPill");
+      $("btnLogin").classList.toggle("hidden", logged);
+      $("btnLogout").classList.toggle("hidden", !logged);
+      pill.classList.toggle("hidden", !logged);
+      pill.textContent = logged ? email : "";
+
+      $("dashHint").textContent = logged ? "Você está logado." : "Faça login para ver seus dados.";
+      $("lancarHint").textContent = logged ? "Você está logado." : "Você precisa estar logado.";
+    }
+
+    // Ao carregar: tenta validar sessão pelo servidor
+    async function checkSession() {
+      // se tem email lembrado, mostra “prévia” mas confirma com o servidor
+      if (rememberedEmail) setLoggedUI(true, rememberedEmail);
+      else setLoggedUI(false);
+
+      try {
+        // qualquer endpoint que exige login serve para validar cookie
+        await api("/api/lancamentos?limit=1", "GET");
+        // se passou, mantém UI como está
+        if (!rememberedEmail) {
+          // não temos como saber o email sem endpoint /api/me,
+          // mas pelo menos marca como logado sem pill.
+          setLoggedUI(true, "Logado");
+        } else {
+          setLoggedUI(true, rememberedEmail);
+        }
+      } catch (e) {
+        // cookie inválido / expirou
+        localStorage.removeItem("financeai_user");
+        rememberedEmail = "";
+        setLoggedUI(false);
+      }
+    }
+
+    $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
+
+    $("btnLogout").addEventListener("click", async () => {
+      try { await api("/api/logout", "POST"); } catch(e) {}
+      localStorage.removeItem("financeai_user");
+      rememberedEmail = "";
+      setLoggedUI(false);
+      refreshDashboard().catch(()=>{});
+      carregarUltimos().catch(()=>{});
+    });
+
+    // -----------------------
+    // Auth actions
+    // -----------------------
+    $("btnEntrar").addEventListener("click", async () => {
+      const t = $("toastAuth1"); hideToast(t);
+      try {
+        const email = $("loginEmail").value.trim().toLowerCase();
+        const senha = $("loginSenha").value;
+        const res = await api("/api/login", "POST", { email, senha });
+
+        localStorage.setItem("financeai_user", res.email);
+        rememberedEmail = res.email;
+        setLoggedUI(true, res.email);
+
+        showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
+        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
+      } catch (e) {
+        showToast(t, "err", "Falha no login", e.message);
+      }
+    });
+
+    $("btnCriarConta").addEventListener("click", async () => {
+      const t = $("toastAuth2"); hideToast(t);
+      try {
+        const nome_apelido = $("regApelido").value.trim();
+        const nome_completo = $("regNomeCompleto").value.trim();
+        const telefone = $("regTelefone").value.trim();
+        const email = $("regEmail").value.trim().toLowerCase();
+        const senha = $("regSenha").value;
+        const confirmar_senha = $("regConf").value;
+
+        const res = await api("/api/register", "POST", {
+          nome_apelido, nome_completo, telefone, email, senha, confirmar_senha
+        });
+
+        localStorage.setItem("financeai_user", res.email);
+        rememberedEmail = res.email;
+        setLoggedUI(true, res.email);
+
+        showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
+        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
+      } catch (e) {
+        showToast(t, "err", "Erro ao cadastrar", e.message);
+      }
+    });
+
+    $("btnResetar").addEventListener("click", async () => {
+      const t = $("toastAuth3"); hideToast(t);
+      try {
+        const email = $("rstEmail").value.trim().toLowerCase();
+        const nova_senha = $("rstSenha").value;
+        const confirmar = $("rstConf").value;
+
+        await api("/api/reset_password", "POST", { email, nova_senha, confirmar });
+        showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
+      } catch (e) {
+        showToast(t, "err", "Falha no reset", e.message);
+      }
+    });
+
+    // -----------------------
+    // Charts
+    // -----------------------
+    let chartRG = null;
+    let chartSaldo = null;
+    let chartDaily = null;
+
+    function ensureCharts() {
+      if (!window.Chart) return;
+
+      const c1 = $("chartRG");
+      const c2 = $("chartSaldo");
+      const c3 = $("chartDaily");
+
+      if (c1 && !chartRG) {
+        chartRG = new Chart(c1, {
+          type: "doughnut",
+          data: { labels: ["Receitas", "Gastos"], datasets: [{ data: [0, 0] }] },
+          options: { responsive: true, maintainAspectRatio: false, cutout: "65%" }
+        });
+      }
+
+      if (c2 && !chartSaldo) {
+        chartSaldo = new Chart(c2, {
+          type: "bar",
+          data: { labels: ["Saldo"], datasets: [{ label: "Saldo do mês", data: [0] }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+      }
+
+      if (c3 && !chartDaily) {
+        chartDaily = new Chart(c3, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              { label: "Receitas (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
+              { label: "Gastos (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
+              { label: "Saldo acumulado", data: [], tension: 0.25, fill: false, pointRadius: 1 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }
+    }
+
+    function updateChartsTotals(receitas, gastos, saldo) {
+      ensureCharts();
+      if (chartRG) {
+        chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)];
+        chartRG.update();
+      }
+      if (chartSaldo) {
+        chartSaldo.data.datasets[0].data = [Number(saldo || 0)];
+        chartSaldo.update();
+      }
+    }
+
+    function daysInMonth(year, month1to12) {
+      return new Date(year, month1to12, 0).getDate();
+    }
+
+    function parseISODate(s) {
+      const parts = String(s || "").split("-");
+      if (parts.length !== 3) return null;
+      const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+      if (!y || !m || !d) return null;
+      return { y, m, d };
+    }
+
+    function parseMoneyLoose(v) {
+      const n = Number(String(v ?? "").trim().replace(/\s/g,"").replace(/\./g,"").replace(",", "."));
+      return isNaN(n) ? 0 : n;
+    }
+
+    async function updateDailyChart(mes, ano) {
+      ensureCharts();
+      if (!chartDaily) return;
+
+      const dim = daysInMonth(ano, mes);
+      const labels = Array.from({length: dim}, (_, i) => String(i + 1));
+      const receitasDia = Array.from({length: dim}, () => 0);
+      const gastosDia = Array.from({length: dim}, () => 0);
+
+      try {
+        const res = await api("/api/lancamentos?limit=200", "GET");
+        const items = res.items || [];
+
+        for (const it of items) {
+          const dtx = parseISODate(it.data);
+          if (!dtx) continue;
+          if (dtx.y !== ano || dtx.m !== mes) continue;
+
+          const idx = dtx.d - 1;
+          if (idx < 0 || idx >= dim) continue;
+
+          const tipo = String(it.tipo || "").toUpperCase();
+          const val = parseMoneyLoose(it.valor);
+
+          if (tipo === "RECEITA") receitasDia[idx] += val;
+          if (tipo === "GASTO") gastosDia[idx] += val;
+        }
+      } catch (e) {
+        // não logado => fica zerado
+      }
+
+      const saldoAcum = [];
+      let acc = 0;
+      for (let i = 0; i < dim; i++) {
+        acc += (receitasDia[i] - gastosDia[i]);
+        saldoAcum.push(acc);
+      }
+
+      chartDaily.data.labels = labels;
+      chartDaily.data.datasets[0].data = receitasDia;
+      chartDaily.data.datasets[1].data = gastosDia;
+      chartDaily.data.datasets[2].data = saldoAcum;
+      chartDaily.update();
+    }
+
+    // -----------------------
+    // Dashboard
+    // -----------------------
+    function initMesAno() {
+      const sel = $("dashMes");
+      const now = new Date();
+      const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+      sel.innerHTML = meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join("");
+      sel.value = String(now.getMonth()+1);
+      $("dashAno").value = String(now.getFullYear());
+      $("lanData").value = now.toISOString().slice(0,10);
+    }
+
+    async function refreshDashboard() {
+      const toast = $("toastDash"); hideToast(toast);
+      const mes = Number($("dashMes").value);
+      const ano = Number($("dashAno").value);
+
+      try{
+        const res = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, "GET");
+        $("valReceitas").textContent = moneyBR(res.receitas);
+        $("valGastos").textContent = moneyBR(res.gastos);
+        $("valSaldo").textContent = moneyBR(res.saldo);
+
+        updateChartsTotals(res.receitas, res.gastos, res.saldo);
+        await updateDailyChart(mes, ano);
+      }catch(e){
+        $("valReceitas").textContent = "R$ 0,00";
+        $("valGastos").textContent = "R$ 0,00";
+        $("valSaldo").textContent = "R$ 0,00";
+        updateChartsTotals(0, 0, 0);
+        await updateDailyChart(mes, ano);
+
+        if (e.status === 401) {
+          // cookie caiu
+          localStorage.removeItem("financeai_user");
+          rememberedEmail = "";
+          setLoggedUI(false);
+          showToast(toast, "err", "Faça login para ver o dashboard", "Sua sessão expirou. Faça login novamente.");
+        } else {
+          showToast(toast, "err", "Erro no dashboard", e.message);
+        }
+      }
+    }
+
+    $("btnAtualizarDash").addEventListener("click", () => refreshDashboard());
+    $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
+    $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
+
+    // -----------------------
+    // Criar lançamento
+    // -----------------------
+    $("btnSalvarLanc").addEventListener("click", async () => {
+      const toast = $("toastLanc"); hideToast(toast);
+
+      if (!isAuthed) {
+        showToast(toast, "err", "Você precisa fazer login", "Clique em Login para entrar.");
+        openAuthModal("entrar");
+        return;
+      }
+
+      try{
+        const payload = {
+          tipo: $("lanTipo").value,
+          data: $("lanData").value,
+          categoria: $("lanCategoria").value.trim(),
+          descricao: $("lanDescricao").value.trim(),
+          valor: $("lanValor").value.trim(),
+        };
+        await api("/api/lancamentos", "POST", payload);
+        showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
+        $("lanCategoria").value = "";
+        $("lanDescricao").value = "";
+        $("lanValor").value = "";
+        refreshDashboard().catch(()=>{});
+        carregarUltimos().catch(()=>{});
+      }catch(e){
+        if (e.status === 401) {
+          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
+          localStorage.removeItem("financeai_user");
+          rememberedEmail = "";
+          setLoggedUI(false);
+          openAuthModal("entrar");
+          return;
+        }
+        showToast(toast, "err", "Erro ao salvar", e.message);
+      }
+    });
+
+    $("btnLimparLanc").addEventListener("click", () => {
+      $("lanCategoria").value = "";
+      $("lanDescricao").value = "";
+      $("lanValor").value = "";
+      hideToast($("toastLanc"));
+    });
+
+    // -----------------------
+    // Últimos + Editar + Apagar
+    // -----------------------
+    $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
+
+    function normalizeValorToMoneyBR(raw) {
+      const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(/\./g,"").replace(",", "."));
+      if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return String(raw ?? "");
+    }
+
+    async function carregarUltimos() {
+      const toast = $("toastUltimos");
+      const list = $("listaUltimos");
+      hideToast(toast);
+      list.innerHTML = "";
+
+      if (!isAuthed) {
+        list.innerHTML = `<div class="muted">Faça login para ver seus lançamentos.</div>`;
+        return;
+      }
+
+      try {
+        const res = await api("/api/lancamentos?limit=30", "GET");
+        const items = res.items || [];
+
+        if (items.length === 0) {
+          list.innerHTML = `<div class="muted">Nenhum lançamento ainda.</div>`;
+          return;
+        }
+
+        list.innerHTML = items.map(it => {
+          const valorNum = Number(String(it.valor).replace(/\./g,"").replace(",", "."));
+          const v = isNaN(valorNum) ? it.valor : moneyBR(valorNum);
+
+          const desc = (it.descricao || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+          const cat = (it.categoria || "Sem categoria").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+          return `
+            <div class="miniCard">
+              <div class="row" style="gap:12px;align-items:flex-start">
+                <div style="min-width:92px" class="muted"><b>${it.data}</b></div>
+                <div style="flex:1">
+                  <div style="font-weight:900">${it.tipo} • ${cat}</div>
+                  <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
+                </div>
+                <div style="text-align:right;min-width:130px">
+                  <div style="font-weight:900">${v}</div>
+                  <div class="row" style="justify-content:flex-end;margin-top:8px">
+                    <button class="btn small" onclick='abrirEdicao(${JSON.stringify(it).replace(/'/g,"&#39;")})'>Editar</button>
+                    <button class="btn danger small" onclick="apagarLancamento(${it.row})">Apagar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+      } catch (e) {
+        if (e.status === 401) {
+          localStorage.removeItem("financeai_user");
+          rememberedEmail = "";
+          setLoggedUI(false);
+          list.innerHTML = `<div class="muted">Sessão expirada. Faça login novamente.</div>`;
+          return;
+        }
+        showToast(toast, "err", "Erro ao carregar", e.message);
+      }
+    }
+
+    async function apagarLancamento(row) {
+      const toast = $("toastUltimos");
+      hideToast(toast);
+      if (!confirm("Quer mesmo apagar este lançamento?")) return;
+
+      try {
+        await api(`/api/lancamentos/${row}`, "DELETE");
+        showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+        await carregarUltimos();
+        await refreshDashboard();
+      } catch (e) {
+        if (e.status === 401) {
+          localStorage.removeItem("financeai_user");
+          rememberedEmail = "";
+          setLoggedUI(false);
+          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
+          return;
+        }
+        showToast(toast, "err", "Não foi possível apagar", e.message);
+      }
+    }
+
+    // ---- Edit Modal ----
+    let editingRow = null;
+
+    function openEditModal() {
+      $("authBlock").classList.add("hidden");
+      $("editBlock").classList.remove("hidden");
+      $("modalIcon").textContent = "✏️";
+      $("modalTitle").textContent = "Editar lançamento";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza sua planilha.";
+      openModal();
+    }
+
+    window.abrirEdicao = (it) => {
+      if (!isAuthed) return openAuthModal("entrar");
+
+      editingRow = it.row;
+      $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
+      $("edtData").value = it.data || new Date().toISOString().slice(0,10);
+      $("edtCategoria").value = it.categoria || "";
+      $("edtDescricao").value = it.descricao || "";
+      $("edtValor").value = normalizeValorToMoneyBR(it.valor);
+
+      hideToast($("toastEdit"));
+      openEditModal();
+    };
+
+    window.apagarLancamento = apagarLancamento;
+
+    $("btnCancelarEdicao").addEventListener("click", () => {
+      editingRow = null;
+      closeModal();
+    });
+
+    $("btnSalvarEdicao").addEventListener("click", async () => {
+      const toast = $("toastEdit");
+      hideToast(toast);
+
+      if (!editingRow) {
+        showToast(toast, "err", "Nada para editar", "Selecione um lançamento para editar.");
+        return;
+      }
+
+      try {
+        const payload = {
+          tipo: $("edtTipo").value,
+          data: $("edtData").value,
+          categoria: $("edtCategoria").value.trim(),
+          descricao: $("edtDescricao").value.trim(),
+          valor: $("edtValor").value.trim(),
+        };
+
+        await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
+        showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
+        await carregarUltimos();
+        await refreshDashboard();
+        setTimeout(() => { closeModal(); }, 450);
+      } catch (e) {
+        if (e.status === 401) {
+          localStorage.removeItem("financeai_user");
+          rememberedEmail = "";
+          setLoggedUI(false);
+          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
+          openAuthModal("entrar");
+          return;
+        }
+        showToast(toast, "err", "Erro ao editar", e.message);
+      }
+    });
+
+    // -----------------------
+    // Boot
+    // -----------------------
+    initMesAno();
+    ensureCharts();
+
+    checkSession().finally(() => {
+      refreshDashboard().catch(()=>{});
+    });
+  </script>
+
+  <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/static/sw.js?v=3").catch(() => {});
       });
     }
-
-    // Helpers
-    const $ = (s) => document.querySelector(s);
-    const $$ = (s) => Array.from(document.querySelectorAll(s));
-
-    function moneyBR(n){
-      const v = Number(n || 0);
-      return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-    }
-
-    // Normalize money: accepts "360,00" or "360.00" or "1.234,56"
-    function normalizeMoneyInput(s){
-      if(!s) return "0";
-      s = String(s).trim();
-      // remove spaces
-      s = s.replace(/\s+/g, "");
-      // if has comma as decimal separator, remove thousand dots then change comma -> dot
-      if(s.includes(",")){
-        s = s.replace(/\./g, "").replace(",", ".");
-      }
-      // keep only digits, dot, minus
-      s = s.replace(/[^0-9.-]/g, "");
-      return s;
-    }
-
-    async function api(path, options={}){
-      const res = await fetch(path, {
-        credentials: "include",
-        headers: { "Content-Type":"application/json" },
-        ...options,
-      });
-      let data = null;
-      try { data = await res.json(); } catch(e){}
-      if(!res.ok){
-        const msg = (data && (data.error || data.message)) || ("Erro " + res.status);
-        throw new Error(msg);
-      }
-      return data;
-    }
-
-    function show(el, on=true){ el.classList.toggle("hidden", !on); }
-    function setAlert(el, msg, ok=false){
-      if(!msg){ show(el,false); el.textContent=""; el.classList.remove("ok"); return; }
-      el.textContent = msg;
-      el.classList.toggle("ok", ok);
-      show(el,true);
-    }
-
-    // Tabs
-    const tabMap = {
-      lancar: $("#tab-lancar"),
-      ultimos: $("#tab-ultimos"),
-      dashboard: $("#tab-dashboard"),
-      invest: $("#tab-invest"),
-    };
-
-    $$(".tab").forEach(btn => {
-      btn.addEventListener("click", () => {
-        $$(".tab").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        const key = btn.dataset.tab;
-        Object.entries(tabMap).forEach(([k,sec]) => show(sec, k === key));
-        // auto refresh
-        if(key === "ultimos") loadUltimos().catch(()=>{});
-      });
-    });
-
-    // Month/year defaults
-    const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-    const selMes = $("#selMes");
-    monthNames.forEach((m,i)=>{
-      const opt = document.createElement("option");
-      opt.value = String(i+1);
-      opt.textContent = m;
-      selMes.appendChild(opt);
-    });
-    const now = new Date();
-    selMes.value = String(now.getMonth()+1);
-    $("#inpAno").value = String(now.getFullYear());
-    $("#inpData").valueAsDate = now;
-
-    // Session state (front-only)
-    let currentUserEmail = null;
-
-    function setLogged(email){
-      currentUserEmail = email || null;
-      if(currentUserEmail){
-        $("#userEmail").textContent = currentUserEmail;
-        show($("#userPill"), true);
-        show($("#btnOpenAuth"), false);
-        $("#hintLanc").textContent = "Pronto! Você pode salvar lançamentos.";
-        $("#hintDash").textContent = "Atualiza automaticamente com o mês/ano selecionados.";
-      }else{
-        show($("#userPill"), false);
-        show($("#btnOpenAuth"), true);
-        $("#hintLanc").textContent = "Você precisa estar logado para salvar.";
-        $("#hintDash").textContent = "Faça login para ver seus dados.";
-      }
-    }
-
-    // Auth modal
-    const backdrop = $("#authBackdrop");
-    const panes = {
-      login: $("#pane-login"),
-      register: $("#pane-register"),
-      reset: $("#pane-reset"),
-    };
-    let activePane = "login";
-
-    function openAuth(){
-      show(backdrop,true);
-      switchPane(activePane);
-    }
-    function closeAuth(){
-      show(backdrop,false);
-      setAlert($("#authAlertLogin"), "");
-      setAlert($("#authAlertReg"), "");
-      setAlert($("#authAlertReset"), "");
-    }
-    function switchPane(p){
-      activePane = p;
-      $("#authTitle").textContent = p === "login" ? "Login" : (p === "register" ? "Criar conta" : "Resetar senha");
-      Object.entries(panes).forEach(([k,el]) => show(el, k === p));
-      // segmented buttons state
-      $("#segLogin").classList.toggle("active", p==="login");
-      $("#segRegister").classList.toggle("active", p==="register");
-      $("#segReset").classList.toggle("active", p==="reset");
-      // primary button label
-      $("#btnAuthPrimary").textContent = p === "login" ? "Entrar" : (p === "register" ? "Criar conta" : "Resetar");
-    }
-
-    $("#btnOpenAuth").addEventListener("click", () => { activePane="login"; openAuth(); });
-    $("#btnCloseAuth").addEventListener("click", closeAuth);
-    $("#btnAuthCancel").addEventListener("click", closeAuth);
-    backdrop.addEventListener("click", (e)=>{ if(e.target === backdrop) closeAuth(); });
-
-    $("#segLogin").addEventListener("click", ()=> switchPane("login"));
-    $("#segRegister").addEventListener("click", ()=> switchPane("register"));
-    $("#segReset").addEventListener("click", ()=> switchPane("reset"));
-
-    $("#btnAuthPrimary").addEventListener("click", async () => {
-      try{
-        if(activePane === "login"){
-          const email = $("#loginEmail").value.trim().toLowerCase();
-          const senha = $("#loginSenha").value;
-          const r = await api("/api/login", { method:"POST", body: JSON.stringify({ email, senha }) });
-          setLogged(r.email);
-          closeAuth();
-          setAlert($("#alertDash"), "", false);
-          await loadDashboard().catch(()=>{});
-        }
-        if(activePane === "register"){
-          const payload = {
-            nome_apelido: $("#regApelido").value.trim(),
-            nome_completo: $("#regNome").value.trim(),
-            telefone: $("#regFone").value.trim(),
-            email: $("#regEmail").value.trim().toLowerCase(),
-            senha: $("#regSenha").value,
-            confirmar_senha: $("#regSenha2").value,
-          };
-          const r = await api("/api/register", { method:"POST", body: JSON.stringify(payload) });
-          setLogged(r.email);
-          closeAuth();
-          await loadDashboard().catch(()=>{});
-        }
-        if(activePane === "reset"){
-          const payload = {
-            email: $("#resetEmail").value.trim().toLowerCase(),
-            nova_senha: $("#resetSenha").value,
-            confirmar: $("#resetSenha2").value,
-          };
-          await api("/api/reset_password", { method:"POST", body: JSON.stringify(payload) });
-          setAlert($("#authAlertReset"), "Senha alterada com sucesso. Você já pode entrar.", true);
-        }
-      }catch(err){
-        const msg = err?.message || "Erro";
-        if(activePane === "login") setAlert($("#authAlertLogin"), msg, false);
-        if(activePane === "register") setAlert($("#authAlertReg"), msg, false);
-        if(activePane === "reset") setAlert($("#authAlertReset"), msg, false);
-      }
-    });
-
-    $("#btnLogout").addEventListener("click", async () => {
-      try{ await api("/api/logout", { method:"POST", body:"{}" }); } catch(e){}
-      setLogged(null);
-      setAlert($("#alertUlt"), "Você saiu. Faça login para ver seus lançamentos.", false);
-      setAlert($("#alertDash"), "Faça login para ver o dashboard.", false);
-    });
-
-    // Lançar
-    $("#btnSalvarLanc").addEventListener("click", async () => {
-      setAlert($("#alertLanc"), "");
-      try{
-        const payload = {
-          tipo: $("#inpTipo").value,
-          data: $("#inpData").value,
-          categoria: $("#inpCategoria").value.trim(),
-          descricao: $("#inpDescricao").value.trim(),
-          valor: normalizeMoneyInput($("#inpValor").value),
-        };
-        await api("/api/lancamentos", { method:"POST", body: JSON.stringify(payload) });
-        setAlert($("#alertLanc"), "Lançamento salvo com sucesso!", true);
-        $("#inpCategoria").value = "";
-        $("#inpDescricao").value = "";
-        $("#inpValor").value = "";
-        // refresh lists/dash
-        await loadUltimos().catch(()=>{});
-        await loadDashboard().catch(()=>{});
-      }catch(err){
-        setAlert($("#alertLanc"), err?.message || "Erro ao salvar", false);
-        if((err?.message||"").includes("Não logado")) openAuth();
-      }
-    });
-
-    // Últimos
-    $("#btnRecarregar").addEventListener("click", () => loadUltimos().catch(()=>{}));
-    async function loadUltimos(){
-      setAlert($("#alertUlt"), "");
-      const tbody = $("#tblLanc");
-      tbody.innerHTML = "";
-      try{
-        const r = await api("/api/lancamentos?limit=50", { method:"GET" });
-        const items = r.items || [];
-        if(items.length === 0){
-          setAlert($("#alertUlt"), "Nenhum lançamento encontrado para este usuário.", true);
-          return;
-        }
-        for(const it of items){
-          const tr = document.createElement("tr");
-          const tipo = String(it.tipo||"").toUpperCase();
-          const tagClass = tipo === "RECEITA" ? "green" : (tipo === "GASTO" ? "red" : "");
-          tr.innerHTML = `
-            <td>${(it.data||"").slice(0,10)}</td>
-            <td><span class="tag ${tagClass}">${tipo||"-"}</span></td>
-            <td>${it.categoria||"-"}</td>
-            <td>${it.descricao||"-"}</td>
-            <td class="money">${moneyBR(normalizeMoneyInput(it.valor))}</td>
-            <td>
-              <div class="actions">
-                <button class="btn secondary mini" data-act="edit">Editar</button>
-                <button class="btn danger mini" data-act="del">Apagar</button>
-              </div>
-            </td>
-          `;
-          // actions
-          tr.querySelector('[data-act="del"]').addEventListener("click", async ()=>{
-            if(!confirm("Apagar este lançamento?")) return;
-            try{
-              await api("/api/lancamentos/" + it.row, { method:"DELETE" });
-              await loadUltimos();
-              await loadDashboard().catch(()=>{});
-            }catch(err){
-              setAlert($("#alertUlt"), err?.message || "Erro ao apagar", false);
-            }
-          });
-          tr.querySelector('[data-act="edit"]').addEventListener("click", async ()=>{
-            const novaData = prompt("Data (AAAA-MM-DD):", (it.data||"").slice(0,10)) ?? "";
-            if(!novaData) return;
-            const novoTipo = prompt("Tipo (RECEITA ou GASTO):", (it.tipo||"").toUpperCase()) ?? "";
-            const novaCat = prompt("Categoria:", it.categoria||"") ?? "";
-            const novaDesc = prompt("Descrição:", it.descricao||"") ?? "";
-            const novoVal = prompt("Valor (ex: 360,00):", String(it.valor||"")) ?? "";
-            try{
-              await api("/api/lancamentos/" + it.row, {
-                method:"PUT",
-                body: JSON.stringify({
-                  data: novaData,
-                  tipo: novoTipo.toUpperCase(),
-                  categoria: novaCat,
-                  descricao: novaDesc,
-                  valor: normalizeMoneyInput(novoVal),
-                })
-              });
-              await loadUltimos();
-              await loadDashboard().catch(()=>{});
-            }catch(err){
-              setAlert($("#alertUlt"), err?.message || "Erro ao editar", false);
-            }
-          });
-
-          tbody.appendChild(tr);
-        }
-      }catch(err){
-        setAlert($("#alertUlt"), err?.message || "Erro ao carregar", false);
-        if((err?.message||"").includes("Não logado")) {
-          // show hint but do not force modal
-        }
-      }
-    }
-
-    // Dashboard
-    $("#btnAtualizarDash").addEventListener("click", () => loadDashboard().catch(()=>{}));
-
-    async function loadDashboard(){
-      setAlert($("#alertDash"), "");
-      try{
-        const mes = Number($("#selMes").value);
-        const ano = Number($("#inpAno").value);
-        const r = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, { method:"GET" });
-        $("#kpiReceitas").textContent = moneyBR(r.receitas);
-        $("#kpiGastos").textContent = moneyBR(r.gastos);
-        $("#kpiSaldo").textContent = moneyBR(r.saldo);
-      }catch(err){
-        $("#kpiReceitas").textContent = "R$ 0,00";
-        $("#kpiGastos").textContent = "R$ 0,00";
-        $("#kpiSaldo").textContent = "R$ 0,00";
-        setAlert($("#alertDash"), (err?.message || "Faça login para ver o dashboard"), false);
-        if((err?.message||"").includes("Não logado")) {
-          // keep button visible; user can open auth
-        }
-      }
-    }
-
-    // Initial: try to load dashboard (will show "Não logado" if needed)
-    loadDashboard().catch(()=>{});
   </script>
 </body>
 </html>
