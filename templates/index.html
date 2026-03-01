@@ -216,8 +216,9 @@
 
         <div class="row" style="margin-top:14px">
           <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
+          <button id="btnExportMes" class="btn">📤 Exportar mês (Sheets)</button>
           <div class="spacer"></div>
-          <span class="hint" id="dashHint">Faça login para ver seus dados.</span>
+          <span class="hint">Faça login para ver seus dados.</span>
         </div>
 
         <div id="toastDash" class="toast"></div>
@@ -296,7 +297,7 @@
           <button id="btnSalvarLanc" class="btn primary">Salvar</button>
           <button id="btnLimparLanc" class="btn">Limpar</button>
           <div class="spacer"></div>
-          <span class="hint" id="lancarHint">Você precisa estar logado.</span>
+          <span class="hint">Você precisa estar logado.</span>
         </div>
 
         <div id="toastLanc" class="toast"></div>
@@ -326,8 +327,8 @@
       <div class="card">
         <h2>Investimentos</h2>
         <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono:
-          <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
+          Tela pronta para evoluir. Se você quiser registrar investimentos no DB e opcionalmente exportar,
+          eu adiciono endpoints de investimentos também.
         </p>
       </div>
     </section>
@@ -491,17 +492,12 @@
     async function api(path, method="GET", body=null) {
       const opt = { method, headers: { "Content-Type":"application/json" }, credentials:"include" };
       if (body) opt.body = JSON.stringify(body);
-
       const res = await fetch(path, opt);
       let data = null;
       try { data = await res.json(); } catch(e) {}
-
       if (!res.ok) {
         const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
-        const err = new Error(msg);
-        err.status = res.status;
-        err.payload = data;
-        throw err;
+        throw new Error(msg);
       }
       return data;
     }
@@ -516,7 +512,8 @@
     // Tabs
     // -----------------------
     const tabEls = Array.from(document.querySelectorAll(".tab"));
-    function setTab(name) {
+
+    function _setTabBase(name) {
       tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
       ["dashboard","lancar","ultimos","investimentos"].forEach(n => {
         $("tab-" + n).classList.toggle("hidden", n !== name);
@@ -524,7 +521,10 @@
       if (name === "dashboard") refreshDashboard().catch(()=>{});
       if (name === "ultimos") carregarUltimos().catch(()=>{});
     }
+
+    let setTab = _setTabBase;
     tabEls.forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
+
     $("goLancar").addEventListener("click", () => setTab("lancar"));
     $("goUltimos").addEventListener("click", () => setTab("ultimos"));
     $("openLogin2").addEventListener("click", () => openAuthModal("entrar"));
@@ -567,58 +567,32 @@
       $("editBlock").classList.add("hidden");
       openModal();
     }
+
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
     // -----------------------
-    // Auth state (cookie é o que manda)
+    // Auth state (front only)
     // -----------------------
-    let rememberedEmail = localStorage.getItem("financeai_user") || "";
-    let isAuthed = false;
+    let currentUserEmail = localStorage.getItem("financeai_user") || "";
 
-    function setLoggedUI(logged, email="") {
-      isAuthed = !!logged;
+    function setLoggedUI(isLogged, email="") {
       const pill = $("userPill");
-      $("btnLogin").classList.toggle("hidden", logged);
-      $("btnLogout").classList.toggle("hidden", !logged);
-      pill.classList.toggle("hidden", !logged);
-      pill.textContent = logged ? email : "";
-
-      $("dashHint").textContent = logged ? "Você está logado." : "Faça login para ver seus dados.";
-      $("lancarHint").textContent = logged ? "Você está logado." : "Você precisa estar logado.";
+      $("btnLogin").classList.toggle("hidden", isLogged);
+      $("btnLogout").classList.toggle("hidden", !isLogged);
+      pill.classList.toggle("hidden", !isLogged);
+      pill.textContent = isLogged ? email : "";
     }
 
-    // Ao carregar: tenta validar sessão pelo servidor
-    async function checkSession() {
-      // se tem email lembrado, mostra “prévia” mas confirma com o servidor
-      if (rememberedEmail) setLoggedUI(true, rememberedEmail);
-      else setLoggedUI(false);
-
-      try {
-        // qualquer endpoint que exige login serve para validar cookie
-        await api("/api/lancamentos?limit=1", "GET");
-        // se passou, mantém UI como está
-        if (!rememberedEmail) {
-          // não temos como saber o email sem endpoint /api/me,
-          // mas pelo menos marca como logado sem pill.
-          setLoggedUI(true, "Logado");
-        } else {
-          setLoggedUI(true, rememberedEmail);
-        }
-      } catch (e) {
-        // cookie inválido / expirou
-        localStorage.removeItem("financeai_user");
-        rememberedEmail = "";
-        setLoggedUI(false);
-      }
-    }
+    if (currentUserEmail) setLoggedUI(true, currentUserEmail);
+    else setLoggedUI(false);
 
     $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
 
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
       localStorage.removeItem("financeai_user");
-      rememberedEmail = "";
+      currentUserEmail = "";
       setLoggedUI(false);
       refreshDashboard().catch(()=>{});
       carregarUltimos().catch(()=>{});
@@ -633,11 +607,9 @@
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
         const res = await api("/api/login", "POST", { email, senha });
-
         localStorage.setItem("financeai_user", res.email);
-        rememberedEmail = res.email;
+        currentUserEmail = res.email;
         setLoggedUI(true, res.email);
-
         showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
         setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
       } catch (e) {
@@ -660,7 +632,7 @@
         });
 
         localStorage.setItem("financeai_user", res.email);
-        rememberedEmail = res.email;
+        currentUserEmail = res.email;
         setLoggedUI(true, res.email);
 
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
@@ -701,16 +673,53 @@
       if (c1 && !chartRG) {
         chartRG = new Chart(c1, {
           type: "doughnut",
-          data: { labels: ["Receitas", "Gastos"], datasets: [{ data: [0, 0] }] },
-          options: { responsive: true, maintainAspectRatio: false, cutout: "65%" }
+          data: {
+            labels: ["Receitas", "Gastos"],
+            datasets: [{
+              data: [0, 0],
+              backgroundColor: ["rgba(46,229,157,.85)", "rgba(255,75,110,.85)"],
+              borderColor: ["rgba(46,229,157,.20)", "rgba(255,75,110,.20)"],
+              borderWidth: 1,
+              hoverOffset: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "rgba(234,240,255,.85)" } },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
+            },
+            cutout: "65%"
+          }
         });
       }
 
       if (c2 && !chartSaldo) {
         chartSaldo = new Chart(c2, {
           type: "bar",
-          data: { labels: ["Saldo"], datasets: [{ label: "Saldo do mês", data: [0] }] },
-          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+          data: {
+            labels: ["Saldo"],
+            datasets: [{
+              label: "Saldo do mês",
+              data: [0],
+              backgroundColor: ["rgba(75,140,255,.75)"],
+              borderColor: ["rgba(75,140,255,.25)"],
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
+            },
+            scales: {
+              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
+            }
+          }
         });
       }
 
@@ -720,12 +729,47 @@
           data: {
             labels: [],
             datasets: [
-              { label: "Receitas (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
-              { label: "Gastos (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
-              { label: "Saldo acumulado", data: [], tension: 0.25, fill: false, pointRadius: 1 }
+              {
+                label: "Receitas (dia)",
+                data: [],
+                borderColor: "rgba(46,229,157,.9)",
+                backgroundColor: "rgba(46,229,157,.12)",
+                tension: 0.25,
+                fill: true,
+                pointRadius: 2
+              },
+              {
+                label: "Gastos (dia)",
+                data: [],
+                borderColor: "rgba(255,75,110,.9)",
+                backgroundColor: "rgba(255,75,110,.10)",
+                tension: 0.25,
+                fill: true,
+                pointRadius: 2
+              },
+              {
+                label: "Saldo acumulado",
+                data: [],
+                borderColor: "rgba(75,140,255,.95)",
+                backgroundColor: "rgba(75,140,255,.12)",
+                tension: 0.25,
+                fill: false,
+                pointRadius: 1
+              }
             ]
           },
-          options: { responsive: true, maintainAspectRatio: false }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "rgba(234,240,255,.85)" } },
+              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
+            },
+            scales: {
+              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
+              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
+            }
+          }
         });
       }
     }
@@ -737,7 +781,10 @@
         chartRG.update();
       }
       if (chartSaldo) {
-        chartSaldo.data.datasets[0].data = [Number(saldo || 0)];
+        const s = Number(saldo || 0);
+        chartSaldo.data.datasets[0].data = [s];
+        chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"];
+        chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"];
         chartSaldo.update();
       }
     }
@@ -769,15 +816,14 @@
       const gastosDia = Array.from({length: dim}, () => 0);
 
       try {
-        const res = await api("/api/lancamentos?limit=200", "GET");
+        const res = await api("/api/lancamentos?limit=400", "GET");
         const items = res.items || [];
 
         for (const it of items) {
-          const dtx = parseISODate(it.data);
-          if (!dtx) continue;
-          if (dtx.y !== ano || dtx.m !== mes) continue;
-
-          const idx = dtx.d - 1;
+          const dt = parseISODate(it.data);
+          if (!dt) continue;
+          if (dt.y !== ano || dt.m !== mes) continue;
+          const idx = dt.d - 1;
           if (idx < 0 || idx >= dim) continue;
 
           const tipo = String(it.tipo || "").toUpperCase();
@@ -786,9 +832,7 @@
           if (tipo === "RECEITA") receitasDia[idx] += val;
           if (tipo === "GASTO") gastosDia[idx] += val;
         }
-      } catch (e) {
-        // não logado => fica zerado
-      }
+      } catch (e) {}
 
       const saldoAcum = [];
       let acc = 0;
@@ -836,16 +880,7 @@
         $("valSaldo").textContent = "R$ 0,00";
         updateChartsTotals(0, 0, 0);
         await updateDailyChart(mes, ano);
-
-        if (e.status === 401) {
-          // cookie caiu
-          localStorage.removeItem("financeai_user");
-          rememberedEmail = "";
-          setLoggedUI(false);
-          showToast(toast, "err", "Faça login para ver o dashboard", "Sua sessão expirou. Faça login novamente.");
-        } else {
-          showToast(toast, "err", "Erro no dashboard", e.message);
-        }
+        showToast(toast, "err", "Faça login para ver o dashboard", e.message);
       }
     }
 
@@ -853,18 +888,26 @@
     $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
     $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
 
+    // Exportar mês (Sheets)
+    async function exportarMes() {
+      const toast = $("toastDash"); hideToast(toast);
+      const mes = Number($("dashMes").value);
+      const ano = Number($("dashAno").value);
+
+      try {
+        const res = await api("/api/export-month", "POST", { mes, ano });
+        showToast(toast, "ok", "Exportado para Sheets ✅", `Linhas exportadas: ${res.exported}`);
+      } catch (e) {
+        showToast(toast, "err", "Falha ao exportar", e.message);
+      }
+    }
+    $("btnExportMes").addEventListener("click", exportarMes);
+
     // -----------------------
     // Criar lançamento
     // -----------------------
     $("btnSalvarLanc").addEventListener("click", async () => {
       const toast = $("toastLanc"); hideToast(toast);
-
-      if (!isAuthed) {
-        showToast(toast, "err", "Você precisa fazer login", "Clique em Login para entrar.");
-        openAuthModal("entrar");
-        return;
-      }
-
       try{
         const payload = {
           tipo: $("lanTipo").value,
@@ -881,14 +924,6 @@
         refreshDashboard().catch(()=>{});
         carregarUltimos().catch(()=>{});
       }catch(e){
-        if (e.status === 401) {
-          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
-          localStorage.removeItem("financeai_user");
-          rememberedEmail = "";
-          setLoggedUI(false);
-          openAuthModal("entrar");
-          return;
-        }
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
     });
@@ -916,11 +951,6 @@
       const list = $("listaUltimos");
       hideToast(toast);
       list.innerHTML = "";
-
-      if (!isAuthed) {
-        list.innerHTML = `<div class="muted">Faça login para ver seus lançamentos.</div>`;
-        return;
-      }
 
       try {
         const res = await api("/api/lancamentos?limit=30", "GET");
@@ -959,13 +989,6 @@
         }).join("");
 
       } catch (e) {
-        if (e.status === 401) {
-          localStorage.removeItem("financeai_user");
-          rememberedEmail = "";
-          setLoggedUI(false);
-          list.innerHTML = `<div class="muted">Sessão expirada. Faça login novamente.</div>`;
-          return;
-        }
         showToast(toast, "err", "Erro ao carregar", e.message);
       }
     }
@@ -981,13 +1004,6 @@
         await carregarUltimos();
         await refreshDashboard();
       } catch (e) {
-        if (e.status === 401) {
-          localStorage.removeItem("financeai_user");
-          rememberedEmail = "";
-          setLoggedUI(false);
-          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
-          return;
-        }
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
     }
@@ -1000,12 +1016,12 @@
       $("editBlock").classList.remove("hidden");
       $("modalIcon").textContent = "✏️";
       $("modalTitle").textContent = "Editar lançamento";
-      $("modalSub").textContent = "Edite e salve. A alteração atualiza sua planilha.";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza seu banco.";
       openModal();
     }
 
     window.abrirEdicao = (it) => {
-      if (!isAuthed) return openAuthModal("entrar");
+      if (!currentUserEmail) return openAuthModal("entrar");
 
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
@@ -1049,14 +1065,6 @@
         await refreshDashboard();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
-        if (e.status === 401) {
-          localStorage.removeItem("financeai_user");
-          rememberedEmail = "";
-          setLoggedUI(false);
-          showToast(toast, "err", "Sessão expirada", "Faça login novamente.");
-          openAuthModal("entrar");
-          return;
-        }
         showToast(toast, "err", "Erro ao editar", e.message);
       }
     });
@@ -1066,10 +1074,7 @@
     // -----------------------
     initMesAno();
     ensureCharts();
-
-    checkSession().finally(() => {
-      refreshDashboard().catch(()=>{});
-    });
+    refreshDashboard().catch(()=>{});
   </script>
 
   <script>
