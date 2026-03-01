@@ -49,6 +49,10 @@
       border-color:rgba(255,75,110,.45);
       background: linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
+    .btn.ok{
+      border-color:rgba(46,229,157,.45);
+      background: linear-gradient(180deg, rgba(46,229,157,.26), rgba(46,229,157,.10));
+    }
     .btn.small{padding:8px 12px;font-size:13px}
 
     .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
@@ -216,7 +220,7 @@
 
         <div class="row" style="margin-top:14px">
           <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
-          <button id="btnExportMes" class="btn">📤 Exportar mês (Sheets)</button>
+          <button id="btnExportMes" class="btn ok">⬇️ Exportar mês (Sheets)</button>
           <div class="spacer"></div>
           <span class="hint">Faça login para ver seus dados.</span>
         </div>
@@ -327,8 +331,7 @@
       <div class="card">
         <h2>Investimentos</h2>
         <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no DB e opcionalmente exportar,
-          eu adiciono endpoints de investimentos também.
+          Tela pronta para evoluir.
         </p>
       </div>
     </section>
@@ -673,103 +676,28 @@
       if (c1 && !chartRG) {
         chartRG = new Chart(c1, {
           type: "doughnut",
-          data: {
-            labels: ["Receitas", "Gastos"],
-            datasets: [{
-              data: [0, 0],
-              backgroundColor: ["rgba(46,229,157,.85)", "rgba(255,75,110,.85)"],
-              borderColor: ["rgba(46,229,157,.20)", "rgba(255,75,110,.20)"],
-              borderWidth: 1,
-              hoverOffset: 6
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
-            },
-            cutout: "65%"
-          }
+          data: { labels: ["Receitas", "Gastos"], datasets: [{ data: [0, 0] }] },
+          options: { responsive: true, maintainAspectRatio: false, cutout: "65%" }
         });
       }
 
       if (c2 && !chartSaldo) {
         chartSaldo = new Chart(c2, {
           type: "bar",
-          data: {
-            labels: ["Saldo"],
-            datasets: [{
-              label: "Saldo do mês",
-              data: [0],
-              backgroundColor: ["rgba(75,140,255,.75)"],
-              borderColor: ["rgba(75,140,255,.25)"],
-              borderWidth: 1
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
-            },
-            scales: {
-              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
-              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
-            }
-          }
+          data: { labels: ["Saldo"], datasets: [{ label: "Saldo do mês", data: [0] }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
       }
 
       if (c3 && !chartDaily) {
         chartDaily = new Chart(c3, {
           type: "line",
-          data: {
-            labels: [],
-            datasets: [
-              {
-                label: "Receitas (dia)",
-                data: [],
-                borderColor: "rgba(46,229,157,.9)",
-                backgroundColor: "rgba(46,229,157,.12)",
-                tension: 0.25,
-                fill: true,
-                pointRadius: 2
-              },
-              {
-                label: "Gastos (dia)",
-                data: [],
-                borderColor: "rgba(255,75,110,.9)",
-                backgroundColor: "rgba(255,75,110,.10)",
-                tension: 0.25,
-                fill: true,
-                pointRadius: 2
-              },
-              {
-                label: "Saldo acumulado",
-                data: [],
-                borderColor: "rgba(75,140,255,.95)",
-                backgroundColor: "rgba(75,140,255,.12)",
-                tension: 0.25,
-                fill: false,
-                pointRadius: 1
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: "rgba(234,240,255,.85)" } },
-              tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
-            },
-            scales: {
-              x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } },
-              y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }
-            }
-          }
+          data: { labels: [], datasets: [
+            { label: "Receitas (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
+            { label: "Gastos (dia)", data: [], tension: 0.25, fill: true, pointRadius: 2 },
+            { label: "Saldo acumulado", data: [], tension: 0.25, fill: false, pointRadius: 1 }
+          ]},
+          options: { responsive: true, maintainAspectRatio: false }
         });
       }
     }
@@ -781,10 +709,7 @@
         chartRG.update();
       }
       if (chartSaldo) {
-        const s = Number(saldo || 0);
-        chartSaldo.data.datasets[0].data = [s];
-        chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"];
-        chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"];
+        chartSaldo.data.datasets[0].data = [Number(saldo || 0)];
         chartSaldo.update();
       }
     }
@@ -816,19 +741,15 @@
       const gastosDia = Array.from({length: dim}, () => 0);
 
       try {
-        const res = await api("/api/lancamentos?limit=400", "GET");
+        const res = await api("/api/lancamentos?limit=200", "GET");
         const items = res.items || [];
-
         for (const it of items) {
           const dt = parseISODate(it.data);
           if (!dt) continue;
           if (dt.y !== ano || dt.m !== mes) continue;
           const idx = dt.d - 1;
-          if (idx < 0 || idx >= dim) continue;
-
           const tipo = String(it.tipo || "").toUpperCase();
           const val = parseMoneyLoose(it.valor);
-
           if (tipo === "RECEITA") receitasDia[idx] += val;
           if (tipo === "GASTO") gastosDia[idx] += val;
         }
@@ -871,7 +792,6 @@
         $("valReceitas").textContent = moneyBR(res.receitas);
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
-
         updateChartsTotals(res.receitas, res.gastos, res.saldo);
         await updateDailyChart(mes, ano);
       }catch(e){
@@ -888,20 +808,18 @@
     $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
     $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
 
-    // Exportar mês (Sheets)
-    async function exportarMes() {
+    // Export mês
+    $("btnExportMes").addEventListener("click", async () => {
       const toast = $("toastDash"); hideToast(toast);
-      const mes = Number($("dashMes").value);
-      const ano = Number($("dashAno").value);
-
       try {
+        const mes = Number($("dashMes").value);
+        const ano = Number($("dashAno").value);
         const res = await api("/api/export-month", "POST", { mes, ano });
-        showToast(toast, "ok", "Exportado para Sheets ✅", `Linhas exportadas: ${res.exported}`);
+        showToast(toast, "ok", "Export concluído!", `Linhas exportadas: ${res.exported ?? 0}`);
       } catch (e) {
         showToast(toast, "err", "Falha ao exportar", e.message);
       }
-    }
-    $("btnExportMes").addEventListener("click", exportarMes);
+    });
 
     // -----------------------
     // Criar lançamento
@@ -1016,7 +934,7 @@
       $("editBlock").classList.remove("hidden");
       $("modalIcon").textContent = "✏️";
       $("modalTitle").textContent = "Editar lançamento";
-      $("modalSub").textContent = "Edite e salve. A alteração atualiza seu banco.";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza seus dados.";
       openModal();
     }
 
