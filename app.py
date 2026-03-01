@@ -11,9 +11,6 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "financeai-secret")
 app.config["JSON_AS_ASCII"] = False
 
-# =========================
-# Headers / UTF-8
-# =========================
 @app.after_request
 def headers_fix(response):
     mt = (response.mimetype or "").lower()
@@ -35,21 +32,21 @@ def headers_fix(response):
 def robots_txt():
     return send_from_directory("static", "robots.txt")
 
-# =========================
-# Google Sheets
-# =========================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
-# Nomes das abas (como você confirmou)
+# Planilha
+SHEET_NAME = "Controle Financeiro"  # fallback
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "").strip()  # ✅ recomendado
+
 ABA_USUARIOS = "Usuarios"
 ABA_LANCAMENTOS = "Lancamentos"
+ABA_METAS = "Metas"
+ABA_INVESTIMENTOS = "Investimentos"
+ABA_PASSWORDRESETS = "PassworResets"
 ABA_WHATSAPP = "WhatsApp"
-
-# IMPORTANTE: agora abrimos por ID (mais confiável no Railway)
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "").strip()
 
 _client = None
 _spreadsheet = None
@@ -70,16 +67,21 @@ def get_client():
 
 def open_spreadsheet():
     """
-    Abre a planilha por ID (SPREADSHEET_ID).
+    ✅ Preferência: abrir por ID (SPREADSHEET_ID) para garantir que é a planilha certa.
+    Fallback: abrir por nome.
     """
     global _spreadsheet
     if _spreadsheet:
         return _spreadsheet
 
-    if not SPREADSHEET_ID:
-        raise Exception("SPREADSHEET_ID não configurado no Railway")
+    gc = get_client()
 
-    _spreadsheet = get_client().open_by_key(SPREADSHEET_ID)
+    if SPREADSHEET_ID:
+        _spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        return _spreadsheet
+
+    # fallback (não recomendado)
+    _spreadsheet = gc.open(SHEET_NAME)
     return _spreadsheet
 
 def get_sheet(nome_aba):
@@ -113,21 +115,15 @@ def parse_money(v):
         return 0.0
 
 def ensure_headers():
-    # Mantém seus headers originais (atenção: Usuarios tem 6 colunas aqui)
     get_or_create_sheet(ABA_USUARIOS, ["email","senha","nome_apelido","nome_completo","telefone","criado_em"])
     get_or_create_sheet(ABA_LANCAMENTOS, ["user_email","data","tipo","categoria","descricao","valor","criado_em"])
+    get_or_create_sheet(ABA_METAS, ["user_email","nome","valor_alvo","data_limite","criado_em"])
+    get_or_create_sheet(ABA_INVESTIMENTOS, ["user_email","ativo","valor","data","criado_em"])
+    get_or_create_sheet(ABA_PASSWORDRESETS, ["Email","CodeHash","ExpiresAt","CreatedAt","UsedAt"])
     get_or_create_sheet(ABA_WHATSAPP, ["wa_number","user_email","criado_em"])
 
 def require_login():
     return session.get("user")
-
-# =========================
-# WhatsApp (Opção B: vínculo obrigatório)
-# =========================
-WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "")
-WA_PHONE_NUMBER_ID = os.environ.get("WA_PHONE_NUMBER_ID", "")
-WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
-GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v22.0")
 
 def normalize_wa_number(raw: str) -> str:
     s = (raw or "").strip().replace("+", "")
@@ -171,6 +167,12 @@ def unlink_wa(wa_number: str):
             return True, "✅ Número desconectado."
     return False, "Esse número não estava conectado."
 
+# WhatsApp Cloud API
+WA_VERIFY_TOKEN = os.environ.get("WA_VERIFY_TOKEN", "")
+WA_PHONE_NUMBER_ID = os.environ.get("WA_PHONE_NUMBER_ID", "")
+WA_ACCESS_TOKEN = os.environ.get("WA_ACCESS_TOKEN", "")
+GRAPH_VERSION = os.environ.get("GRAPH_VERSION", "v22.0")
+
 def wa_send_text(to_number: str, text: str):
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN):
         print("WA creds missing. Would send:", text)
@@ -182,7 +184,7 @@ def wa_send_text(to_number: str, text: str):
         "messaging_product": "whatsapp",
         "to": normalize_wa_number(to_number),
         "type": "text",
-        "text": {"body": text},
+        "text": {"body": text, "preview_url": False},
     }
     r = requests.post(url, headers=headers, json=payload, timeout=20)
     if r.status_code >= 400:
@@ -226,8 +228,42 @@ def parse_finance_command(text: str):
         "data": date.today().isoformat(),
     }
 
-# ---- Webhook verify (mantém caminho antigo + alias novo) ----
+# ========== DEBUG ==========
+@app.get("/debug/env")
+def debug_env():
+    sa_email = ""
+    try:
+        creds_json = os.environ.get("SERVICE_ACCOUNT_JSON", "")
+        if creds_json:
+            sa_email = json.loads(creds_json).get("client_email", "")
+    except Exception:
+        sa_email = "(erro ao ler JSON)"
+
+    return jsonify({
+        "SPREADSHEET_ID_set": bool(SPREADSHEET_ID),
+        "SHEET_NAME": SHEET_NAME,
+        "SERVICE_ACCOUNT_JSON_set": bool(os.environ.get("SERVICE_ACCOUNT_JSON")),
+        "SERVICE_ACCOUNT_client_email": sa_email,
+        "WA_VERIFY_TOKEN_set": bool(WA_VERIFY_TOKEN),
+        "WA_PHONE_NUMBER_ID_set": bool(WA_PHONE_NUMBER_ID),
+        "WA_ACCESS_TOKEN_set": bool(WA_ACCESS_TOKEN),
+        "GRAPH_VERSION": GRAPH_VERSION,
+    })
+
+@app.get("/debug/sheets-write")
+def debug_sheets_write():
+    try:
+        ensure_headers()
+        ws = get_sheet(ABA_LANCAMENTOS)
+        row = ["debug@test.com", date.today().isoformat(), "GASTO", "Teste", "Rota debug", "1.23", datetime.utcnow().isoformat()]
+        ws.append_row(row, value_input_option="USER_ENTERED")
+        return jsonify(ok=True, written=row)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+# ========== WEBHOOK VERIFY ==========
 @app.get("/webhooks/whatsapp")
+@app.get("/webhook")
 def wa_verify():
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
@@ -236,21 +272,15 @@ def wa_verify():
         return challenge or "", 200
     return "forbidden", 403
 
-@app.get("/webhook")
-def wa_verify_alias():
-    # Alias para caso você tenha configurado /webhook no Meta
-    return wa_verify()
-
-# ---- Webhook receive (mantém caminho antigo + alias novo) ----
+# ========== WEBHOOK RECEIVE ==========
 @app.post("/webhooks/whatsapp")
+@app.post("/webhook")
 def wa_webhook():
     payload = request.get_json(silent=True) or {}
     try:
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {}) or {}
-
-                # mensagens recebidas
                 for msg in (value.get("messages", []) or []):
                     from_number = normalize_wa_number(msg.get("from"))
                     msg_type = msg.get("type")
@@ -260,7 +290,12 @@ def wa_webhook():
                         cmd = body.strip()
                         low = cmd.lower()
 
-                        # vínculo
+                        # fluxo simples: se mandar email puro, vincula
+                        if "@" in cmd and " " not in cmd and "." in cmd:
+                            ok, resp = link_wa_to_email(from_number, cmd)
+                            wa_send_text(from_number, resp + "\n\nAgora envie: gasto 32,90 mercado")
+                            continue
+
                         if low.startswith("conectar "):
                             email = cmd.split(" ", 1)[1].strip()
                             _, resp = link_wa_to_email(from_number, email)
@@ -272,21 +307,18 @@ def wa_webhook():
                             wa_send_text(from_number, resp)
                             continue
 
-                        # opção B: obrigatório vincular
                         user_email = find_user_by_wa(from_number)
                         if not user_email:
-                            wa_send_text(
-                                from_number,
-                                "🔒 Seu WhatsApp ainda não está conectado.\n\n"
-                                "Envie: conectar SEU_EMAIL_DO_APP\n"
-                                "Ex: conectar david@email.com"
+                            wa_send_text(from_number,
+                                "🔒 Antes de registrar lançamentos, preciso vincular seu número.\n\n"
+                                "Me envie seu email do app (ex: nome@dominio.com)\n"
+                                "ou envie: conectar SEU_EMAIL"
                             )
                             continue
 
                         parsed = parse_finance_command(cmd)
                         if not parsed:
-                            wa_send_text(
-                                from_number,
+                            wa_send_text(from_number,
                                 "Não entendi 😅\n\nUse assim:\n"
                                 "• gasto 32,90 mercado\n"
                                 "• receita 2500 salario\n"
@@ -304,63 +336,25 @@ def wa_webhook():
                             parsed["descricao"],
                             parsed["valor"],
                             datetime.utcnow().isoformat()
-                        ])
+                        ], value_input_option="USER_ENTERED")
 
-                        wa_send_text(
-                            from_number,
-                            f"✅ Lançamento salvo!\n"
-                            f"Tipo: {parsed['tipo']}\n"
+                        wa_send_text(from_number,
+                            f"✅ Lançamento registrado!\n"
+                            f"{parsed['tipo']} • {parsed['categoria']}\n"
+                            f"{parsed['descricao']}\n"
                             f"Valor: R$ {parsed['valor'].replace('.', ',')}\n"
-                            f"Categoria: {parsed['categoria']}\n"
                             f"Data: {parsed['data']}"
                         )
                         continue
 
-                    # anexos (comprovantes etc.)
-                    if msg_type in ("image", "document", "audio", "video"):
-                        user_email = find_user_by_wa(from_number)
-                        if not user_email:
-                            wa_send_text(from_number, "🔒 Conecte primeiro: conectar SEU_EMAIL_DO_APP")
-                            continue
-
-                        media = msg.get(msg_type, {}) or {}
-                        media_id = media.get("id")
-                        caption = (media.get("caption") or "").strip()
-
-                        ensure_headers()
-                        ws_lanc = get_sheet(ABA_LANCAMENTOS)
-                        ws_lanc.append_row([
-                            user_email,
-                            date.today().isoformat(),
-                            "GASTO",
-                            "Comprovante",
-                            f"{caption} [MID:{media_id}]".strip(),
-                            "0.00",
-                            datetime.utcnow().isoformat()
-                        ])
-
-                        wa_send_text(
-                            from_number,
-                            "📎 Comprovante recebido!\n"
-                            "Salvei como 'Comprovante' (valor 0,00) para você editar depois no app."
-                        )
-                        continue
     except Exception as e:
         print("WA webhook error:", str(e))
 
     return "ok", 200
 
-@app.post("/webhook")
-def wa_webhook_alias():
-    # Alias para caso você tenha configurado /webhook no Meta
-    return wa_webhook()
-
-# =========================
-# Web app
-# =========================
+# ------------------ Web app ------------------
 @app.get("/")
 def index():
-    # Se você usa templates/index.html
     return render_template("index.html")
 
 @app.post("/api/register")
@@ -409,27 +403,6 @@ def logout():
     session.clear()
     return jsonify(ok=True)
 
-@app.post("/api/reset_password")
-def reset_password():
-    ensure_headers()
-    data = request.get_json(force=True) or {}
-    email = str(data.get("email","")).lower().strip()
-    nova = str(data.get("nova_senha",""))
-    conf = str(data.get("confirmar",""))
-
-    if not email or not nova:
-        return jsonify(error="Email e nova senha obrigatórios"), 400
-    if nova != conf:
-        return jsonify(error="Senhas não conferem"), 400
-
-    ws = get_sheet(ABA_USUARIOS)
-    rows = ws.get_all_records()
-    for i, r in enumerate(rows, start=2):
-        if str(r.get("email","")).lower().strip() == email:
-            ws.update_cell(i, 2, nova)
-            return jsonify(ok=True)
-    return jsonify(error="Email não encontrado"), 404
-
 @app.get("/api/lancamentos")
 def listar_lancamentos():
     user = require_login()
@@ -451,48 +424,17 @@ def criar_lancamento():
     user = require_login()
     if not user:
         return jsonify(error="Não logado"), 401
-    data = request.get_json(force=True) or {}
+    data_ = request.get_json(force=True) or {}
     ws = get_sheet(ABA_LANCAMENTOS)
     ws.append_row([
         user,
-        data.get("data"),
-        data.get("tipo"),
-        data.get("categoria"),
-        data.get("descricao"),
-        data.get("valor"),
+        data_.get("data"),
+        data_.get("tipo"),
+        data_.get("categoria"),
+        data_.get("descricao"),
+        data_.get("valor"),
         datetime.utcnow().isoformat()
-    ])
-    return jsonify(ok=True)
-
-@app.put("/api/lancamentos/<int:row>")
-def editar_lancamento(row):
-    user = require_login()
-    if not user:
-        return jsonify(error="Não logado"), 401
-    data = request.get_json(force=True) or {}
-    ws = get_sheet(ABA_LANCAMENTOS)
-    if str(ws.cell(row,1).value).lower().strip() != user:
-        return jsonify(error="Sem permissão"), 403
-    ws.update(f"A{row}:G{row}", [[
-        user,
-        data.get("data"),
-        data.get("tipo"),
-        data.get("categoria"),
-        data.get("descricao"),
-        data.get("valor"),
-        datetime.utcnow().isoformat()
-    ]])
-    return jsonify(ok=True)
-
-@app.delete("/api/lancamentos/<int:row>")
-def deletar_lancamento(row):
-    user = require_login()
-    if not user:
-        return jsonify(error="Não logado"), 401
-    ws = get_sheet(ABA_LANCAMENTOS)
-    if str(ws.cell(row,1).value).lower().strip() != user:
-        return jsonify(error="Sem permissão"), 403
-    ws.delete_rows(row)
+    ], value_input_option="USER_ENTERED")
     return jsonify(ok=True)
 
 @app.get("/api/dashboard")
@@ -525,5 +467,5 @@ def dashboard():
     return jsonify(receitas=receitas, gastos=gastos, saldo=receitas-gastos)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
