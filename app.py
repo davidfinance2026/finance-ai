@@ -16,7 +16,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 
-_raw_db_url = (os.getenv('DATABASE_URL') or '').strip()
+_raw_db_url = os.getenv('DATABASE_URL', '').strip()
 if _raw_db_url.startswith('postgres://'):
     _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1)
 
@@ -32,16 +32,17 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 DB_ENABLED = bool(_raw_db_url)
 
-# Cookies de sessão (Railway usa HTTPS). Para PWA/mobile normalmente Lax funciona.
-# Se algum navegador bloquear sessão, você pode setar SESSION_COOKIE_SAMESITE=None via env.
-_cookie_samesite = (os.getenv('SESSION_COOKIE_SAMESITE') or 'Lax').strip()
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = _cookie_samesite
+# Cookies de sessão (Railway = HTTPS)
+# Se quiser testar em HTTP local, coloque COOKIE_SECURE=0
+COOKIE_SECURE = os.getenv('COOKIE_SECURE', '1').strip() not in ('0', 'false', 'False')
+app.config['SESSION_COOKIE_SECURE'] = COOKIE_SECURE
+app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('COOKIE_SAMESITE', 'Lax')
 
-# Ajuste de tamanho mínimo de senha (pra não ficar “curta”).
-# IMPORTANTE: o problema que você viu geralmente é o front mandando chave errada (senha vs password),
-# então aqui aceitamos várias chaves.
-MIN_PASSWORD_LEN = int(os.getenv('MIN_PASSWORD_LEN', '4'))  # pode subir pra 6/8 depois se quiser
+# senha mínima
+MIN_PASSWORD_LEN = int(os.getenv('MIN_PASSWORD_LEN', '6'))
+
+# Token do "botão de pânico"
+PANIC_TOKEN = os.getenv('PANIC_TOKEN', '').strip()
 
 # -------------------------
 # DB
@@ -51,29 +52,29 @@ db = SQLAlchemy(app)
 
 class User(db.Model):
     __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
 
+    id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(64), nullable=False)
     password_set = db.Column(db.Boolean, nullable=False, server_default=text('false'))
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class Transaction(db.Model):
     __tablename__ = 'transactions'
-    id = db.Column(db.Integer, primary_key=True)
 
+    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+
     tipo = db.Column(db.String(16), nullable=False)
 
-    # No Postgres a coluna real é "data" (pelo seu print)
+    # Coluna real no Postgres é "data"
     date = db.Column('data', db.Date, nullable=False, index=True)
 
     categoria = db.Column(db.String(80), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
 
-    # No Postgres a coluna real é "valor"
+    # Coluna real no Postgres é "valor"
     valor = db.Column('valor', db.Numeric(12, 2), nullable=False)
 
     origem = db.Column(db.String(16), nullable=False, default='APP')
@@ -82,8 +83,8 @@ class Transaction(db.Model):
 
 class WaLink(db.Model):
     __tablename__ = 'wa_links'
-    id = db.Column(db.Integer, primary_key=True)
 
+    id = db.Column(db.Integer, primary_key=True)
     wa_from = db.Column(db.String(40), unique=True, nullable=False, index=True)
     user_email = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -91,8 +92,8 @@ class WaLink(db.Model):
 
 class ProcessedMessage(db.Model):
     __tablename__ = 'processed_messages'
-    id = db.Column(db.Integer, primary_key=True)
 
+    id = db.Column(db.Integer, primary_key=True)
     msg_id = db.Column(db.String(120), unique=True, nullable=False, index=True)
     wa_from = db.Column(db.String(40), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -112,7 +113,7 @@ def _create_tables_if_needed() -> None:
             except Exception:
                 db.session.rollback()
 
-        # migrações leves / garantias
+        # migrações leves
         if 'users' in table_names:
             _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT false")
 
@@ -124,27 +125,20 @@ def _create_tables_if_needed() -> None:
         if 'processed_messages' in table_names:
             _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
 
+        # GARANTIR data/valor no transactions e tentar converter tipo se veio como texto
         if 'transactions' in table_names:
-            # garante as colunas esperadas no Postgres
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS data DATE")
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tipo VARCHAR(16)")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS categoria VARCHAR(80)")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS descricao TEXT")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS origem VARCHAR(16)")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP")
-
-            # tenta converter tipos se tiver DB antigo com texto
             _run("""
             DO $$
             BEGIN
               BEGIN
-                ALTER TABLE transactions ALTER COLUMN data TYPE DATE USING NULLIF(data,'')::date;
+                ALTER TABLE transactions ALTER COLUMN data TYPE DATE USING data::date;
               EXCEPTION WHEN others THEN
               END;
 
               BEGIN
-                ALTER TABLE transactions ALTER COLUMN valor TYPE NUMERIC(12,2) USING REPLACE(NULLIF(valor::text,''), ',', '.')::numeric;
+                ALTER TABLE transactions ALTER COLUMN valor TYPE NUMERIC(12,2) USING valor::numeric;
               EXCEPTION WHEN others THEN
               END;
             END$$;
@@ -156,6 +150,7 @@ def _create_tables_if_needed() -> None:
 
 with app.app_context():
     _create_tables_if_needed()
+
 
 # -------------------------
 # Helpers
@@ -180,7 +175,6 @@ def _parse_brl_value(textv: str) -> Decimal:
     if not s:
         raise ValueError('valor vazio')
 
-    # mantém números e separadores
     s = re.sub(r'[^0-9,\.-]', '', s)
 
     if '.' in s and ',' in s:
@@ -221,21 +215,6 @@ def _safe_date_iso(v) -> str:
         return datetime.utcnow().date().isoformat()
 
 
-def _get_password_from_payload(data: dict) -> str:
-    # aceita várias chaves (corrige front mandando "senha" ao invés de "password")
-    candidates = [
-        data.get('password'),
-        data.get('senha'),
-        data.get('newPassword'),
-        data.get('new_password'),
-        data.get('pass'),
-    ]
-    for c in candidates:
-        if c is not None:
-            return str(c).strip()
-    return ''
-
-
 def _get_or_create_user(email: str, password: str | None = None) -> User:
     user = User.query.filter_by(email=email).first()
     if user:
@@ -254,14 +233,44 @@ def _get_or_create_user(email: str, password: str | None = None) -> User:
 
 
 def _status_payload():
-    return {
-        'ok': True,
-        'db_enabled': DB_ENABLED,
-        'db_uri_set': bool(_raw_db_url),
-        'cookie_samesite': app.config.get('SESSION_COOKIE_SAMESITE'),
-        'min_password_len': MIN_PASSWORD_LEN,
-        'panic_enabled': bool(os.getenv('PANIC_TOKEN')),
-    }
+    return {'ok': True, 'db_enabled': DB_ENABLED, 'db_uri_set': bool(_raw_db_url)}
+
+
+def _pick_first_str(data: dict, keys: list[str]) -> str:
+    """Pega a primeira string não-vazia entre várias chaves.
+    Ajuda quando o front manda 'senha' ao invés de 'password', etc."""
+    for k in keys:
+        v = data.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ''
+
+
+def _validate_password(pw: str) -> tuple[bool, str]:
+    if len(pw) < MIN_PASSWORD_LEN:
+        return False, f'Senha muito curta (mínimo {MIN_PASSWORD_LEN} caracteres)'
+    return True, ''
+
+
+def _panic_auth_ok() -> bool:
+    """Autenticação simples por token.
+    Aceita:
+      - Header: X-Panic-Token
+      - Query:  ?token=...
+      - JSON:   {"token":"..."}
+    """
+    if not PANIC_TOKEN:
+        return False  # se não setou o token, desabilita a rota
+    header = (request.headers.get('X-Panic-Token') or '').strip()
+    q = (request.args.get('token') or '').strip()
+    body = request.get_json(silent=True) or {}
+    j = (str(body.get('token') or '').strip())
+    token = header or q or j
+    return token == PANIC_TOKEN
+
 
 # -------------------------
 # Static / Frontend
@@ -297,51 +306,50 @@ def robots():
 def health():
     return jsonify(_status_payload())
 
-# -------------------------
-# Panic reset (Botão de Pânico)
-# -------------------------
-def _panic_allowed() -> bool:
-    token = (os.getenv('PANIC_TOKEN') or '').strip()
-    if not token:
-        return False
-    got = (request.headers.get('X-Panic-Token') or '').strip()
-    return got and got == token
 
-
-@app.post('/api/panic_reset')
+# -------------------------
+# PANIC RESET (Botão de pânico)
+# -------------------------
+@app.route('/api/panic_reset', methods=['POST', 'GET'])
 def api_panic_reset():
-    """
-    APAGA TUDO (users, transactions, wa_links, processed_messages).
-    Protegido por X-Panic-Token e exige {"confirm": true}.
-    """
-    if not _panic_allowed():
-        return jsonify({'error': 'Não autorizado'}), 401
+    # Se não existir PANIC_TOKEN, devolve 404 (pra nem “aparecer” a rota)
+    if not PANIC_TOKEN:
+        return jsonify({'error': 'not found'}), 404
 
-    data = request.get_json(silent=True) or {}
-    if data.get('confirm') is not True:
-        return jsonify({'error': 'Confirmação necessária: envie {"confirm": true}'}), 400
+    if not _panic_auth_ok():
+        return jsonify({'error': 'forbidden'}), 403
 
     try:
-        # TRUNCATE com CASCADE para limpar e resetar IDs
-        db.session.execute(text("TRUNCATE TABLE transactions RESTART IDENTITY CASCADE"))
-        db.session.execute(text("TRUNCATE TABLE wa_links RESTART IDENTITY CASCADE"))
-        db.session.execute(text("TRUNCATE TABLE processed_messages RESTART IDENTITY CASCADE"))
-        db.session.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
-        db.session.commit()
+        session.clear()
 
-        # também limpa sessão do usuário atual
-        session.pop('user_email', None)
+        # Postgres: TRUNCATE com RESTART IDENTITY reseta IDs
+        # SQLite: delete simples
+        uri = (app.config.get('SQLALCHEMY_DATABASE_URI') or '').lower()
 
-        return jsonify({'ok': True, 'message': 'Reset completo executado. Todas as tabelas foram limpas.'})
+        if uri.startswith('postgresql'):
+            db.session.execute(text("""
+                TRUNCATE TABLE
+                    processed_messages,
+                    wa_links,
+                    transactions,
+                    users
+                RESTART IDENTITY CASCADE;
+            """))
+            db.session.commit()
+        else:
+            # fallback (sqlite)
+            db.session.execute(text("DELETE FROM processed_messages;"))
+            db.session.execute(text("DELETE FROM wa_links;"))
+            db.session.execute(text("DELETE FROM transactions;"))
+            db.session.execute(text("DELETE FROM users;"))
+            db.session.commit()
+
+        return jsonify({'ok': True, 'message': 'Banco limpo com sucesso.'})
+
     except Exception as e:
         db.session.rollback()
-        print('panic_reset error:', repr(e))
-        return jsonify({'error': 'Falha ao executar reset', 'detail': str(e)}), 500
+        return jsonify({'error': 'Falha ao limpar banco', 'detail': repr(e)}), 500
 
-
-@app.get('/api/panic_status')
-def api_panic_status():
-    return jsonify({'panic_enabled': bool(os.getenv('PANIC_TOKEN'))})
 
 # -------------------------
 # Auth API
@@ -349,24 +357,27 @@ def api_panic_status():
 @app.post('/api/register')
 def api_register():
     data = request.get_json(silent=True) or {}
-    email = (data.get('email') or '').strip().lower()
-    password = _get_password_from_payload(data)
+
+    email = (data.get('email') or data.get('Email') or '').strip().lower()
+    password = _pick_first_str(data, ['password', 'senha', 'pass', 'newPassword', 'novaSenha'])
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
 
-    if len(password) < MIN_PASSWORD_LEN:
-        return jsonify({'error': f'Senha muito curta (mín {MIN_PASSWORD_LEN})'}), 400
+    ok, msg = _validate_password(password)
+    if not ok:
+        return jsonify({'error': msg}), 400
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        # Se existir e password_set for False, “reivindica” a conta
+        # “claim” de conta criada automaticamente (ex: WhatsApp)
         if getattr(existing, 'password_set', False) is False:
             existing.password_hash = _hash_password(password)
             existing.password_set = True
             db.session.commit()
             session['user_email'] = email
             return jsonify({'ok': True, 'email': email, 'claimed': True})
+
         return jsonify({'error': 'Email já cadastrado'}), 409
 
     user = _get_or_create_user(email, password=password)
@@ -377,13 +388,16 @@ def api_register():
 @app.post('/api/reset_password')
 def api_reset_password():
     data = request.get_json(silent=True) or {}
+
     email = (data.get('email') or '').strip().lower()
-    new_password = _get_password_from_payload(data)
+    new_password = _pick_first_str(data, ['newPassword', 'password', 'senha', 'novaSenha'])
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
-    if len(new_password) < MIN_PASSWORD_LEN:
-        return jsonify({'error': f'Senha muito curta (mín {MIN_PASSWORD_LEN})'}), 400
+
+    ok, msg = _validate_password(new_password)
+    if not ok:
+        return jsonify({'error': msg}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
@@ -392,18 +406,15 @@ def api_reset_password():
     user.password_hash = _hash_password(new_password)
     user.password_set = True
     db.session.commit()
-
-    # opcional: loga direto após reset
-    session['user_email'] = email
-
     return jsonify({'ok': True})
 
 
 @app.post('/api/login')
 def api_login():
     data = request.get_json(silent=True) or {}
+
     email = (data.get('email') or '').strip().lower()
-    password = _get_password_from_payload(data)
+    password = _pick_first_str(data, ['password', 'senha', 'pass'])
 
     user = User.query.filter_by(email=email).first()
     if not user or user.password_hash != _hash_password(password):
@@ -422,6 +433,7 @@ def api_logout():
 @app.get('/api/me')
 def api_me():
     return jsonify({'email': _get_logged_email()})
+
 
 # -------------------------
 # Transactions API
@@ -565,10 +577,11 @@ def api_dashboard():
         'ano': ano,
     })
 
+
 # -------------------------
 # WhatsApp Cloud API Webhook
 # -------------------------
-WA_VERIFY_TOKEN = (os.getenv('WA_VERIFY_TOKEN') or '').strip()
+WA_VERIFY_TOKEN = os.getenv('WA_VERIFY_TOKEN', '').strip()
 
 
 def _parse_wa_text_to_transaction(msg_text: str):
@@ -702,6 +715,7 @@ def wa_webhook():
     except Exception as e:
         print('WA webhook error:', repr(e))
         return jsonify({'ok': True})
+
 
 # -------------------------
 # Entry
