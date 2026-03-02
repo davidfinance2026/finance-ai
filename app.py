@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import hashlib
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
@@ -7,7 +8,6 @@ from decimal import Decimal, InvalidOperation
 from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # -------------------------
 # App / Config
@@ -17,7 +17,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 
-# Railway DATABASE_URL
 _raw_db_url = os.getenv('DATABASE_URL', '').strip()
 if _raw_db_url.startswith('postgres://'):
     _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1)
@@ -25,7 +24,6 @@ if _raw_db_url.startswith('postgres://'):
 app.config['SQLALCHEMY_DATABASE_URI'] = _raw_db_url or 'sqlite:///' + os.path.join(BASE_DIR, 'local.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Railway/free Postgres costuma ter limite baixo de conexões.
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 280,
@@ -34,6 +32,10 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 DB_ENABLED = bool(_raw_db_url)
+
+# IMPORTANT: para cookies de sessão funcionarem bem no Railway (HTTPS + cross-site em alguns casos)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # -------------------------
 # DB
@@ -46,8 +48,7 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    # Aumentado para não dar problema e para suportar hashes maiores
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(64), nullable=False)
     password_set = db.Column(db.Boolean, nullable=False, server_default=text('false'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -58,19 +59,18 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
 
-    tipo = db.Column(db.String(16), nullable=False)  # RECEITA | GASTO
+    tipo = db.Column(db.String(16), nullable=False)
 
-    # >>> IMPORTANTÍSSIMO: no seu banco a coluna chama "data"
-    # então mapeamos o atributo Python "date" para a coluna real "data"
+    # MAPEIA PARA A COLUNA REAL DO POSTGRES (print mostra "data")
     date = db.Column('data', db.Date, nullable=False, index=True)
 
     categoria = db.Column(db.String(80), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
 
-    # No banco pode ter vindo como VARCHAR. A migração abaixo converte para NUMERIC(12,2).
-    valor = db.Column(db.Numeric(12, 2), nullable=False)
+    # MAPEIA PARA A COLUNA REAL DO POSTGRES (print mostra "valor")
+    valor = db.Column('valor', db.Numeric(12, 2), nullable=False)
 
-    origem = db.Column(db.String(16), nullable=False, default='APP')  # APP | WA
+    origem = db.Column(db.String(16), nullable=False, default='APP')
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -92,19 +92,6 @@ class ProcessedMessage(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
-# -------------------------
-# Simple migrations (no Alembic)
-# -------------------------
-def _ddl_try(sql: str):
-    try:
-        db.session.execute(text(sql))
-        db.session.commit()
-        return True
-    except Exception:
-        db.session.rollback()
-        return False
-
-
 def _create_tables_if_needed() -> None:
     try:
         db.create_all()
@@ -112,51 +99,51 @@ def _create_tables_if_needed() -> None:
         insp = inspect(db.engine)
         table_names = set(insp.get_table_names())
 
-        def _add_col_if_missing(table: str, ddl: str):
-            _ddl_try(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {ddl}")
+        def _run(sql: str):
+            try:
+                db.session.execute(text(sql))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
-        # users: garantir colunas e tamanho do hash
+        # migrações leves
         if 'users' in table_names:
-            _add_col_if_missing('users', 'password_set BOOLEAN NOT NULL DEFAULT false')
-            # aumenta tamanho da coluna password_hash (caso tenha sido criada com 64)
-            _ddl_try("ALTER TABLE users ALTER COLUMN password_hash TYPE VARCHAR(255)")
+            _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT false")
 
-        # wa_links
         if 'wa_links' in table_names:
-            _add_col_if_missing('wa_links', 'wa_from VARCHAR(40)')
-            _add_col_if_missing('wa_links', 'user_email VARCHAR(255)')
-            _add_col_if_missing('wa_links', 'created_at TIMESTAMP')
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)")
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMP")
 
-        # processed_messages
         if 'processed_messages' in table_names:
-            _add_col_if_missing('processed_messages', 'wa_from VARCHAR(40)')
+            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
 
-        # transactions: corrigir tipos/colunas
+        # GARANTIR QUE transactions TEM data/valor (nomes do seu print)
         if 'transactions' in table_names:
-            # garantir coluna data e created_at (caso existam versões antigas)
-            _add_col_if_missing('transactions', 'data DATE')
-            _add_col_if_missing('transactions', 'created_at TIMESTAMP')
-            _add_col_if_missing('transactions', 'origem VARCHAR(16) NOT NULL DEFAULT \'APP\'')
+            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS data DATE")
+            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)")
 
-            # converter "valor" para NUMERIC(12,2) se estiver como texto (VARCHAR)
-            # Isso resolve o erro: Unknown PG numeric type: 1043
-            # Também lida com valores "1.234,56" e "1234,56"
-            _ddl_try("""
-                ALTER TABLE transactions
-                ALTER COLUMN valor TYPE NUMERIC(12,2)
-                USING (
-                    NULLIF(
-                        REPLACE(
-                            REPLACE(valor::text, '.', ''),
-                            ',', '.'
-                        ),
-                        ''
-                    )::numeric
-                )
+            # Se data/valor existirem como texto em DB antigo, tenta converter
+            _run("""
+            DO $$
+            BEGIN
+              -- data pode estar como VARCHAR: tenta converter para DATE se possível
+              BEGIN
+                ALTER TABLE transactions ALTER COLUMN data TYPE DATE USING data::date;
+              EXCEPTION WHEN others THEN
+                -- ignora se já for DATE ou se não der pra converter
+              END;
+
+              BEGIN
+                ALTER TABLE transactions ALTER COLUMN valor TYPE NUMERIC(12,2) USING valor::numeric;
+              EXCEPTION WHEN others THEN
+                -- ignora se já for NUMERIC ou se não der pra converter
+              END;
+            END$$;
             """)
 
     except Exception as e:
-        print('DB create_all/migrate failed:', repr(e))
+        print('DB create_all failed:', repr(e))
 
 
 with app.app_context():
@@ -166,6 +153,10 @@ with app.app_context():
 # -------------------------
 # Helpers
 # -------------------------
+def _hash_password(pw: str) -> str:
+    return hashlib.sha256((pw or '').encode('utf-8')).hexdigest()
+
+
 def _get_logged_email() -> str | None:
     return session.get('user_email')
 
@@ -174,12 +165,11 @@ def _require_login() -> str | None:
     return _get_logged_email()
 
 
-def _parse_brl_value(text_in: str) -> Decimal:
-    """Accepts: '45', '45,90', '45.90', '1.234,56', '1234.56' -> Decimal"""
-    if text_in is None:
+def _parse_brl_value(textv: str) -> Decimal:
+    if textv is None:
         raise ValueError('valor vazio')
 
-    s = str(text_in).strip()
+    s = str(textv).strip()
     if not s:
         raise ValueError('valor vazio')
 
@@ -211,25 +201,17 @@ def _parse_date_any(d: str | None) -> date:
     return datetime.utcnow().date()
 
 
-def _hash_password(pw: str) -> str:
-    # hash moderno via werkzeug (pbkdf2)
-    return generate_password_hash(pw or '')
-
-
-def _check_password(stored_hash: str, pw: str) -> bool:
-    if not stored_hash:
-        return False
-
-    # Se por algum motivo ainda tiver hash SHA256 antigo (64 hex), aceita também:
-    if re.fullmatch(r'[0-9a-f]{64}', stored_hash or ''):
-        legacy = hashlib.sha256((pw or '').encode('utf-8')).hexdigest()
-        return legacy == stored_hash
-
-    # WerkZeug
+def _safe_date_iso(v) -> str:
+    # evita o crash "str has no attribute isoformat"
+    if v is None:
+        return datetime.utcnow().date().isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
     try:
-        return check_password_hash(stored_hash, pw or '')
+        # string tipo '2026-03-01'
+        return _parse_date_any(str(v)).isoformat()
     except Exception:
-        return False
+        return datetime.utcnow().date().isoformat()
 
 
 def _get_or_create_user(email: str, password: str | None = None) -> User:
@@ -238,10 +220,11 @@ def _get_or_create_user(email: str, password: str | None = None) -> User:
         return user
 
     if password is None:
-        # conta criada automaticamente (WhatsApp)
-        user = User(email=email, password_hash=_hash_password(os.urandom(16).hex()), password_set=False)
+        pw_hash = _hash_password(os.urandom(16).hex())
+        user = User(email=email, password_hash=pw_hash, password_set=False)
     else:
-        user = User(email=email, password_hash=_hash_password(password), password_set=True)
+        pw_hash = _hash_password(password)
+        user = User(email=email, password_hash=pw_hash, password_set=True)
 
     db.session.add(user)
     db.session.commit()
@@ -303,7 +286,6 @@ def api_register():
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        # conta criada automaticamente (WhatsApp): permitir “reivindicar”
         if getattr(existing, 'password_set', False) is False:
             existing.password_hash = _hash_password(password)
             existing.password_set = True
@@ -321,14 +303,7 @@ def api_register():
 def api_reset_password():
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
-
-    # Aceita variações de nome para evitar “senha muito curta” por campo errado do front
-    new_password = (
-        (data.get('newPassword') or '')
-        or (data.get('new_password') or '')
-        or (data.get('password') or '')
-        or (data.get('novaSenha') or '')
-    ).strip()
+    new_password = (data.get('newPassword') or data.get('password') or '').strip()
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
@@ -342,9 +317,6 @@ def api_reset_password():
     user.password_hash = _hash_password(new_password)
     user.password_set = True
     db.session.commit()
-
-    # opcional: já loga após reset
-    session['user_email'] = email
     return jsonify({'ok': True})
 
 
@@ -355,7 +327,7 @@ def api_login():
     password = (data.get('password') or '').strip()
 
     user = User.query.filter_by(email=email).first()
-    if not user or not _check_password(user.password_hash, password):
+    if not user or user.password_hash != _hash_password(password):
         return jsonify({'error': 'Credenciais inválidas'}), 401
 
     session['user_email'] = email
@@ -402,10 +374,10 @@ def api_list_lancamentos():
         items.append({
             'id': t.id,
             'tipo': t.tipo,
-            'data': t.date.isoformat(),
+            'data': _safe_date_iso(t.date),
             'categoria': t.categoria,
             'descricao': t.descricao or '',
-            'valor': float(t.valor),
+            'valor': float(t.valor) if t.valor is not None else 0.0,
             'origem': t.origem,
             'created_at': t.created_at.isoformat() if t.created_at else None,
         })
@@ -439,7 +411,7 @@ def api_create_lancamento():
     t = Transaction(
         user_id=user.id,
         tipo=tipo,
-        date=d,            # mapeado para coluna "data"
+        date=d,
         categoria=categoria,
         descricao=descricao,
         valor=valor,
@@ -501,9 +473,9 @@ def api_dashboard():
     gastos = Decimal('0')
     for t in q.all():
         if t.tipo == 'RECEITA':
-            receitas += Decimal(t.valor)
+            receitas += Decimal(t.valor or 0)
         else:
-            gastos += Decimal(t.valor)
+            gastos += Decimal(t.valor or 0)
 
     saldo = receitas - gastos
 
@@ -523,11 +495,11 @@ WA_VERIFY_TOKEN = os.getenv('WA_VERIFY_TOKEN', '').strip()
 
 
 def _parse_wa_text_to_transaction(msg_text: str):
-    text_in = (msg_text or '').strip()
-    if not text_in:
+    textv = (msg_text or '').strip()
+    if not textv:
         return None
 
-    lower = text_in.lower()
+    lower = textv.lower()
     parts = re.split(r'\s+', lower)
     if not parts:
         return None
@@ -586,6 +558,7 @@ def wa_verify():
 
     if mode == 'subscribe' and token and token == WA_VERIFY_TOKEN:
         return challenge or '', 200
+
     return 'Forbidden', 403
 
 
@@ -638,7 +611,7 @@ def wa_webhook():
         t = Transaction(
             user_id=user.id,
             tipo=parsed['tipo'],
-            date=parsed['data'],     # mapeado para coluna "data"
+            date=parsed['data'],
             categoria=parsed['categoria'],
             descricao=parsed.get('descricao'),
             valor=parsed['valor'],
