@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import hashlib
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
@@ -32,17 +33,13 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 DB_ENABLED = bool(_raw_db_url)
 
-# Cookies de sessão (Railway = HTTPS)
-# Se quiser testar em HTTP local, coloque COOKIE_SECURE=0
-COOKIE_SECURE = os.getenv('COOKIE_SECURE', '1').strip() not in ('0', 'false', 'False')
-app.config['SESSION_COOKIE_SECURE'] = COOKIE_SECURE
-app.config['SESSION_COOKIE_SAMESITE'] = os.getenv('COOKIE_SAMESITE', 'Lax')
+# Cookies de sessão (Railway HTTPS)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# senha mínima
-MIN_PASSWORD_LEN = int(os.getenv('MIN_PASSWORD_LEN', '6'))
-
-# Token do "botão de pânico"
-PANIC_TOKEN = os.getenv('PANIC_TOKEN', '').strip()
+# Auth / Security configs
+PASSWORD_MIN_LEN = int(os.getenv('PASSWORD_MIN_LEN', '6'))  # <- agora 6 por padrão
+PANIC_TOKEN = (os.getenv('PANIC_TOKEN') or '').strip()      # <- você DEVE setar no Railway
 
 # -------------------------
 # DB
@@ -68,13 +65,13 @@ class Transaction(db.Model):
 
     tipo = db.Column(db.String(16), nullable=False)
 
-    # Coluna real no Postgres é "data"
+    # Mapeia para a coluna real do Postgres: "data"
     date = db.Column('data', db.Date, nullable=False, index=True)
 
     categoria = db.Column(db.String(80), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
 
-    # Coluna real no Postgres é "valor"
+    # Mapeia para a coluna real do Postgres: "valor"
     valor = db.Column('valor', db.Numeric(12, 2), nullable=False)
 
     origem = db.Column(db.String(16), nullable=False, default='APP')
@@ -85,7 +82,11 @@ class WaLink(db.Model):
     __tablename__ = 'wa_links'
 
     id = db.Column(db.Integer, primary_key=True)
-    wa_from = db.Column(db.String(40), unique=True, nullable=False, index=True)
+
+    # ✅ CORREÇÃO: no seu Postgres a coluna é "wa_number" (NOT NULL)
+    # Mantemos o atributo em Python como wa_from, mas gravamos em wa_number.
+    wa_from = db.Column('wa_number', db.String(40), unique=True, nullable=False, index=True)
+
     user_email = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -113,22 +114,53 @@ def _create_tables_if_needed() -> None:
             except Exception:
                 db.session.rollback()
 
-        # migrações leves
+        # -------------------------
+        # Migrações leves / compat
+        # -------------------------
         if 'users' in table_names:
             _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT false")
 
+        # ✅ wa_links: corrigir schema antigo vs novo
         if 'wa_links' in table_names:
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
+            cols = {c['name'] for c in insp.get_columns('wa_links')}
+
+            # Se existia wa_from e NÃO existe wa_number, renomeia
+            if 'wa_number' not in cols and 'wa_from' in cols:
+                _run("ALTER TABLE wa_links RENAME COLUMN wa_from TO wa_number")
+
+            # Se não existe wa_number, cria
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_number VARCHAR(40)")
             _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)")
             _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMP")
+
+            # Se por algum motivo existir os dois, copia dados (não quebra nada)
+            cols2 = {c['name'] for c in insp.get_columns('wa_links')}
+            if 'wa_from' in cols2 and 'wa_number' in cols2:
+                _run("UPDATE wa_links SET wa_number = wa_from WHERE wa_number IS NULL AND wa_from IS NOT NULL")
+
+            # Garantir NOT NULL (se tiver nulos antigos, tenta preencher com valor seguro)
+            # Se você preferir, pode remover isso, mas ajuda a evitar novas quebras.
+            _run("UPDATE wa_links SET wa_number = 'unknown' || id::text WHERE wa_number IS NULL")
+
+            # Tenta aplicar NOT NULL (se já for NOT NULL, ok)
+            _run("""
+            DO $$
+            BEGIN
+              BEGIN
+                ALTER TABLE wa_links ALTER COLUMN wa_number SET NOT NULL;
+              EXCEPTION WHEN others THEN
+              END;
+            END$$;
+            """)
 
         if 'processed_messages' in table_names:
             _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
 
-        # GARANTIR data/valor no transactions e tentar converter tipo se veio como texto
+        # transactions: garantir data/valor
         if 'transactions' in table_names:
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS data DATE")
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)")
+
             _run("""
             DO $$
             BEGIN
@@ -236,40 +268,9 @@ def _status_payload():
     return {'ok': True, 'db_enabled': DB_ENABLED, 'db_uri_set': bool(_raw_db_url)}
 
 
-def _pick_first_str(data: dict, keys: list[str]) -> str:
-    """Pega a primeira string não-vazia entre várias chaves.
-    Ajuda quando o front manda 'senha' ao invés de 'password', etc."""
-    for k in keys:
-        v = data.get(k)
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s:
-            return s
-    return ''
-
-
-def _validate_password(pw: str) -> tuple[bool, str]:
-    if len(pw) < MIN_PASSWORD_LEN:
-        return False, f'Senha muito curta (mínimo {MIN_PASSWORD_LEN} caracteres)'
-    return True, ''
-
-
-def _panic_auth_ok() -> bool:
-    """Autenticação simples por token.
-    Aceita:
-      - Header: X-Panic-Token
-      - Query:  ?token=...
-      - JSON:   {"token":"..."}
-    """
-    if not PANIC_TOKEN:
-        return False  # se não setou o token, desabilita a rota
-    header = (request.headers.get('X-Panic-Token') or '').strip()
-    q = (request.args.get('token') or '').strip()
-    body = request.get_json(silent=True) or {}
-    j = (str(body.get('token') or '').strip())
-    token = header or q or j
-    return token == PANIC_TOKEN
+def _is_postgres() -> bool:
+    uri = (app.config.get('SQLALCHEMY_DATABASE_URI') or '').lower()
+    return uri.startswith('postgresql://') or uri.startswith('postgres://')
 
 
 # -------------------------
@@ -308,47 +309,49 @@ def health():
 
 
 # -------------------------
-# PANIC RESET (Botão de pânico)
+# Panic Reset (DB wipe)
 # -------------------------
-@app.route('/api/panic_reset', methods=['POST', 'GET'])
+@app.route('/api/panic_reset', methods=['GET', 'POST'])
 def api_panic_reset():
-    # Se não existir PANIC_TOKEN, devolve 404 (pra nem “aparecer” a rota)
-    if not PANIC_TOKEN:
-        return jsonify({'error': 'not found'}), 404
+    """
+    Limpa tudo (users/transactions/wa_links/processed_messages).
+    Protegido por token: ?token=SEU_TOKEN  ou header X-Panic-Token.
+    """
+    token = (request.args.get('token') or request.headers.get('X-Panic-Token') or '').strip()
 
-    if not _panic_auth_ok():
-        return jsonify({'error': 'forbidden'}), 403
+    if not PANIC_TOKEN:
+        return jsonify({'error': 'PANIC_TOKEN não configurado no servidor.'}), 403
+    if token != PANIC_TOKEN:
+        return jsonify({'error': 'Forbidden'}), 403
 
     try:
-        session.clear()
-
-        # Postgres: TRUNCATE com RESTART IDENTITY reseta IDs
-        # SQLite: delete simples
-        uri = (app.config.get('SQLALCHEMY_DATABASE_URI') or '').lower()
-
-        if uri.startswith('postgresql'):
+        if _is_postgres():
+            # CASCADE remove FKs e RESTART IDENTITY zera ids
             db.session.execute(text("""
                 TRUNCATE TABLE
-                    processed_messages,
-                    wa_links,
                     transactions,
-                    users
-                RESTART IDENTITY CASCADE;
+                    users,
+                    wa_links,
+                    processed_messages
+                RESTART IDENTITY CASCADE
             """))
             db.session.commit()
         else:
-            # fallback (sqlite)
-            db.session.execute(text("DELETE FROM processed_messages;"))
-            db.session.execute(text("DELETE FROM wa_links;"))
-            db.session.execute(text("DELETE FROM transactions;"))
-            db.session.execute(text("DELETE FROM users;"))
+            # sqlite fallback
+            for tbl in ('transactions', 'users', 'wa_links', 'processed_messages'):
+                db.session.execute(text(f"DELETE FROM {tbl}"))
             db.session.commit()
+            try:
+                db.session.execute(text("DELETE FROM sqlite_sequence"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
+        session.pop('user_email', None)
         return jsonify({'ok': True, 'message': 'Banco limpo com sucesso.'})
-
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Falha ao limpar banco', 'detail': repr(e)}), 500
+        return jsonify({'error': 'Falha ao limpar o banco', 'detail': str(e)}), 500
 
 
 # -------------------------
@@ -357,47 +360,39 @@ def api_panic_reset():
 @app.post('/api/register')
 def api_register():
     data = request.get_json(silent=True) or {}
-
-    email = (data.get('email') or data.get('Email') or '').strip().lower()
-    password = _pick_first_str(data, ['password', 'senha', 'pass', 'newPassword', 'novaSenha'])
+    email = (data.get('email') or '').strip().lower()
+    password = (data.get('password') or '').strip()
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
-
-    ok, msg = _validate_password(password)
-    if not ok:
-        return jsonify({'error': msg}), 400
+    if len(password) < PASSWORD_MIN_LEN:
+        return jsonify({'error': f'Senha deve ter no mínimo {PASSWORD_MIN_LEN} caracteres'}), 400
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        # “claim” de conta criada automaticamente (ex: WhatsApp)
         if getattr(existing, 'password_set', False) is False:
             existing.password_hash = _hash_password(password)
             existing.password_set = True
             db.session.commit()
             session['user_email'] = email
             return jsonify({'ok': True, 'email': email, 'claimed': True})
-
         return jsonify({'error': 'Email já cadastrado'}), 409
 
     user = _get_or_create_user(email, password=password)
     session['user_email'] = email
-    return jsonify({'ok': True, 'email': user.email})
+    return jsonify({'ok': True, 'email': email})
 
 
 @app.post('/api/reset_password')
 def api_reset_password():
     data = request.get_json(silent=True) or {}
-
     email = (data.get('email') or '').strip().lower()
-    new_password = _pick_first_str(data, ['newPassword', 'password', 'senha', 'novaSenha'])
+    new_password = (data.get('newPassword') or data.get('password') or '').strip()
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
-
-    ok, msg = _validate_password(new_password)
-    if not ok:
-        return jsonify({'error': msg}), 400
+    if len(new_password) < PASSWORD_MIN_LEN:
+        return jsonify({'error': f'Senha deve ter no mínimo {PASSWORD_MIN_LEN} caracteres'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
@@ -412,9 +407,8 @@ def api_reset_password():
 @app.post('/api/login')
 def api_login():
     data = request.get_json(silent=True) or {}
-
     email = (data.get('email') or '').strip().lower()
-    password = _pick_first_str(data, ['password', 'senha', 'pass'])
+    password = (data.get('password') or '').strip()
 
     user = User.query.filter_by(email=email).first()
     if not user or user.password_hash != _hash_password(password):
@@ -594,6 +588,7 @@ def _parse_wa_text_to_transaction(msg_text: str):
     if not parts:
         return None
 
+    # comando: mandar email para vincular
     if len(parts) == 1 and '@' in parts[0] and '.' in parts[0]:
         return {'cmd': 'LINK_EMAIL', 'email': parts[0]}
 
@@ -666,7 +661,7 @@ def wa_webhook():
 
         msg = messages[0]
         msg_id = msg.get('id')
-        wa_from = msg.get('from')
+        wa_from = msg.get('from')  # ex: "5537998738228"
         msg_text = ((msg.get('text') or {}).get('body') or '').strip()
 
         if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
@@ -680,18 +675,21 @@ def wa_webhook():
         if not parsed:
             return jsonify({'ok': True})
 
+        # Vincular email
         if parsed.get('cmd') == 'LINK_EMAIL':
             email = parsed.get('email')
-            if email:
+            if email and wa_from:
                 link = WaLink.query.filter_by(wa_from=wa_from).first()
                 if link:
                     link.user_email = email
                 else:
+                    # ✅ agora grava em wa_number corretamente
                     link = WaLink(wa_from=wa_from, user_email=email)
                     db.session.add(link)
                 db.session.commit()
             return jsonify({'ok': True})
 
+        # Salvar transação via WA somente se existir vínculo
         link = WaLink.query.filter_by(wa_from=wa_from).first()
         if not link:
             return jsonify({'ok': True})
@@ -713,6 +711,7 @@ def wa_webhook():
         return jsonify({'ok': True})
 
     except Exception as e:
+        db.session.rollback()
         print('WA webhook error:', repr(e))
         return jsonify({'ok': True})
 
