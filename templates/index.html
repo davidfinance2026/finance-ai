@@ -562,6 +562,33 @@
     </div>
   </div>
 
+
+  <!-- Menu flutuante (Novo / WhatsApp / Dashboard) -->
+  <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
+    <div class="fab-actions" aria-hidden="true">
+      <a class="fab-action" href="#" id="fabNovo">
+        <span class="fab-label">Novo</span>
+        <div class="fab-btn small"><span class="fab-ico">➕</span></div>
+      </a>
+
+      <a class="fab-action" href="/wa" target="_blank" rel="noopener" id="fabWhats">
+        <span class="fab-label" id="fabWaLabel">WhatsApp</span>
+        <div class="fab-btn wa"><span class="fab-ico">💬</span></div>
+      </a>
+
+      <a class="fab-action" href="#" id="fabDash">
+        <span class="fab-label">Dashboard</span>
+        <div class="fab-btn small"><span class="fab-ico">📊</span></div>
+      </a>
+    </div>
+
+    <div class="fab-btn" id="fabMain" aria-expanded="false">
+      <span class="fab-plus" id="fabMainIco">☰</span>
+    </div>
+  </div>
+  <div class="fab-backdrop" id="fabBackdrop" aria-hidden="true"></div>
+
+
   <script>
     const $ = (id) => document.getElementById(id);
 
@@ -1229,30 +1256,7 @@ ensureCharts();
 
 
   
-  <!-- Menu flutuante (Novo / WhatsApp / Dashboard) -->
-  <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
-    <div class="fab-actions" aria-hidden="true">
-      <a class="fab-action" href="#" id="fabNovo">
-        <span class="fab-label">Novo</span>
-        <div class="fab-btn small"><span class="fab-ico">➕</span></div>
-      </a>
-
-      <a class="fab-action" href="/wa" target="_blank" rel="noopener" id="fabWhats">
-        <span class="fab-label" id="fabWaLabel">WhatsApp</span>
-        <div class="fab-btn wa"><span class="fab-ico">💬</span></div>
-      </a>
-
-      <a class="fab-action" href="#" id="fabDash">
-        <span class="fab-label">Dashboard</span>
-        <div class="fab-btn small"><span class="fab-ico">📊</span></div>
-      </a>
-    </div>
-
-    <div class="fab-btn" id="fabMain" aria-expanded="false">
-      <span class="fab-plus" id="fabMainIco">☰</span>
-    </div>
-  </div>
-  <div class="fab-backdrop" id="fabBackdrop" aria-hidden="true"></div>
+  
 
 
 </body>
