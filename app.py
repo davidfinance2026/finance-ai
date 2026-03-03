@@ -23,7 +23,6 @@ app.config["JSON_AS_ASCII"] = False
 # Cookies de sessão (Railway/HTTPS)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_SAMESITE", "Lax")
-# Se seu PWA e API estão no mesmo domínio do Railway, Secure=True é ok (HTTPS).
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_SECURE", "1") == "1"
 
 # DB
@@ -77,7 +76,7 @@ class Transaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     tipo = db.Column(db.String(16), nullable=False)  # RECEITA/GASTO
-    data = db.Column(db.Date, nullable=False, index=True)  # coluna "data" (PT-BR)
+    data = db.Column(db.Date, nullable=False, index=True)  # coluna "data"
     categoria = db.Column(db.String(80), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
     valor = db.Column(db.Numeric(12, 2), nullable=False)
@@ -102,7 +101,6 @@ class ProcessedMessage(db.Model):
 
 
 def _create_tables_if_needed():
-    """Cria as tabelas se não existirem (sem Alembic)."""
     try:
         db.create_all()
     except Exception as e:
@@ -213,7 +211,6 @@ def _normalize_wa_number(raw: str) -> str:
 
 
 def wa_send_text(to_number: str, text_msg: str):
-    """Envia mensagem via Meta Cloud API. Se faltarem envs, só loga."""
     to_number = _normalize_wa_number(to_number)
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN and to_number):
         print("WA send skipped (missing creds or number). msg:", text_msg)
@@ -294,7 +291,6 @@ def api_panic_reset():
         return jsonify({"error": "forbidden"}), 403
 
     try:
-        # TRUNCATE (Postgres) - rápido e reinicia IDs
         db.session.execute(
             text("TRUNCATE TABLE processed_messages, wa_links, transactions, users RESTART IDENTITY CASCADE;")
         )
@@ -303,7 +299,6 @@ def api_panic_reset():
     except Exception:
         db.session.rollback()
 
-    # Fallback (SQLite ou caso TRUNCATE não funcione)
     try:
         ProcessedMessage.query.delete()
         WaLink.query.delete()
@@ -336,7 +331,6 @@ def api_register():
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        # Se foi criado por WhatsApp (password_set=false), permite “reivindicar” a conta
         if getattr(existing, "password_set", False) is False:
             existing.password_hash = _hash_password(senha)
             existing.password_set = True
@@ -423,7 +417,7 @@ def api_list_lancamentos():
     for t in rows:
         items.append(
             {
-                "row": t.id,  # <- seu front usa "row"
+                "row": t.id,
                 "id": t.id,
                 "data": t.data.isoformat() if t.data else None,
                 "tipo": t.tipo,
@@ -555,15 +549,46 @@ def api_dashboard():
 
 
 # -------------------------
-# WhatsApp Cloud API Webhook
+# WhatsApp Cloud API Webhook (parser inteligente)
 # -------------------------
+CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
+
+INCOME_HINTS = {
+    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu", "deposito", "depósito", "depositou",
+    "pix", "pixrecebido", "pix_recebido", "salario", "salário", "pagamento", "pagou", "paguei?",  # (pagou pode ser ambíguo; tratamos abaixo)
+    "venda", "vendido", "comissao", "comissão", "bonus", "bônus", "adiantamento", "reembolso", "refund",
+    "ganhei", "ganho", "renda", "receita"
+}
+
+EXPENSE_HINTS = {
+    "paguei", "pagamento", "pago", "pagou", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
+    "saida", "saída", "saiu", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
+    "aluguel", "mercado", "uber", "ifood", "farmacia", "farmácia", "gasolina", "internet", "luz", "agua", "água"
+}
+
+NEGATIONS = {"nao", "não", "nunca", "jamais"}
+
+# número com milhares + decimais: 1.234,56 / 1234,56 / 1234.56 / 45 / 45,90
+VALUE_RE = re.compile(r"([+\-])?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:[.,]\d{1,2})?)")
+
+
 def _parse_wa_text(msg_text: str):
     """
-    Aceita:
-      conectar email@dominio.com
-      gasto 32,90 mercado
-      receita 2500 salario
-      32,90 mercado  (assume gasto)
+    Comandos:
+      conectar email@dominio.com  (também: vincular/linkar/associar/registrar)
+
+    Lançamentos (exemplos):
+      recebi 1200 salario
+      entrou 50 pix joao
+      paguei 32,90 mercado
+      comprei 120 tenis
+      + 35,90 venda camiseta
+      - 18,00 uber
+
+    Regras:
+      - Se vier com + => RECEITA, com - => GASTO
+      - Senão: tenta detectar por palavras (recebi/entrou => receita; paguei/comprei => gasto)
+      - Senão: default GASTO (mantém comportamento antigo)
     """
     t = (msg_text or "").strip()
     if not t:
@@ -572,33 +597,81 @@ def _parse_wa_text(msg_text: str):
     low = t.lower().strip()
     low = re.sub(r"\s+", " ", low)
 
-    if low.startswith("conectar "):
-        email = t.split(" ", 1)[1].strip()
-        return {"cmd": "CONNECT", "email": _normalize_email(email)}
+    # CONNECT
+    for alias in CONNECT_ALIASES:
+        if low.startswith(alias + " "):
+            email = t.split(" ", 1)[1].strip()
+            return {"cmd": "CONNECT", "email": _normalize_email(email)}
 
-    # tipo
-    if low.startswith(("gasto ", "despesa ")):
-        tipo = "GASTO"
-        rest = t.split(" ", 1)[1].strip()
-    elif low.startswith(("receita ", "entrada ")):
-        tipo = "RECEITA"
-        rest = t.split(" ", 1)[1].strip()
-    else:
-        tipo = "GASTO"
-        rest = t
-
-    # extrai valor
-    m = re.search(r"(-?\d{1,3}(?:\.\d{3})*(?:,\d{2})|-?\d+(?:[.,]\d{2})?)", rest)
+    # tenta achar valor
+    m = VALUE_RE.search(low)
     if not m:
         return None
 
-    valor_raw = m.group(1)
+    sign = m.group(1) or ""
+    valor_raw = m.group(2)
     try:
         valor = _parse_brl_value(valor_raw)
     except Exception:
         return None
 
-    after = (rest[m.end():] or "").strip(" -–—")
+    # texto antes e depois do número
+    before = (low[: m.start()] or "").strip()
+    after = (low[m.end() :] or "").strip(" -–—")
+
+    # tokenização simples
+    before_tokens = [w for w in re.split(r"[\s/,_\-]+", before) if w]
+    after_tokens = [w for w in re.split(r"[\s/,_\-]+", after) if w]
+
+    # remove acentuação leve para melhorar match (opcional)
+    def norm_word(w: str) -> str:
+        w = w.strip().lower()
+        w = (
+            w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
+             .replace("é", "e").replace("ê", "e")
+             .replace("í", "i")
+             .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+             .replace("ú", "u")
+             .replace("ç", "c")
+        )
+        return w
+
+    bset = {norm_word(w) for w in before_tokens}
+    aset = {norm_word(w) for w in after_tokens}
+    allset = bset | aset
+
+    # Heurística de tipo
+    tipo = None
+
+    if sign == "+":
+        tipo = "RECEITA"
+    elif sign == "-":
+        tipo = "GASTO"
+    else:
+        # prioridade: palavras no início (antes do número) pesam mais
+        b_income = len(bset & {norm_word(x) for x in INCOME_HINTS})
+        b_exp = len(bset & {norm_word(x) for x in EXPENSE_HINTS})
+        a_income = len(aset & {norm_word(x) for x in INCOME_HINTS})
+        a_exp = len(aset & {norm_word(x) for x in EXPENSE_HINTS})
+
+        # caso especial: "pix" sozinho é ambíguo; mas "pix recebido/entrou/recebi" já resolve.
+        # "pagamento" pode ser ambíguo; se tiver "recebi/entrou" junto => receita.
+        score_income = (b_income * 3) + a_income
+        score_exp = (b_exp * 3) + a_exp
+
+        # negação simples: "não recebi" => não forçar receita
+        has_neg = any(norm_word(w) in NEGATIONS for w in before_tokens[:2])  # pega começo
+        if has_neg and score_income > 0 and score_exp == 0:
+            score_income = 0
+
+        if score_income > score_exp and score_income > 0:
+            tipo = "RECEITA"
+        elif score_exp > score_income and score_exp > 0:
+            tipo = "GASTO"
+        else:
+            tipo = "GASTO"  # default (mantém compatibilidade)
+
+    # categoria/descricao (após o valor)
     if not after:
         categoria = "Outros"
         descricao = ""
@@ -637,8 +710,7 @@ def wa_webhook():
             for change in entry.get("changes", []) or []:
                 value = change.get("value", {}) or {}
                 for msg in value.get("messages", []) or []:
-                    msg_type = msg.get("type")
-                    if msg_type != "text":
+                    if msg.get("type") != "text":
                         continue
 
                     msg_id = msg.get("id")
@@ -657,9 +729,11 @@ def wa_webhook():
                             wa_from,
                             "Não entendi 😅\n\nUse:\n"
                             "• conectar seuemail@dominio.com\n"
-                            "• gasto 32,90 mercado\n"
-                            "• receita 2500 salario\n"
-                            "• 32,90 mercado (assume gasto)",
+                            "• recebi 1200 salario\n"
+                            "• entrou 50 pix joao\n"
+                            "• paguei 32,90 mercado\n"
+                            "• + 35,90 venda camiseta\n"
+                            "• - 18,00 uber",
                         )
                         continue
 
@@ -684,8 +758,10 @@ def wa_webhook():
                             wa_from,
                             f"✅ WhatsApp conectado ao email: {email}\n\n"
                             "Agora envie:\n"
-                            "• gasto 32,90 mercado\n"
-                            "• receita 2500 salario",
+                            "• recebi 1200 salario\n"
+                            "• paguei 32,90 mercado\n"
+                            "• + 35,90 venda camiseta\n"
+                            "• - 18,00 uber",
                         )
                         continue
 
