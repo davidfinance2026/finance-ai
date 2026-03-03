@@ -1,789 +1,592 @@
 import os
 import re
 import json
-import hashlib
+import decimal
 from datetime import datetime, date
-from decimal import Decimal, InvalidOperation
+from functools import wraps
+from urllib.parse import urlparse
 
-from flask import Flask, request, jsonify, send_from_directory, session, render_template
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
+import psycopg2
+import psycopg2.extras
 
-# -------------------------
+from flask import (
+    Flask, request, jsonify, session,
+    send_from_directory, render_template
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+# ----------------------------
 # App / Config
-# -------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ----------------------------
+app = Flask(__name__, static_folder="static", template_folder="templates")
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
-app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
+# SECRET_KEY obrigatório em produção
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 
-_raw_db_url = os.getenv('DATABASE_URL', '').strip()
-if _raw_db_url.startswith('postgres://'):
-    _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = _raw_db_url or 'sqlite:///' + os.path.join(BASE_DIR, 'local.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 280,
-    'pool_size': int(os.getenv('DB_POOL_SIZE', '3')),
-    'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '2')),
-}
-
-DB_ENABLED = bool(_raw_db_url)
-
-# Cookies de sessão (Railway/HTTPS)
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-# -------------------------
-# DB
-# -------------------------
-db = SQLAlchemy(app)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL não definido (Postgres).")
 
 
-class User(db.Model):
-    __tablename__ = 'users'
-
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(64), nullable=False)
-    password_set = db.Column(db.Boolean, nullable=False, server_default=text('false'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+# ----------------------------
+# DB helpers
+# ----------------------------
+def get_conn():
+    # Railway geralmente entrega DATABASE_URL no formato postgres://
+    return psycopg2.connect(DATABASE_URL, sslmode=os.environ.get("PGSSLMODE", "require"))
 
 
-class Transaction(db.Model):
-    __tablename__ = 'transactions'
+def init_db():
+    ddl = """
+    CREATE TABLE IF NOT EXISTS users (
+        id              SERIAL PRIMARY KEY,
+        nome_apelido    TEXT NOT NULL DEFAULT '',
+        nome_completo   TEXT NOT NULL DEFAULT '',
+        telefone        TEXT NOT NULL DEFAULT '',
+        email           TEXT NOT NULL UNIQUE,
+        password_hash   TEXT NOT NULL,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    CREATE TABLE IF NOT EXISTS lancamentos (
+        id          SERIAL PRIMARY KEY,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        data        DATE NOT NULL,
+        tipo        TEXT NOT NULL CHECK (tipo IN ('RECEITA','GASTO')),
+        categoria   TEXT NOT NULL DEFAULT '',
+        descricao   TEXT NOT NULL DEFAULT '',
+        valor       NUMERIC(14,2) NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
-    tipo = db.Column(db.String(16), nullable=False)
+    -- vínculo WhatsApp <-> user
+    CREATE TABLE IF NOT EXISTS wa_links (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        wa_number       TEXT NOT NULL UNIQUE,
+        wa_name         TEXT NOT NULL DEFAULT '',
+        last_message_at TIMESTAMPTZ,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
-    # Mapeia para a coluna real do Postgres
-    date = db.Column('data', db.Date, nullable=False, index=True)
-
-    categoria = db.Column(db.String(80), nullable=False)
-    descricao = db.Column(db.Text, nullable=True)
-
-    # Mapeia para a coluna real do Postgres
-    valor = db.Column('valor', db.Numeric(12, 2), nullable=False)
-
-    origem = db.Column(db.String(16), nullable=False, default='APP')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-
-class WaLink(db.Model):
+    CREATE INDEX IF NOT EXISTS idx_lanc_user_data ON lancamentos(user_id, data);
     """
-    Tabela de vínculo WhatsApp -> Usuário.
-    IMPORTANTE: alinhada com o DB que exige NOT NULL em wa_number e user_id.
-    """
-    __tablename__ = 'wa_links'
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    # número (string do "from" do WhatsApp Cloud API)
-    wa_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
-
-    # usuário dono desse número
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(ddl)
+            conn.commit()
 
 
-class ProcessedMessage(db.Model):
-    __tablename__ = 'processed_messages'
-
-    id = db.Column(db.Integer, primary_key=True)
-    msg_id = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    wa_number = db.Column(db.String(40), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+init_db()
 
 
-def _create_tables_if_needed() -> None:
-    """
-    create_all + migrações leves para manter compatibilidade com DB antigo.
-    """
-    try:
-        db.create_all()
-        insp = inspect(db.engine)
-        table_names = set(insp.get_table_names())
-
-        def _run(sql: str):
-            try:
-                db.session.execute(text(sql))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-
-        # ---- users
-        if 'users' in table_names:
-            _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT false")
-
-        # ---- processed_messages
-        if 'processed_messages' in table_names:
-            # versões antigas podem ter wa_from
-            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_number VARCHAR(40)")
-            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
-            # se existir wa_from e wa_number estiver vazio, copia (best effort)
-            _run("""
-                UPDATE processed_messages
-                SET wa_number = wa_from
-                WHERE (wa_number IS NULL OR wa_number = '') AND (wa_from IS NOT NULL AND wa_from <> '')
-            """)
-
-        # ---- transactions (garantir data/valor)
-        if 'transactions' in table_names:
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS data DATE")
-            _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)")
-            _run("""
-            DO $$
-            BEGIN
-              BEGIN
-                ALTER TABLE transactions ALTER COLUMN data TYPE DATE USING data::date;
-              EXCEPTION WHEN others THEN
-              END;
-
-              BEGIN
-                ALTER TABLE transactions ALTER COLUMN valor TYPE NUMERIC(12,2) USING valor::numeric;
-              EXCEPTION WHEN others THEN
-              END;
-            END$$;
-            """)
-
-        # ---- wa_links (compatibilidade: wa_from/user_email -> wa_number/user_id)
-        if 'wa_links' in table_names:
-            # cria colunas novas se faltarem
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_number VARCHAR(40)")
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_id INTEGER")
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)")
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMP")
-
-            # copia wa_from -> wa_number se necessário
-            _run("""
-                UPDATE wa_links
-                SET wa_number = wa_from
-                WHERE (wa_number IS NULL OR wa_number = '') AND (wa_from IS NOT NULL AND wa_from <> '')
-            """)
-
-            # tenta preencher user_id a partir do user_email (se existir)
-            _run("""
-                UPDATE wa_links wl
-                SET user_id = u.id
-                FROM users u
-                WHERE (wl.user_id IS NULL)
-                  AND (wl.user_email IS NOT NULL AND wl.user_email <> '')
-                  AND lower(u.email) = lower(wl.user_email)
-            """)
-
-            # índices/unique (best effort)
-            _run("CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_links_wa_number ON wa_links (wa_number)")
-            _run("CREATE INDEX IF NOT EXISTS ix_wa_links_user_id ON wa_links (user_id)")
-
-            # Se o DB já tiver NOT NULL, ok.
-            # Se não tiver, a app funciona mesmo assim. (Não forçamos aqui para não quebrar bancos com dados antigos.)
-
-    except Exception as e:
-        print('DB create_all/migrate failed:', repr(e))
+# ----------------------------
+# Utils
+# ----------------------------
+def json_error(msg, status=400):
+    return jsonify({"ok": False, "error": msg}), status
 
 
-with app.app_context():
-    _create_tables_if_needed()
+def json_ok(data=None):
+    payload = {"ok": True}
+    if data is not None:
+        payload.update(data)
+    return jsonify(payload)
 
 
-# -------------------------
-# Helpers
-# -------------------------
-def _hash_password(pw: str) -> str:
-    return hashlib.sha256((pw or '').encode('utf-8')).hexdigest()
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        uid = session.get("user_id")
+        if not uid:
+            return json_error("Não autenticado", 401)
+        return fn(*args, **kwargs)
+    return wrapper
 
 
-def _get_logged_email() -> str | None:
-    return session.get('user_email')
+def current_user_id():
+    return session.get("user_id")
 
 
-def _require_login() -> str | None:
-    return _get_logged_email()
-
-
-def _parse_brl_value(textv: str) -> Decimal:
-    if textv is None:
-        raise ValueError('valor vazio')
-
-    s = str(textv).strip()
+def normalize_phone(s: str) -> str:
     if not s:
-        raise ValueError('valor vazio')
-
-    s = re.sub(r'[^0-9,\.-]', '', s)
-
-    if '.' in s and ',' in s:
-        s = s.replace('.', '').replace(',', '.')
-    else:
-        if ',' in s and '.' not in s:
-            s = s.replace(',', '.')
-
-    try:
-        return Decimal(s)
-    except InvalidOperation:
-        raise ValueError('valor inválido')
+        return ""
+    # mantém só dígitos
+    return re.sub(r"\D+", "", s)
 
 
-def _parse_date_any(d: str | None) -> date:
-    if not d:
-        return datetime.utcnow().date()
-    s = str(d).strip()
-    try:
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', s):
-            return datetime.strptime(s, '%Y-%m-%d').date()
-        if re.match(r'^\d{2}/\d{2}/\d{4}$', s):
-            return datetime.strptime(s, '%d/%m/%Y').date()
-    except Exception:
-        pass
-    return datetime.utcnow().date()
+def looks_like_email(text: str) -> str | None:
+    if not text:
+        return None
+    m = re.search(r"([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})", text)
+    return m.group(1).lower() if m else None
 
 
-def _safe_date_iso(v) -> str:
-    if v is None:
-        return datetime.utcnow().date().isoformat()
-    if isinstance(v, date):
-        return v.isoformat()
-    try:
-        return _parse_date_any(str(v)).isoformat()
-    except Exception:
-        return datetime.utcnow().date().isoformat()
-
-
-def _get_or_create_user(email: str, password: str | None = None) -> User:
-    email = (email or '').strip().lower()
-    user = User.query.filter_by(email=email).first()
-    if user:
-        return user
-
-    if password is None:
-        pw_hash = _hash_password(os.urandom(16).hex())
-        user = User(email=email, password_hash=pw_hash, password_set=False)
-    else:
-        pw_hash = _hash_password(password)
-        user = User(email=email, password_hash=pw_hash, password_set=True)
-
-    db.session.add(user)
-    db.session.commit()
-    return user
-
-
-def _status_payload():
-    return {'ok': True, 'db_enabled': DB_ENABLED, 'db_uri_set': bool(_raw_db_url)}
-
-
-def _normalize_wa_number(v: str) -> str:
+def parse_decimal(value):
     """
-    WhatsApp Cloud API manda como string numérica (ex: "5537....").
-    Vamos manter só dígitos para evitar duplicidade.
+    Aceita:
+      - 123.45
+      - "123.45"
+      - "123,45"
+      - "1.234,56"
+      - "1,234.56"
     """
-    s = (v or '').strip()
-    s = re.sub(r'\D+', '', s)
-    return s
+    if value is None:
+        raise ValueError("valor ausente")
+
+    if isinstance(value, (int, float, decimal.Decimal)):
+        return decimal.Decimal(str(value)).quantize(decimal.Decimal("0.01"))
+
+    s = str(value).strip()
+    if not s:
+        raise ValueError("valor vazio")
+
+    # remove espaços
+    s = s.replace(" ", "")
+
+    # heurística separador
+    if "," in s and "." in s:
+        # se a última vírgula vier depois do último ponto → vírgula decimal (pt-BR)
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    else:
+        s = s.replace(",", ".")
+
+    d = decimal.Decimal(s).quantize(decimal.Decimal("0.01"))
+    return d
 
 
-# -------------------------
-# Static / Frontend
-# -------------------------
-@app.get('/')
+# ----------------------------
+# Pages (PWA)
+# ----------------------------
+@app.get("/")
 def home():
-    return render_template('index.html')
+    return render_template("index.html")
 
 
-@app.get('/offline.html')
-def offline_page():
-    return render_template('offline.html')
+@app.get("/offline")
+def offline():
+    return render_template("offline.html")
 
 
-@app.get('/manifest.json')
-def manifest():
-    return send_from_directory(app.static_folder, 'manifest.json')
+@app.get("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory(app.static_folder, filename)
 
 
-@app.get('/sw.js')
-def service_worker():
-    resp = send_from_directory(app.static_folder, 'sw.js')
-    resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
-    return resp
-
-
-@app.get('/robots.txt')
-def robots():
-    return send_from_directory(app.static_folder, 'robots.txt')
-
-
-@app.get('/health')
-def health():
-    return jsonify(_status_payload())
-
-
-# -------------------------
+# ----------------------------
 # Auth API
-# -------------------------
-@app.post('/api/register')
+# ----------------------------
+@app.post("/api/register")
 def api_register():
     data = request.get_json(silent=True) or {}
-    email = (data.get('email') or '').strip().lower()
-    password = (data.get('password') or '').strip()
 
-    if not email or '@' not in email:
-        return jsonify({'error': 'Email inválido'}), 400
+    nome_apelido = (data.get("nome_apelido") or "").strip()
+    nome_completo = (data.get("nome_completo") or "").strip()
+    telefone = normalize_phone(data.get("telefone") or "")
+    email = (data.get("email") or "").strip().lower()
+    senha = data.get("senha") or ""
+    confirmar = data.get("confirmar_senha") or ""
 
-    # ALINHADO COM SUA TELA (min 6)
-    if len(password) < 6:
-        return jsonify({'error': 'Senha deve ter no mínimo 6 caracteres'}), 400
+    if not email or "@" not in email:
+        return json_error("E-mail inválido", 400)
 
-    existing = User.query.filter_by(email=email).first()
-    if existing:
-        if getattr(existing, 'password_set', False) is False:
-            existing.password_hash = _hash_password(password)
-            existing.password_set = True
-            db.session.commit()
-            session['user_email'] = email
-            return jsonify({'ok': True, 'email': email, 'claimed': True})
-        return jsonify({'error': 'Email já cadastrado'}), 409
+    if len(senha) < 6:
+        return json_error("Senha deve ter no mínimo 6 caracteres", 400)
 
-    user = _get_or_create_user(email, password=password)
-    session['user_email'] = email
-    return jsonify({'ok': True, 'email': email})
+    if senha != confirmar:
+        return json_error("As senhas não conferem", 400)
 
+    pw_hash = generate_password_hash(senha)
 
-@app.post('/api/reset_password')
-def api_reset_password():
-    data = request.get_json(silent=True) or {}
-    email = (data.get('email') or '').strip().lower()
-    new_password = (data.get('newPassword') or data.get('password') or '').strip()
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO users (nome_apelido, nome_completo, telefone, email, password_hash)
+                    VALUES (%s,%s,%s,%s,%s)
+                    RETURNING id, email
+                    """,
+                    (nome_apelido, nome_completo, telefone, email, pw_hash),
+                )
+                row = cur.fetchone()
+                conn.commit()
 
-    if not email or '@' not in email:
-        return jsonify({'error': 'Email inválido'}), 400
-    if len(new_password) < 6:
-        return jsonify({'error': 'Senha deve ter no mínimo 6 caracteres'}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'error': 'Usuário não encontrado'}), 404
-
-    user.password_hash = _hash_password(new_password)
-    user.password_set = True
-    db.session.commit()
-    return jsonify({'ok': True})
+        session["user_id"] = int(row["id"])
+        return jsonify({"ok": True, "email": row["email"], "user_id": row["id"]})
+    except psycopg2.errors.UniqueViolation:
+        return json_error("E-mail já cadastrado", 400)
+    except Exception as e:
+        return json_error(f"Erro ao cadastrar: {str(e)}", 400)
 
 
-@app.post('/api/login')
+@app.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
-    email = (data.get('email') or '').strip().lower()
-    password = (data.get('password') or '').strip()
+    email = (data.get("email") or "").strip().lower()
+    senha = data.get("senha") or ""
 
-    user = User.query.filter_by(email=email).first()
-    if not user or user.password_hash != _hash_password(password):
-        return jsonify({'error': 'Credenciais inválidas'}), 401
+    if not email or not senha:
+        return json_error("Informe e-mail e senha", 400)
 
-    session['user_email'] = email
-    return jsonify({'ok': True, 'email': email})
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id, email, password_hash FROM users WHERE email=%s", (email,))
+            u = cur.fetchone()
+
+    if not u or not check_password_hash(u["password_hash"], senha):
+        return json_error("Credenciais inválidas", 401)
+
+    session["user_id"] = int(u["id"])
+    return jsonify({"ok": True, "email": u["email"], "user_id": u["id"]})
 
 
-@app.post('/api/logout')
+@app.post("/api/logout")
 def api_logout():
-    session.pop('user_email', None)
-    return jsonify({'ok': True})
+    session.clear()
+    return json_ok()
 
 
-@app.get('/api/me')
+@app.get("/api/me")
+@login_required
 def api_me():
-    return jsonify({'email': _get_logged_email()})
+    uid = current_user_id()
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id, email, nome_apelido, nome_completo, telefone FROM users WHERE id=%s", (uid,))
+            u = cur.fetchone()
+    return jsonify({"ok": True, "user": u})
 
 
-# -------------------------
-# PWA -> WhatsApp Linking (confirmação no app)
-# -------------------------
-@app.get('/api/wa/status')
-def api_wa_status():
-    email = _require_login()
-    if not email:
-        return jsonify({'linked': False, 'error': 'Você precisa estar logado.'}), 401
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'linked': False})
-
-    link = WaLink.query.filter_by(user_id=user.id).first()
-    if not link:
-        return jsonify({'linked': False})
-
-    masked = link.wa_number
-    if masked and len(masked) >= 4:
-        masked = f"***{masked[-4:]}"
-    return jsonify({'linked': True, 'wa_number': masked})
-
-
-@app.post('/api/wa/link')
-def api_wa_link():
-    """
-    Você chama isso no PWA para registrar o WhatsApp no usuário logado.
-    Ex payload: {"wa_number": "5537999999999"}
-    """
-    email = _require_login()
-    if not email:
-        return jsonify({'error': 'Você precisa estar logado.'}), 401
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'error': 'Usuário não encontrado'}), 404
-
-    data = request.get_json(silent=True) or {}
-    wa_number = _normalize_wa_number(data.get('wa_number') or '')
-    if not wa_number or len(wa_number) < 8:
-        return jsonify({'error': 'Número do WhatsApp inválido'}), 400
-
-    # upsert pelo wa_number
-    link = WaLink.query.filter_by(wa_number=wa_number).first()
-    if link:
-        link.user_id = user.id
-    else:
-        link = WaLink(wa_number=wa_number, user_id=user.id)
-        db.session.add(link)
-
-    db.session.commit()
-    return jsonify({'ok': True, 'linked': True})
-
-
-# -------------------------
-# Transactions API
-# -------------------------
-@app.get('/api/lancamentos')
-def api_list_lancamentos():
-    email = _require_login()
-    if not email:
-        return jsonify({'error': 'Você precisa estar logado.'}), 401
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'items': []})
-
-    limit = int(request.args.get('limit', 30))
+# ----------------------------
+# Lancamentos API
+# ----------------------------
+@app.get("/api/lancamentos")
+@login_required
+def api_lancamentos_list():
+    uid = current_user_id()
+    limit = int(request.args.get("limit", "50"))
     limit = max(1, min(limit, 200))
 
-    rows = (
-        Transaction.query
-        .filter_by(user_id=user.id)
-        .order_by(Transaction.date.desc(), Transaction.id.desc())
-        .limit(limit)
-        .all()
-    )
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, data, tipo, categoria, descricao, valor
+                FROM lancamentos
+                WHERE user_id=%s
+                ORDER BY data DESC, id DESC
+                LIMIT %s
+                """,
+                (uid, limit),
+            )
+            rows = cur.fetchall()
 
-    items = []
-    for t in rows:
-        items.append({
-            'id': t.id,
-            'tipo': t.tipo,
-            'data': _safe_date_iso(t.date),
-            'categoria': t.categoria,
-            'descricao': t.descricao or '',
-            'valor': float(t.valor) if t.valor is not None else 0.0,
-            'origem': t.origem,
-            'created_at': t.created_at.isoformat() if t.created_at else None,
-        })
+    # serializa Decimal
+    for r in rows:
+        if isinstance(r.get("valor"), decimal.Decimal):
+            r["valor"] = float(r["valor"])
 
-    return jsonify({'items': items})
+    return jsonify({"ok": True, "items": rows})
 
 
-@app.post('/api/lancamentos')
-def api_create_lancamento():
-    email = _require_login()
-    if not email:
-        return jsonify({'error': 'Você precisa estar logado.'}), 401
-
+@app.post("/api/lancamentos")
+@login_required
+def api_lancamentos_create():
+    uid = current_user_id()
     data = request.get_json(silent=True) or {}
 
-    tipo = (data.get('tipo') or '').strip().upper()
-    if tipo not in ('RECEITA', 'GASTO'):
-        return jsonify({'error': 'Tipo inválido'}), 400
-
-    categoria = (data.get('categoria') or '').strip() or 'Outros'
-    descricao = (data.get('descricao') or '').strip() or None
-    d = _parse_date_any(data.get('data'))
-
     try:
-        valor = _parse_brl_value(data.get('valor'))
+        data_str = (data.get("data") or "").strip()
+        if not data_str:
+            return json_error("data obrigatória (YYYY-MM-DD)", 400)
+        d = datetime.strptime(data_str, "%Y-%m-%d").date()
+
+        tipo = (data.get("tipo") or "").strip().upper()
+        if tipo not in ("RECEITA", "GASTO"):
+            return json_error("tipo deve ser RECEITA ou GASTO", 400)
+
+        categoria = (data.get("categoria") or "").strip()
+        descricao = (data.get("descricao") or "").strip()
+        valor = parse_decimal(data.get("valor"))
+
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO lancamentos (user_id, data, tipo, categoria, descricao, valor)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    RETURNING id
+                    """,
+                    (uid, d, tipo, categoria, descricao, valor),
+                )
+                row = cur.fetchone()
+                conn.commit()
+
+        return jsonify({"ok": True, "id": row["id"]})
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    user = _get_or_create_user(email)
-
-    t = Transaction(
-        user_id=user.id,
-        tipo=tipo,
-        date=d,
-        categoria=categoria,
-        descricao=descricao,
-        valor=valor,
-        origem='APP',
-    )
-    db.session.add(t)
-    db.session.commit()
-
-    return jsonify({'ok': True, 'id': t.id})
+        return json_error(str(e), 400)
+    except Exception as e:
+        return json_error(f"Erro ao salvar: {str(e)}", 400)
 
 
-@app.delete('/api/lancamentos/<int:tx_id>')
-def api_delete_lancamento(tx_id: int):
-    email = _require_login()
-    if not email:
-        return jsonify({'error': 'Você precisa estar logado.'}), 401
+@app.put("/api/lancamentos/<int:item_id>")
+@login_required
+def api_lancamentos_update(item_id):
+    uid = current_user_id()
+    data = request.get_json(silent=True) or {}
 
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'error': 'Usuário não encontrado'}), 404
+    fields = []
+    values = []
 
-    t = Transaction.query.filter_by(id=tx_id, user_id=user.id).first()
-    if not t:
-        return jsonify({'error': 'Lançamento não encontrado'}), 404
+    if "data" in data:
+        d = datetime.strptime((data.get("data") or "").strip(), "%Y-%m-%d").date()
+        fields.append("data=%s")
+        values.append(d)
 
-    db.session.delete(t)
-    db.session.commit()
-    return jsonify({'ok': True})
+    if "tipo" in data:
+        tipo = (data.get("tipo") or "").strip().upper()
+        if tipo not in ("RECEITA", "GASTO"):
+            return json_error("tipo deve ser RECEITA ou GASTO", 400)
+        fields.append("tipo=%s")
+        values.append(tipo)
+
+    if "categoria" in data:
+        fields.append("categoria=%s")
+        values.append((data.get("categoria") or "").strip())
+
+    if "descricao" in data:
+        fields.append("descricao=%s")
+        values.append((data.get("descricao") or "").strip())
+
+    if "valor" in data:
+        fields.append("valor=%s")
+        values.append(parse_decimal(data.get("valor")))
+
+    if not fields:
+        return json_error("Nada para atualizar", 400)
+
+    values.extend([uid, item_id])
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE lancamentos
+                SET {", ".join(fields)}
+                WHERE user_id=%s AND id=%s
+                """,
+                tuple(values),
+            )
+            if cur.rowcount == 0:
+                return json_error("Lançamento não encontrado", 404)
+            conn.commit()
+
+    return json_ok()
 
 
-@app.get('/api/dashboard')
+@app.delete("/api/lancamentos/<int:item_id>")
+@login_required
+def api_lancamentos_delete(item_id):
+    uid = current_user_id()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM lancamentos WHERE user_id=%s AND id=%s", (uid, item_id))
+            if cur.rowcount == 0:
+                return json_error("Lançamento não encontrado", 404)
+            conn.commit()
+    return json_ok()
+
+
+# ----------------------------
+# Dashboard API
+# ----------------------------
+@app.get("/api/dashboard")
+@login_required
 def api_dashboard():
-    email = _require_login()
-    if not email:
-        return jsonify({'error': 'Você precisa estar logado.'}), 401
+    uid = current_user_id()
 
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({'receitas': 0.0, 'gastos': 0.0, 'saldo': 0.0})
-
-    try:
-        ano = int(request.args.get('ano', datetime.utcnow().year))
-        mes = int(request.args.get('mes', datetime.utcnow().month))
-    except Exception:
-        ano = datetime.utcnow().year
-        mes = datetime.utcnow().month
+    mes = int(request.args.get("mes", str(date.today().month)))
+    ano = int(request.args.get("ano", str(date.today().year)))
+    mes = max(1, min(mes, 12))
 
     start = date(ano, mes, 1)
-    end = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
-
-    q = (
-        Transaction.query
-        .filter(Transaction.user_id == user.id)
-        .filter(Transaction.date >= start)
-        .filter(Transaction.date < end)
-    )
-
-    receitas = Decimal('0')
-    gastos = Decimal('0')
-    for t in q.all():
-        if t.tipo == 'RECEITA':
-            receitas += Decimal(t.valor or 0)
-        else:
-            gastos += Decimal(t.valor or 0)
-
-    saldo = receitas - gastos
-
-    return jsonify({
-        'receitas': float(receitas),
-        'gastos': float(gastos),
-        'saldo': float(saldo),
-        'mes': mes,
-        'ano': ano,
-    })
-
-
-# -------------------------
-# Panic Reset (opcional, protegido por chave)
-# -------------------------
-PANIC_KEY = (os.getenv('PANIC_KEY') or '').strip()
-
-@app.get('/api/panic_reset')
-def api_panic_reset():
-    """
-    Se PANIC_KEY estiver definido, exige header:
-      X-Panic-Key: <PANIC_KEY>
-    Caso não esteja definido, permite somente se estiver logado.
-    """
-    if PANIC_KEY:
-        key = (request.headers.get('X-Panic-Key') or '').strip()
-        if key != PANIC_KEY:
-            return jsonify({'error': 'Forbidden'}), 403
+    # calcula fim do mês
+    if mes == 12:
+        end = date(ano + 1, 1, 1)
     else:
-        if not _require_login():
-            return jsonify({'error': 'Forbidden'}), 403
+        end = date(ano, mes + 1, 1)
 
-    # aqui você define o que "reset" faz no seu sistema.
-    # Exemplo: apagar transações do usuário logado (quando não tem PANIC_KEY)
-    email = _get_logged_email()
-    if email:
-        user = User.query.filter_by(email=email).first()
-        if user:
-            Transaction.query.filter_by(user_id=user.id).delete()
-            db.session.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                  COALESCE(SUM(CASE WHEN tipo='RECEITA' THEN valor ELSE 0 END), 0) AS receitas,
+                  COALESCE(SUM(CASE WHEN tipo='GASTO' THEN valor ELSE 0 END), 0) AS gastos
+                FROM lancamentos
+                WHERE user_id=%s AND data >= %s AND data < %s
+                """,
+                (uid, start, end),
+            )
+            receitas, gastos = cur.fetchone()
 
-    return jsonify({'ok': True})
+    receitas = float(receitas)
+    gastos = float(gastos)
+    saldo = float(decimal.Decimal(str(receitas)) - decimal.Decimal(str(gastos)))
+
+    return jsonify({"ok": True, "receitas": receitas, "gastos": gastos, "saldo": saldo})
 
 
-# -------------------------
-# WhatsApp Cloud API Webhook
-# -------------------------
-WA_VERIFY_TOKEN = (os.getenv('WA_VERIFY_TOKEN') or '').strip()
+# ----------------------------
+# Panic reset
+# ----------------------------
+@app.post("/api/panic_reset")
+@login_required
+def api_panic_reset():
+    uid = current_user_id()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM lancamentos WHERE user_id=%s", (uid,))
+            conn.commit()
+    return json_ok({"message": "Tudo zerado para o seu usuário."})
 
-def _parse_wa_text_to_transaction(msg_text: str):
-    textv = (msg_text or '').strip()
-    if not textv:
-        return None
 
-    lower = textv.lower()
-    parts = re.split(r'\s+', lower)
-    if not parts:
-        return None
+# ----------------------------
+# WhatsApp Webhook
+# ----------------------------
+def extract_wa_message(payload: dict):
+    """
+    Tenta extrair (from_number, wa_name, text_body) do webhook.
+    Suporta formato Cloud API (entry/changes/value/messages) e formatos simples.
+    """
+    from_number = None
+    wa_name = ""
+    text_body = ""
 
-    # (opcional) comando: "email@dominio.com" para vincular
-    if len(parts) == 1 and '@' in parts[0] and '.' in parts[0]:
-        return {'cmd': 'LINK_EMAIL', 'email': parts[0]}
-
-    tipo = None
-    if parts[0] in ('gasto', 'despesa', 'saida', 'saída'):
-        tipo = 'GASTO'
-        parts = parts[1:]
-    elif parts[0] in ('receita', 'entrada'):
-        tipo = 'RECEITA'
-        parts = parts[1:]
-
-    if tipo is None and parts and parts[0] in ('salario', 'salário'):
-        tipo = 'RECEITA'
-
-    if tipo is None:
-        tipo = 'GASTO'
-
-    value_token = None
-    rest = []
-    for p in parts:
-        if value_token is None and re.search(r'\d', p):
-            value_token = p
-        else:
-            rest.append(p)
-
-    if not value_token:
-        return None
-
+    # Cloud API padrão
     try:
-        valor = _parse_brl_value(value_token)
+        entry = (payload.get("entry") or [])[0]
+        change = (entry.get("changes") or [])[0]
+        value = change.get("value") or {}
+        msgs = value.get("messages") or []
+        if msgs:
+            msg = msgs[0]
+            from_number = msg.get("from")
+            text = msg.get("text") or {}
+            text_body = text.get("body") or ""
+
+        contacts = value.get("contacts") or []
+        if contacts:
+            profile = (contacts[0].get("profile") or {})
+            wa_name = profile.get("name") or ""
     except Exception:
-        return None
+        pass
 
-    categoria = (rest[0] if rest else 'Outros').capitalize()
-    descricao = ' '.join(rest[1:]).strip() if len(rest) > 1 else None
+    # Formato alternativo simples
+    if not from_number:
+        from_number = payload.get("from") or payload.get("wa_number")
+        text_body = payload.get("text") or payload.get("body") or text_body
+        wa_name = payload.get("name") or wa_name
 
-    return {
-        'cmd': 'TX',
-        'tipo': tipo,
-        'valor': valor,
-        'categoria': categoria,
-        'descricao': descricao,
-        'data': datetime.utcnow().date(),
-    }
+    from_number = normalize_phone(from_number or "")
+    text_body = (text_body or "").strip()
+
+    return from_number, wa_name, text_body
 
 
-@app.get('/webhooks/whatsapp')
+def find_user_id_for_whatsapp(from_number: str, text_body: str) -> int | None:
+    """
+    Regra:
+      1) Se texto tiver e-mail -> user por email
+      2) Senão -> tenta por telefone (fim do telefone cadastrado)
+    """
+    email = looks_like_email(text_body)
+
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if email:
+                cur.execute("SELECT id FROM users WHERE email=%s", (email,))
+                r = cur.fetchone()
+                if r:
+                    return int(r["id"])
+
+            if from_number:
+                # tenta match por telefone (normalizado). Alguns salvam com DDI/DDD, então compara por sufixo.
+                cur.execute("SELECT id, telefone FROM users WHERE telefone <> ''")
+                users = cur.fetchall()
+                for u in users:
+                    tel = normalize_phone(u["telefone"])
+                    if tel and (from_number.endswith(tel) or tel.endswith(from_number)):
+                        return int(u["id"])
+
+    return None
+
+
+@app.get("/webhooks/whatsapp")
 def wa_verify():
-    mode = request.args.get('hub.mode')
-    token = request.args.get('hub.verify_token')
-    challenge = request.args.get('hub.challenge')
+    """
+    Verificação do webhook (Meta).
+    Configure as envs:
+      WA_VERIFY_TOKEN (o mesmo token configurado no painel da Meta)
+    """
+    verify_token = os.environ.get("WA_VERIFY_TOKEN", "")
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
 
-    if mode == 'subscribe' and token and token == WA_VERIFY_TOKEN:
-        return challenge or '', 200
+    if mode == "subscribe" and token and token == verify_token:
+        return challenge or "", 200
 
-    return 'Forbidden', 403
+    return "forbidden", 403
 
 
-@app.post('/webhooks/whatsapp')
+@app.post("/webhooks/whatsapp")
 def wa_webhook():
     payload = request.get_json(silent=True) or {}
+    from_number, wa_name, text_body = extract_wa_message(payload)
+
+    # IMPORTANTÍSSIMO: só grava se achar user_id
+    user_id = find_user_id_for_whatsapp(from_number, text_body)
+
+    if not user_id:
+        # retorna 200 para não gerar retry infinito no webhook
+        app.logger.warning(
+            "WA webhook recebido mas sem user_id. from=%s text=%s",
+            from_number, (text_body[:80] + "..." if len(text_body) > 80 else text_body)
+        )
+        return jsonify({"ok": True, "linked": False}), 200
 
     try:
-        entry = (payload.get('entry') or [])[0]
-        changes = (entry.get('changes') or [])[0]
-        value = changes.get('value') or {}
-        messages = value.get('messages') or []
-        if not messages:
-            return jsonify({'ok': True})
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO wa_links (user_id, wa_number, wa_name, last_message_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (wa_number) DO UPDATE
+                      SET user_id = EXCLUDED.user_id,
+                          wa_name = EXCLUDED.wa_name,
+                          last_message_at = NOW()
+                    """,
+                    (user_id, from_number, wa_name or ""),
+                )
+                conn.commit()
 
-        msg = messages[0]
-        msg_id = msg.get('id')
-        wa_from_raw = msg.get('from')  # número do remetente (string)
-        wa_number = _normalize_wa_number(wa_from_raw or '')
-        msg_text = ((msg.get('text') or {}).get('body') or '').strip()
-
-        # idempotência
-        if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
-            return jsonify({'ok': True})
-
-        if msg_id:
-            db.session.add(ProcessedMessage(msg_id=msg_id, wa_number=wa_number))
-            db.session.commit()
-
-        parsed = _parse_wa_text_to_transaction(msg_text)
-        if not parsed:
-            return jsonify({'ok': True})
-
-        # 1) se mandar um email, tenta vincular wa_number -> user_id
-        if parsed.get('cmd') == 'LINK_EMAIL':
-            email = (parsed.get('email') or '').strip().lower()
-            if email and '@' in email:
-                user = _get_or_create_user(email)
-
-                if not wa_number:
-                    return jsonify({'ok': True})
-
-                link = WaLink.query.filter_by(wa_number=wa_number).first()
-                if link:
-                    link.user_id = user.id
-                else:
-                    link = WaLink(wa_number=wa_number, user_id=user.id)
-                    db.session.add(link)
-                db.session.commit()
-            return jsonify({'ok': True})
-
-        # 2) transação: precisa estar vinculado
-        if not wa_number:
-            return jsonify({'ok': True})
-
-        link = WaLink.query.filter_by(wa_number=wa_number).first()
-        if not link or not link.user_id:
-            return jsonify({'ok': True})
-
-        t = Transaction(
-            user_id=link.user_id,
-            tipo=parsed['tipo'],
-            date=parsed['data'],
-            categoria=parsed['categoria'],
-            descricao=parsed.get('descricao'),
-            valor=parsed['valor'],
-            origem='WA',
-        )
-        db.session.add(t)
-        db.session.commit()
-
-        return jsonify({'ok': True})
-
+        return jsonify({"ok": True, "linked": True, "user_id": user_id}), 200
     except Exception as e:
-        print('WA webhook error:', repr(e))
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        return jsonify({'ok': True})
+        # ainda assim retorna 200 para evitar retry
+        app.logger.exception("Erro ao salvar wa_links: %s", e)
+        return jsonify({"ok": True, "linked": False}), 200
 
 
-# -------------------------
-# Entry
-# -------------------------
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', '8080'))
-    app.run(host='0.0.0.0', port=port)
+# ----------------------------
+# Run
+# ----------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port, debug=False)
