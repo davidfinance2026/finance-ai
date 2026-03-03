@@ -41,7 +41,7 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 
 DB_ENABLED = bool(_raw_db_url)
 
-# Senha mínima (alinhado com seu PWA)
+# Senha mínima (ALINHADO com seu front: "mínimo 6")
 MIN_PASSWORD_LEN = int(os.getenv("MIN_PASSWORD_LEN", "6"))
 
 # WhatsApp Cloud API (Meta)
@@ -102,16 +102,15 @@ class ProcessedMessage(db.Model):
 
 class CategoryRule(db.Model):
     """
-    Regras personalizadas por usuário, para classificar categoria automaticamente.
-    pattern: regex (case-insensitive) aplicada sobre (categoria sugerida + descricao + texto original)
-    tipo: opcional, para amarrar regra só a GASTO/RECEITA
+    Regras personalizadas por usuário para categorias no WhatsApp.
+    Ex: pattern="ifood" => categoria="Alimentação"
     """
     __tablename__ = "category_rules"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    pattern = db.Column(db.String(255), nullable=False)
+    pattern = db.Column(db.String(80), nullable=False)      # keyword simples (sem regex perigoso)
     categoria = db.Column(db.String(80), nullable=False)
-    tipo = db.Column(db.String(16), nullable=True)  # "GASTO" | "RECEITA" | None
+    priority = db.Column(db.Integer, nullable=False, server_default=text("10"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -213,6 +212,7 @@ def _status_payload():
         "db_uri_set": bool(_raw_db_url),
         "graph_version": GRAPH_VERSION,
         "wa_ready": bool(WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID and WA_VERIFY_TOKEN),
+        "min_password_len": MIN_PASSWORD_LEN,
     }
 
 
@@ -232,10 +232,7 @@ def wa_send_text(to_number: str, text_msg: str):
         return
 
     url = f"https://graph.facebook.com/{GRAPH_VERSION}/{WA_PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WA_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}", "Content-Type": "application/json"}
     payload = {
         "messaging_product": "whatsapp",
         "to": to_number,
@@ -410,78 +407,6 @@ def api_me():
 
 
 # -------------------------
-# Category Rules API (opcional)
-# -------------------------
-@app.get("/api/category_rules")
-def api_list_category_rules():
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    rules = (
-        CategoryRule.query
-        .filter(CategoryRule.user_id == uid)
-        .order_by(CategoryRule.id.desc())
-        .all()
-    )
-    items = []
-    for r in rules:
-        items.append({
-            "id": r.id,
-            "pattern": r.pattern,
-            "categoria": r.categoria,
-            "tipo": r.tipo,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        })
-    return jsonify(items=items)
-
-
-@app.post("/api/category_rules")
-def api_create_category_rule():
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    data = request.get_json(silent=True) or {}
-    pattern = str(data.get("pattern") or "").strip()
-    categoria = str(data.get("categoria") or "").strip().title()
-    tipo = str(data.get("tipo") or "").strip().upper() or None
-
-    if not pattern:
-        return jsonify(error="pattern é obrigatório"), 400
-    if not categoria:
-        return jsonify(error="categoria é obrigatória"), 400
-    if tipo and tipo not in ("GASTO", "RECEITA"):
-        return jsonify(error="tipo deve ser GASTO, RECEITA ou vazio"), 400
-
-    # valida regex
-    try:
-        re.compile(pattern, flags=re.IGNORECASE)
-    except Exception:
-        return jsonify(error="pattern inválido (regex)"), 400
-
-    r = CategoryRule(user_id=uid, pattern=pattern, categoria=categoria, tipo=tipo)
-    db.session.add(r)
-    db.session.commit()
-    return jsonify(ok=True, id=r.id)
-
-
-@app.delete("/api/category_rules/<int:rule_id>")
-def api_delete_category_rule(rule_id: int):
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    r = CategoryRule.query.filter_by(id=rule_id, user_id=uid).first()
-    if not r:
-        return jsonify(error="Regra não encontrada"), 404
-
-    db.session.delete(r)
-    db.session.commit()
-    return jsonify(ok=True)
-
-
-# -------------------------
 # Transactions API (ALINHADO COM SEU index.html)
 # -------------------------
 @app.get("/api/lancamentos")
@@ -637,25 +562,41 @@ def api_dashboard():
 
 
 # -------------------------
-# WhatsApp Cloud API Webhook (parser inteligente + categorias)
+# WhatsApp Cloud API Webhook (parser inteligente + categorias automáticas)
 # -------------------------
 CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
-
-INCOME_HINTS = {
-    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu", "deposito", "depósito", "depositou",
-    "pixrecebido", "pix_recebido", "salario", "salário", "venda", "vendido", "comissao", "comissão",
-    "bonus", "bônus", "adiantamento", "reembolso", "refund", "ganhei", "ganho", "renda", "receita",
-    "pagaram", "me pagaram"
-}
-EXPENSE_HINTS = {
-    "paguei", "pago", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
-    "saida", "saída", "saiu", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
-}
 
 NEGATIONS = {"nao", "não", "nunca", "jamais"}
 
 # valor com milhares + decimais: 1.234,56 / 1234,56 / 1234.56 / 45 / 45,90
 VALUE_RE = re.compile(r"([+\-])?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:[.,]\d{1,2})?)")
+
+# Heurística de tipo (receita/gasto)
+INCOME_HINTS = {
+    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu",
+    "deposito", "depósito", "pixrecebido", "pix_recebido",
+    "salario", "salário", "venda", "vendido", "comissao", "comissão",
+    "bonus", "bônus", "reembolso", "refund", "ganhei", "renda", "receita",
+}
+EXPENSE_HINTS = {
+    "paguei", "pago", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
+    "saida", "saída", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
+}
+
+# Categorias automáticas padrão (pode ampliar à vontade)
+# A regra é: se encontrar a palavra (ou sinônimo) no texto, define categoria.
+DEFAULT_CATEGORY_KEYWORDS = [
+    ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
+    ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
+    ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento"}),
+    ("Contas", {"luz", "energia", "agua", "água", "internet", "telefone", "celular", "netflix", "spotify", "assinatura", "streaming"}),
+    ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
+    ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
+    ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
+    ("Impostos", {"imposto", "taxa", "multa"}),
+    ("Trabalho", {"salario", "salário", "pagamento", "prolabore", "pró-labore", "pro-labore", "freela", "freelancer"}),
+    ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
+]
 
 
 def _norm_word(w: str) -> str:
@@ -671,66 +612,98 @@ def _norm_word(w: str) -> str:
     return w
 
 
-# Categorias padrão (heurística). Você pode ir refinando.
-# pattern (regex) -> categoria
-DEFAULT_CATEGORY_RULES = [
-    (r"\b(ifood|i-food|ubereats|uber\s*eats|restaurante|lanche|lanchonete|pizza|hamburg|padaria|mercado|supermerc|hortifruti)\b", "Alimentação"),
-    (r"\b(uber|99|cabify|taxi|onibus|ônibus|metro|metrô|passagem|combustivel|combustível|gasolina|etanol|diesel|posto)\b", "Transporte"),
-    (r"\b(aluguel|condominio|condomínio|iptu|luz|energia|cemig|copasa|agua|água|internet|net|claro|vivo|tim|oi|telefone|gas)\b", "Casa"),
-    (r"\b(farmacia|farmácia|remedio|remédio|medic|consulta|hospital|clinica|clínica|plano)\b", "Saúde"),
-    (r"\b(escola|curso|faculdade|universidade|mensalidade|material)\b", "Educação"),
-    (r"\b(cartao|cartão|fatura|boleto|juros|multa|tarifa|banco)\b", "Financeiro"),
-    (r"\b(assinatura|spotify|netflix|prime|hbo|max|disney|steam|game|jogo)\b", "Lazer"),
-    (r"\b(salario|salário|pagamento|prolabore|pró-labore|bonus|bônus|comissao|comissão|venda|pix)\b", "Renda"),
-]
+def _tokenize(textv: str) -> list[str]:
+    textv = _norm_word(textv)
+    # mantém letras/números
+    parts = re.split(r"[^a-z0-9]+", textv)
+    return [p for p in parts if p]
 
 
-def _apply_category_rules(user_id: int, tipo: str, categoria_sugerida: str, descricao: str, original_text: str) -> str:
+def _detect_tipo(sign: str, before_tokens: list[str], after_tokens: list[str]) -> str:
+    if sign == "+":
+        return "RECEITA"
+    if sign == "-":
+        return "GASTO"
+
+    bset = set(before_tokens)
+    aset = set(after_tokens)
+
+    income_set = {_norm_word(x) for x in INCOME_HINTS}
+    expense_set = {_norm_word(x) for x in EXPENSE_HINTS}
+
+    b_income = len(bset & income_set)
+    b_exp = len(bset & expense_set)
+    a_income = len(aset & income_set)
+    a_exp = len(aset & expense_set)
+
+    score_income = (b_income * 3) + a_income
+    score_exp = (b_exp * 3) + a_exp
+
+    # negação no comecinho: "não recebi"
+    has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for t in before_tokens[:2])
+    if has_neg and score_income > 0 and score_exp == 0:
+        score_income = 0
+
+    if score_income > score_exp and score_income > 0:
+        return "RECEITA"
+    if score_exp > score_income and score_exp > 0:
+        return "GASTO"
+    return "GASTO"
+
+
+def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
     """
-    Retorna categoria final.
-    Ordem:
-      1) regras do usuário (CategoryRule)
-      2) regras default (DEFAULT_CATEGORY_RULES)
-      3) fallback: categoria_sugerida (ou 'Outros')
+    1) Regras personalizadas do usuário (CategoryRule) com prioridade
+    2) Regras padrão (DEFAULT_CATEGORY_KEYWORDS)
     """
-    base = " ".join([str(categoria_sugerida or ""), str(descricao or ""), str(original_text or "")]).strip()
-    low = _norm_word(base)
+    tokens = set(_tokenize(full_text))
 
-    # 1) regras do usuário
+    # 1) personalizadas
     try:
-        rules = CategoryRule.query.filter(CategoryRule.user_id == user_id).order_by(CategoryRule.id.desc()).all()
+        rules = (
+            CategoryRule.query
+            .filter(CategoryRule.user_id == user_id)
+            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
+            .all()
+        )
         for r in rules:
-            if r.tipo and r.tipo.upper() != (tipo or "").upper():
+            key = _norm_word(r.pattern)
+            if not key:
                 continue
-            try:
-                if re.search(r.pattern, base, flags=re.IGNORECASE):
-                    return str(r.categoria or "Outros").strip().title()
-            except Exception:
-                continue
+            # match por token ou substring (pra pegar "i-food", "ifood", "pixrecebido")
+            if key in tokens or any(key in t for t in tokens):
+                return (r.categoria or "").strip().title() or None
     except Exception:
+        # não derruba
         pass
 
-    # 2) regras default
-    for pat, cat in DEFAULT_CATEGORY_RULES:
-        try:
-            if re.search(pat, low, flags=re.IGNORECASE):
-                return cat
-        except Exception:
-            continue
+    # 2) padrão
+    for cat, keys in DEFAULT_CATEGORY_KEYWORDS:
+        nkeys = {_norm_word(k) for k in keys}
+        if tokens & nkeys:
+            return cat
 
-    # 3) fallback
-    out = (categoria_sugerida or "").strip()
-    if not out or out.lower() in ("outros", "geral", "diversos"):
-        return "Outros"
-    return out.title()
+    return None
+
+
+# Comandos de categorias no WhatsApp:
+#   categoria ifood = Alimentação
+#   remover categoria ifood
+#   categorias
+CAT_SET_RE = re.compile(r"^\s*categoria\s+(.+?)\s*=\s*(.+?)\s*$", re.IGNORECASE)
+CAT_DEL_RE = re.compile(r"^\s*remover\s+categoria\s+(.+?)\s*$", re.IGNORECASE)
+CAT_LIST_RE = re.compile(r"^\s*categorias\s*$", re.IGNORECASE)
 
 
 def _parse_wa_text(msg_text: str):
     """
     Comandos:
-      conectar email@dominio.com  (também: vincular/linkar/associar/registrar)
+      conectar email@dominio.com
+      categorias
+      categoria ifood = Alimentação
+      remover categoria ifood
 
-    Lançamentos (exemplos):
+    Lançamentos:
       recebi 1200 salario
       entrou 50 pix joao
       paguei 32,90 mercado
@@ -738,20 +711,40 @@ def _parse_wa_text(msg_text: str):
       + 35,90 venda camiseta
       - 18,00 uber
 
-    Regras tipo:
+    Regras:
       - + => RECEITA, - => GASTO
-      - senão: palavras-chave
-      - senão: default GASTO
+      - senão: palavras -> receita/gasto
+      - categoria: tenta inferir (custom rules > defaults). Se não achar, usa primeira palavra após valor.
     """
     t = (msg_text or "").strip()
     if not t:
         return None
 
-    low = re.sub(r"\s+", " ", t.lower().strip())
+    # comandos categoria (não dependem de valor)
+    mset = CAT_SET_RE.match(t)
+    if mset:
+        key = mset.group(1).strip()
+        cat = mset.group(2).strip()
+        if not key or not cat:
+            return {"cmd": "CAT_HELP"}
+        return {"cmd": "CAT_SET", "key": key, "categoria": cat}
+
+    mdel = CAT_DEL_RE.match(t)
+    if mdel:
+        key = mdel.group(1).strip()
+        if not key:
+            return {"cmd": "CAT_HELP"}
+        return {"cmd": "CAT_DEL", "key": key}
+
+    if CAT_LIST_RE.match(t):
+        return {"cmd": "CAT_LIST"}
+
+    low = _norm_word(t)
+    low = re.sub(r"\s+", " ", low).strip()
 
     # CONNECT
     for alias in CONNECT_ALIASES:
-        if low.startswith(alias + " "):
+        if low.startswith(_norm_word(alias) + " "):
             email = t.split(" ", 1)[1].strip()
             return {"cmd": "CONNECT", "email": _normalize_email(email)}
 
@@ -770,55 +763,29 @@ def _parse_wa_text(msg_text: str):
     before = (low[: m.start()] or "").strip()
     after = (low[m.end() :] or "").strip(" -–—")
 
-    before_tokens = [w for w in re.split(r"[\s/,_\-]+", before) if w]
-    after_tokens = [w for w in re.split(r"[\s/,_\-]+", after) if w]
+    before_tokens = _tokenize(before)
+    after_tokens = _tokenize(after)
 
-    bset = {_norm_word(w) for w in before_tokens}
-    aset = {_norm_word(w) for w in after_tokens}
-    allset = bset | aset
+    tipo = _detect_tipo(sign, before_tokens, after_tokens)
 
-    tipo = None
-    if sign == "+":
-        tipo = "RECEITA"
-    elif sign == "-":
-        tipo = "GASTO"
-    else:
-        b_income = len(bset & {_norm_word(x) for x in INCOME_HINTS})
-        b_exp = len(bset & {_norm_word(x) for x in EXPENSE_HINTS})
-        a_income = len(aset & {_norm_word(x) for x in INCOME_HINTS})
-        a_exp = len(aset & {_norm_word(x) for x in EXPENSE_HINTS})
-
-        score_income = (b_income * 3) + a_income
-        score_exp = (b_exp * 3) + a_exp
-
-        has_neg = any(_norm_word(w) in NEGATIONS for w in before_tokens[:2])
-        if has_neg and score_income > 0 and score_exp == 0:
-            score_income = 0
-
-        if score_income > score_exp and score_income > 0:
-            tipo = "RECEITA"
-        elif score_exp > score_income and score_exp > 0:
-            tipo = "GASTO"
-        else:
-            tipo = "GASTO"
-
-    # categoria/descricao sugeridas (pelo que vem após o valor)
-    if not after:
-        categoria = "Outros"
-        descricao = ""
-    else:
+    # categoria/descricao base (compatível com seu antigo)
+    categoria_fallback = "Outros"
+    descricao = ""
+    if after:
         parts = after.split(" ", 1)
-        categoria = (parts[0] or "Outros").strip().title()
+        categoria_fallback = (parts[0] or "Outros").strip().title()
         descricao = parts[1].strip() if len(parts) > 1 else ""
 
     return {
         "cmd": "TX",
         "tipo": tipo,
         "valor": valor,
-        "categoria": categoria,
+        "categoria_fallback": categoria_fallback,
         "descricao": descricao,
         "data": datetime.utcnow().date(),
-        "original_text": t,
+        "raw_text": t,
+        "after_text": after,
+        "before_text": before,
     }
 
 
@@ -828,7 +795,7 @@ def wa_verify():
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
 
-    if mode == "subscribe" and token and token == WA_VERIFY_TOKEN:
+    if mode == "subscribe" and token == WA_VERIFY_TOKEN:
         return challenge or "", 200
     return "forbidden", 403
 
@@ -849,6 +816,7 @@ def wa_webhook():
                     wa_from = _normalize_wa_number(msg.get("from") or "")
                     body = ((msg.get("text") or {}) or {}).get("body", "") or ""
 
+                    # dedup
                     if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
                         continue
                     if msg_id:
@@ -862,14 +830,17 @@ def wa_webhook():
                             "Não entendi 😅\n\nUse:\n"
                             "• conectar seuemail@dominio.com\n"
                             "• recebi 1200 salario\n"
-                            "• entrou 50 pix joao\n"
                             "• paguei 32,90 mercado\n"
                             "• + 35,90 venda camiseta\n"
-                            "• - 18,00 uber",
+                            "• - 18,00 uber\n\n"
+                            "Categorias inteligentes:\n"
+                            "• categorias\n"
+                            "• categoria ifood = Alimentação\n"
+                            "• remover categoria ifood",
                         )
                         continue
 
-                    # conectar
+                    # CONNECT (não precisa estar linkado)
                     if parsed["cmd"] == "CONNECT":
                         email = parsed.get("email")
                         if not email or "@" not in email:
@@ -879,63 +850,151 @@ def wa_webhook():
                         u = _get_or_create_user_by_email(email, password=None)
 
                         link = WaLink.query.filter_by(wa_from=wa_from).first()
+                        already = False
                         if link:
+                            already = (link.user_id == u.id)
                             link.user_id = u.id
                         else:
                             link = WaLink(wa_from=wa_from, user_id=u.id)
                             db.session.add(link)
                         db.session.commit()
 
-                        wa_send_text(
-                            wa_from,
-                            f"✅ WhatsApp conectado ao email: {email}\n\n"
-                            "Agora envie:\n"
-                            "• recebi 1200 salario\n"
-                            "• paguei 32,90 mercado\n"
-                            "• + 35,90 venda camiseta\n"
-                            "• - 18,00 uber",
-                        )
+                        if already:
+                            wa_send_text(
+                                wa_from,
+                                f"✅ Já estava conectado ao email: {email}\n\n"
+                                "Envie lançamentos assim:\n"
+                                "• recebi 1200 salario\n"
+                                "• paguei 32,90 mercado\n"
+                                "• - 18,00 uber\n\n"
+                                "E você pode ensinar categorias:\n"
+                                "• categoria uber = Transporte",
+                            )
+                        else:
+                            wa_send_text(
+                                wa_from,
+                                f"✅ WhatsApp conectado ao email: {email}\n\n"
+                                "Agora envie lançamentos assim:\n"
+                                "• recebi 1200 salario\n"
+                                "• paguei 32,90 mercado\n"
+                                "• - 18,00 uber\n\n"
+                                "E você pode ensinar categorias:\n"
+                                "• categoria uber = Transporte",
+                            )
                         continue
 
-                    # lançar
+                    # daqui pra baixo: precisa estar linkado
                     link = WaLink.query.filter_by(wa_from=wa_from).first()
                     if not link:
                         wa_send_text(
                             wa_from,
-                            "🔒 Seu WhatsApp não está conectado.\n\nEnvie:\nconectar SEU_EMAIL_DO_APP\n"
+                            "🔒 Seu WhatsApp não está conectado.\n\nEnvie:\n"
+                            "conectar SEU_EMAIL_DO_APP\n"
                             "Ex: conectar david@email.com",
                         )
                         continue
 
-                    # aplica inteligência de categoria
-                    categoria_final = _apply_category_rules(
-                        user_id=link.user_id,
-                        tipo=parsed["tipo"],
-                        categoria_sugerida=parsed.get("categoria") or "Outros",
-                        descricao=parsed.get("descricao") or "",
-                        original_text=parsed.get("original_text") or body,
-                    )
+                    # comandos de categoria exigem usuário linkado (pra salvar regra)
+                    if parsed["cmd"] == "CAT_HELP":
+                        wa_send_text(
+                            wa_from,
+                            "Use assim:\n"
+                            "• categoria ifood = Alimentação\n"
+                            "• remover categoria ifood\n"
+                            "• categorias",
+                        )
+                        continue
 
-                    t = Transaction(
-                        user_id=link.user_id,
-                        tipo=parsed["tipo"],
-                        data=parsed["data"],
-                        categoria=categoria_final,
-                        descricao=parsed.get("descricao") or None,
-                        valor=parsed["valor"],
-                        origem="WA",
-                    )
-                    db.session.add(t)
-                    db.session.commit()
+                    if parsed["cmd"] == "CAT_SET":
+                        key = (parsed.get("key") or "").strip()
+                        cat = (parsed.get("categoria") or "").strip()
+                        if not key or not cat:
+                            wa_send_text(wa_from, "Formato inválido. Ex: categoria ifood = Alimentação")
+                            continue
 
-                    wa_send_text(
-                        wa_from,
-                        "✅ Lançamento salvo!\n"
-                        f"Tipo: {t.tipo}\n"
-                        f"Valor: R$ {str(t.valor).replace('.', ',')}\n"
-                        f"Categoria: {t.categoria}\n"
-                        f"Data: {t.data.isoformat()}",
-                    )
+                        # sanitize simples
+                        key_norm = _norm_word(key)
+                        if len(key_norm) < 2:
+                            wa_send_text(wa_from, "Chave muito curta. Ex: categoria uber = Transporte")
+                            continue
+
+                        # upsert
+                        existing = CategoryRule.query.filter_by(user_id=link.user_id, pattern=key_norm).first()
+                        if existing:
+                            existing.categoria = cat.title()
+                            existing.priority = 10
+                        else:
+                            db.session.add(CategoryRule(user_id=link.user_id, pattern=key_norm, categoria=cat.title(), priority=10))
+                        db.session.commit()
+
+                        wa_send_text(wa_from, f"✅ Regra salva: '{key_norm}' => {cat.title()}")
+                        continue
+
+                    if parsed["cmd"] == "CAT_DEL":
+                        key = _norm_word(parsed.get("key") or "")
+                        if not key:
+                            wa_send_text(wa_from, "Formato inválido. Ex: remover categoria uber")
+                            continue
+                        q = CategoryRule.query.filter_by(user_id=link.user_id, pattern=key)
+                        deleted = q.delete()
+                        db.session.commit()
+                        wa_send_text(wa_from, "✅ Regra removida." if deleted else "ℹ️ Essa regra não existia.")
+                        continue
+
+                    if parsed["cmd"] == "CAT_LIST":
+                        rules = (
+                            CategoryRule.query
+                            .filter_by(user_id=link.user_id)
+                            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
+                            .limit(30)
+                            .all()
+                        )
+                        if not rules:
+                            wa_send_text(
+                                wa_from,
+                                "Você ainda não criou regras.\n\n"
+                                "Exemplos:\n"
+                                "• categoria ifood = Alimentação\n"
+                                "• categoria uber = Transporte\n\n"
+                                "Dica: o bot também tem categorias automáticas padrão.",
+                            )
+                        else:
+                            lines = ["✅ Suas regras (até 30):"]
+                            for r in rules:
+                                lines.append(f"• {r.pattern} => {r.categoria}")
+                            wa_send_text(wa_from, "\n".join(lines))
+                        continue
+
+                    # TX normal
+                    if parsed["cmd"] == "TX":
+                        raw_text = parsed.get("raw_text") or ""
+                        # tenta categoria inteligente (custom > default) com o texto todo
+                        guessed = _guess_category_from_text(link.user_id, raw_text)
+                        categoria = guessed or parsed.get("categoria_fallback") or "Outros"
+
+                        t = Transaction(
+                            user_id=link.user_id,
+                            tipo=parsed["tipo"],
+                            data=parsed["data"],
+                            categoria=categoria,
+                            descricao=(parsed.get("descricao") or None),
+                            valor=parsed["valor"],
+                            origem="WA",
+                        )
+                        db.session.add(t)
+                        db.session.commit()
+
+                        wa_send_text(
+                            wa_from,
+                            "✅ Lançamento salvo!\n"
+                            f"Tipo: {t.tipo}\n"
+                            f"Valor: R$ {str(t.valor).replace('.', ',')}\n"
+                            f"Categoria: {t.categoria}\n"
+                            f"Data: {t.data.isoformat()}\n\n"
+                            "Dica: ensine regras:\n"
+                            "categoria ifood = Alimentação",
+                        )
+                        continue
 
     except Exception as e:
         print("WA webhook error:", repr(e))
