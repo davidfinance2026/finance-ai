@@ -147,26 +147,87 @@
       canvas{height:280px !important;}
     }
   
-  /* WhatsApp FAB */
-  .wa-fab{
+  
+  /* Floating menu (estilo app bancário) */
+  .fab-wrap{
     position:fixed;
     right:16px;
     bottom:16px;
     z-index:999;
     display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:10px;
+  }
+  .fab-actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    align-items:flex-end;
+    opacity:0;
+    transform: translateY(8px);
+    pointer-events:none;
+    transition: .18s ease;
+  }
+  .fab-wrap.open .fab-actions{
+    opacity:1;
+    transform: translateY(0);
+    pointer-events:auto;
+  }
+  .fab-action{
+    display:flex;
     align-items:center;
     gap:10px;
-    padding:12px 14px;
-    border-radius:999px;
-    background:#25D366;
-    color:#05131a;
-    font-weight:800;
     text-decoration:none;
-    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    color:var(--text);
   }
-  .wa-fab:active{transform:translateY(1px)}
-  .wa-dot{
-    width:12px;height:12px;border-radius:50%;background:#ffffff;
+  .fab-label{
+    font-weight:900;
+    font-size:13px;
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background: rgba(0,0,0,.30);
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    backdrop-filter: blur(8px);
+  }
+  .fab-btn{
+    width:54px;height:54px;border-radius:999px;
+    border:1px solid var(--border);
+    background: linear-gradient(180deg, rgba(75,140,255,.42), rgba(45,107,255,.20));
+    box-shadow:0 14px 40px rgba(0,0,0,.45);
+    color:var(--text);
+    display:grid;place-items:center;
+    cursor:pointer;
+    user-select:none;
+    transition:.15s transform;
+  }
+  .fab-btn:active{transform:translateY(1px)}
+  .fab-btn.small{
+    width:48px;height:48px;
+    background: rgba(255,255,255,.06);
+  }
+  .fab-btn.wa{
+    background:#25D366;
+    border-color: rgba(255,255,255,.18);
+    color:#05131a;
+    font-weight:900;
+  }
+  .fab-ico{font-size:20px;line-height:1}
+  .fab-plus{font-size:22px;line-height:1}
+  .fab-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.18);
+    backdrop-filter: blur(1px);
+    z-index:998;
+    opacity:0;
+    pointer-events:none;
+    transition:.18s ease;
+  }
+  .fab-wrap.open + .fab-backdrop{
+    opacity:1;
+    pointer-events:auto;
   }
 
 </style>
@@ -504,7 +565,28 @@
   <script>
     const $ = (id) => document.getElementById(id);
 
-    // Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
+    
+    // WhatsApp (link dinâmico com "conectar EMAIL_DO_LOGADO")
+    const WA_NUMBER = "5537998675231";
+
+    function buildWaLink(email){
+      const base = `https://wa.me/${WA_NUMBER}`;
+      const e = String(email || "").trim();
+      if(!e) return base;
+      return `${base}?text=${encodeURIComponent("conectar " + e)}`;
+    }
+
+    function refreshWaLink(){
+      const a = $("fabWhats") || $("waFab");
+      if(!a) return;
+      const href = buildWaLink(currentUserEmail);
+      a.href = href;
+      const lbl = $("fabWaLabel");
+      if(lbl){
+        lbl.textContent = currentUserEmail ? "WhatsApp (conectar)" : "WhatsApp";
+      }
+    }
+// Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
     function isoToBR(iso){
       if(!iso) return "";
       const s=String(iso).slice(0,10);
@@ -620,6 +702,7 @@
       $("btnLogout").classList.toggle("hidden", !isLogged);
       pill.classList.toggle("hidden", !isLogged);
       pill.textContent = isLogged ? email : "";
+      refreshWaLink();
     }
 
     if (currentUserEmail) setLoggedUI(true, currentUserEmail);
@@ -997,7 +1080,7 @@
           return `
             <div class="miniCard">
               <div class="row" style="gap:12px;align-items:flex-start">
-                <div style="min-width:92px" class="muted"><b>${it.data}</b></div>
+                <div style="min-width:92px" class="muted"><b>${isoToBR(it.data)}</b></div>
                 <div style="flex:1">
                   <div style="font-weight:900">${it.tipo} • ${cat}</div>
                   <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
@@ -1052,7 +1135,7 @@
 
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
-      $("edtData").value = it.data || new Date().toISOString().slice(0,10);
+      $("edtData").value = isoToBR(it.data) || isoToBR(new Date().toISOString().slice(0,10));
       $("edtCategoria").value = it.categoria || "";
       $("edtDescricao").value = it.descricao || "";
       $("edtValor").value = normalizeValorToMoneyBR(it.valor);
@@ -1097,20 +1180,80 @@
       }
     });
 
+    
+    // -----------------------
+    // Floating menu
+    // -----------------------
+    const fabWrap = $("fabWrap");
+    const fabMain = $("fabMain");
+    const fabBackdrop = $("fabBackdrop");
+    const fabNovo = $("fabNovo");
+    const fabDash = $("fabDash");
+
+    function fabClose(){
+      if(!fabWrap) return;
+      fabWrap.classList.remove("open");
+      if(fabMain) fabMain.setAttribute("aria-expanded","false");
+      const actions = fabWrap.querySelector(".fab-actions");
+      if(actions) actions.setAttribute("aria-hidden","true");
+      const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
+    }
+    function fabToggle(){
+      if(!fabWrap) return;
+      const open = !fabWrap.classList.contains("open");
+      fabWrap.classList.toggle("open", open);
+      if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
+      const actions = fabWrap.querySelector(".fab-actions");
+      if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
+      const ico = $("fabMainIco"); if(ico) ico.textContent = open ? "✕" : "☰";
+    }
+
+    if(fabMain) fabMain.addEventListener("click", fabToggle);
+    if(fabBackdrop) fabBackdrop.addEventListener("click", fabClose);
+
+    if(fabNovo) fabNovo.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("lancar"); });
+    if(fabDash) fabDash.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("dashboard"); });
+
+    // fecha o menu quando trocar aba pelo topo
+    tabEls.forEach(t => t.addEventListener("click", fabClose));
+
+
     // -----------------------
     // Boot
     // -----------------------
     initMesAno();
-    ensureCharts();
+    refreshWaLink();
+ensureCharts();
     refreshDashboard().catch(()=>{});
   </script>
 
 
-  <!-- Atalho WhatsApp (mensagem pronta: conectar email_logado) -->
-  <a id="waFab" class="wa-fab" href="/wa" target="_blank" rel="noopener">
-    <span class="wa-dot"></span>
-    WhatsApp
-  </a>
+  
+  <!-- Menu flutuante (Novo / WhatsApp / Dashboard) -->
+  <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
+    <div class="fab-actions" aria-hidden="true">
+      <a class="fab-action" href="#" id="fabNovo">
+        <span class="fab-label">Novo</span>
+        <div class="fab-btn small"><span class="fab-ico">➕</span></div>
+      </a>
+
+      <a class="fab-action" href="/wa" target="_blank" rel="noopener" id="fabWhats">
+        <span class="fab-label" id="fabWaLabel">WhatsApp</span>
+        <div class="fab-btn wa"><span class="fab-ico">💬</span></div>
+      </a>
+
+      <a class="fab-action" href="#" id="fabDash">
+        <span class="fab-label">Dashboard</span>
+        <div class="fab-btn small"><span class="fab-ico">📊</span></div>
+      </a>
+    </div>
+
+    <div class="fab-btn" id="fabMain" aria-expanded="false">
+      <span class="fab-plus" id="fabMainIco">☰</span>
+    </div>
+  </div>
+  <div class="fab-backdrop" id="fabBackdrop" aria-hidden="true"></div>
+
 
 </body>
 </html>
