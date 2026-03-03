@@ -100,6 +100,25 @@ class ProcessedMessage(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class CategoryMemory(db.Model):
+    """
+    Memória por usuário:
+      keyword -> categoria (com score)
+    Ex: user_id=1, keyword="farmacia" => categoria="Saúde" score=7
+    """
+    __tablename__ = "category_memory"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    keyword = db.Column(db.String(80), nullable=False, index=True)
+    categoria = db.Column(db.String(80), nullable=False)
+    score = db.Column(db.Integer, nullable=False, default=1)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "keyword", "categoria", name="uq_user_keyword_categoria"),
+    )
+
+
 def _create_tables_if_needed():
     try:
         db.create_all()
@@ -292,10 +311,10 @@ def api_panic_reset():
 
     try:
         db.session.execute(
-            text("TRUNCATE TABLE processed_messages, wa_links, transactions, users RESTART IDENTITY CASCADE;")
+            text("TRUNCATE TABLE processed_messages, wa_links, transactions, users, category_memory RESTART IDENTITY CASCADE;")
         )
         db.session.commit()
-        return jsonify({"ok": True, "message": "Banco limpo: users, transactions, wa_links, processed_messages."})
+        return jsonify({"ok": True, "message": "Banco limpo: users, transactions, wa_links, processed_messages, category_memory."})
     except Exception:
         db.session.rollback()
 
@@ -303,6 +322,7 @@ def api_panic_reset():
         ProcessedMessage.query.delete()
         WaLink.query.delete()
         Transaction.query.delete()
+        CategoryMemory.query.delete()
         User.query.delete()
         db.session.commit()
         return jsonify({"ok": True, "message": "Banco limpo (delete fallback)."})
@@ -312,7 +332,7 @@ def api_panic_reset():
 
 
 # -------------------------
-# Auth API (ALINHADO COM SEU index.html)
+# Auth API (ALINHADO COM index.html)
 # -------------------------
 @app.post("/api/register")
 def api_register():
@@ -394,7 +414,7 @@ def api_me():
 
 
 # -------------------------
-# Transactions API (ALINHADO COM SEU index.html)
+# Transactions API (ALINHADO COM index.html)
 # -------------------------
 @app.get("/api/lancamentos")
 def api_list_lancamentos():
@@ -432,6 +452,119 @@ def api_list_lancamentos():
     return jsonify(items=items)
 
 
+def _tokenize_words(s: str) -> list[str]:
+    s = (s or "").lower().strip()
+    s = (
+        s.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
+         .replace("é", "e").replace("ê", "e")
+         .replace("í", "i")
+         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+         .replace("ú", "u")
+         .replace("ç", "c")
+    )
+    # mantém letras/números
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s:
+        return []
+    parts = [p for p in s.split(" ") if p]
+    # filtra palavras muito curtas que dão ruído
+    return [p for p in parts if len(p) >= 3]
+
+
+# Mapa default (rápido e eficaz) - você pode ir ajustando
+DEFAULT_CATEGORY_RULES: dict[str, list[str]] = {
+    "Pix": ["pix", "transferencia", "transfer", "ted", "doc"],
+    "Salário": ["salario", "sal", "pagamento", "prolabore", "prolab"],
+    "Alimentação": ["ifood", "i-food", "restaurante", "lanche", "pizza", "hamburguer", "mercado", "supermercado", "padaria", "acougue", "feira"],
+    "Transporte": ["uber", "99", "taxi", "gasolina", "combustivel", "onibus", "metro", "passagem", "estacionamento"],
+    "Moradia": ["aluguel", "condominio", "condominio", "luz", "energia", "agua", "internet", "telefone", "gás", "gas", "iptu"],
+    "Saúde": ["farmacia", "remedio", "medico", "consulta", "exame", "hospital", "clinica", "plano"],
+    "Educação": ["curso", "faculdade", "escola", "livro", "mensalidade"],
+    "Lazer": ["cinema", "show", "netflix", "spotify", "prime", "hbo", "steam", "viagem"],
+    "Roupas": ["roupa", "tenis", "sapato", "camisa", "calca", "vestido"],
+    "Assinaturas": ["assinatura", "mensal", "anuidade"],
+    "Investimentos": ["acao", "acoes", "tesouro", "cdb", "lci", "lca", "fii", "bitcoin", "cripto", "crypto"],
+    "Outros": [],
+}
+
+
+def _infer_category_for_user(user_id: int, text_blob: str) -> str:
+    """
+    Inferência híbrida:
+      1) regras default (keywords -> categoria)
+      2) memória do usuário (CategoryMemory) - aprende com histórico
+    """
+    tokens = _tokenize_words(text_blob)
+    if not tokens:
+        return "Outros"
+
+    # 1) score por regras default
+    scores: dict[str, int] = {}
+    token_set = set(tokens)
+    for cat, kws in DEFAULT_CATEGORY_RULES.items():
+        if not kws:
+            continue
+        hit = len(token_set.intersection(set(_tokenize_words(" ".join(kws)))))
+        if hit > 0:
+            scores[cat] = scores.get(cat, 0) + (hit * 3)
+
+    # 2) memória do usuário (keywords individuais)
+    try:
+        mem_rows = (
+            CategoryMemory.query
+            .filter(CategoryMemory.user_id == user_id)
+            .filter(CategoryMemory.keyword.in_(tokens))
+            .all()
+        )
+        for r in mem_rows:
+            scores[r.categoria] = scores.get(r.categoria, 0) + int(r.score)
+    except Exception:
+        pass
+
+    if not scores:
+        return "Outros"
+
+    # escolhe maior score
+    best = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    return best or "Outros"
+
+
+def _learn_category_for_user(user_id: int, categoria: str, text_blob: str):
+    """
+    Aprende que tokens do text_blob costumam cair nessa categoria.
+    Só incrementa score; idempotente por (user_id,keyword,categoria).
+    """
+    categoria = (categoria or "Outros").strip().title()
+    tokens = _tokenize_words(text_blob)
+    if not tokens:
+        return
+
+    # limita para não explodir memória
+    tokens = tokens[:12]
+
+    for kw in tokens:
+        try:
+            row = (
+                CategoryMemory.query
+                .filter_by(user_id=user_id, keyword=kw, categoria=categoria)
+                .first()
+            )
+            if row:
+                row.score = int(row.score or 0) + 1
+                row.updated_at = datetime.utcnow()
+            else:
+                row = CategoryMemory(user_id=user_id, keyword=kw, categoria=categoria, score=1, updated_at=datetime.utcnow())
+                db.session.add(row)
+        except Exception:
+            db.session.rollback()
+            continue
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 @app.post("/api/lancamentos")
 def api_create_lancamento():
     uid = _require_login()
@@ -444,7 +577,8 @@ def api_create_lancamento():
     if tipo not in ("RECEITA", "GASTO"):
         return jsonify(error="Tipo inválido"), 400
 
-    categoria = (str(data.get("categoria") or "").strip() or "Outros").title()
+    # categoria do app continua mandando; se vier vazio, inferimos pela descrição
+    categoria_in = str(data.get("categoria") or "").strip()
     descricao = str(data.get("descricao") or "").strip() or None
     d = _parse_date_any(data.get("data"))
 
@@ -452,6 +586,11 @@ def api_create_lancamento():
         valor = _parse_brl_value(data.get("valor"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
+
+    if not categoria_in:
+        categoria = _infer_category_for_user(uid, descricao or "")
+    else:
+        categoria = categoria_in.title()
 
     t = Transaction(
         user_id=uid,
@@ -464,6 +603,10 @@ def api_create_lancamento():
     )
     db.session.add(t)
     db.session.commit()
+
+    # aprende (APP também ensina)
+    _learn_category_for_user(uid, categoria, f"{categoria} {descricao or ''}")
+
     return jsonify(ok=True, id=t.id, row=t.id)
 
 
@@ -485,7 +628,8 @@ def api_edit_lancamento(row: int):
 
     t.tipo = tipo
     t.data = _parse_date_any(payload.get("data") or t.data.isoformat())
-    t.categoria = (str(payload.get("categoria") or t.categoria).strip() or "Outros").title()
+    cat_in = str(payload.get("categoria") or "").strip()
+    t.categoria = (cat_in or t.categoria or "Outros").title()
     t.descricao = str(payload.get("descricao") or "").strip() or None
 
     try:
@@ -494,6 +638,10 @@ def api_edit_lancamento(row: int):
         return jsonify(error=str(e)), 400
 
     db.session.commit()
+
+    # aprende com edição também
+    _learn_category_for_user(uid, t.categoria, f"{t.categoria} {t.descricao or ''}")
+
     return jsonify(ok=True)
 
 
@@ -549,19 +697,22 @@ def api_dashboard():
 
 
 # -------------------------
-# WhatsApp Cloud API Webhook (parser inteligente)
+# WhatsApp Cloud API Webhook (parser inteligente + auto categoria)
 # -------------------------
 CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
 
+# palavras que tendem a indicar RECEITA (sem precisar escrever "receita")
 INCOME_HINTS = {
-    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu", "deposito", "depósito", "depositou",
-    "pix", "pixrecebido", "pix_recebido", "salario", "salário", "pagamento", "pagou", "paguei?",  # (pagou pode ser ambíguo; tratamos abaixo)
-    "venda", "vendido", "comissao", "comissão", "bonus", "bônus", "adiantamento", "reembolso", "refund",
-    "ganhei", "ganho", "renda", "receita"
+    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu", "credito", "crédito",
+    "deposito", "depósito", "depositou", "pixrecebido", "pix_recebido",
+    "salario", "salário", "comissao", "comissão", "bonus", "bônus",
+    "reembolso", "refund", "ganhei", "ganho", "renda", "receita",
+    "venda", "vendido", "vendeu"
 }
 
+# palavras que tendem a indicar GASTO
 EXPENSE_HINTS = {
-    "paguei", "pagamento", "pago", "pagou", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
+    "paguei", "pago", "pagou", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
     "saida", "saída", "saiu", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
     "aluguel", "mercado", "uber", "ifood", "farmacia", "farmácia", "gasolina", "internet", "luz", "agua", "água"
 }
@@ -588,7 +739,7 @@ def _parse_wa_text(msg_text: str):
     Regras:
       - Se vier com + => RECEITA, com - => GASTO
       - Senão: tenta detectar por palavras (recebi/entrou => receita; paguei/comprei => gasto)
-      - Senão: default GASTO (mantém comportamento antigo)
+      - Senão: default GASTO
     """
     t = (msg_text or "").strip()
     if not t:
@@ -603,7 +754,7 @@ def _parse_wa_text(msg_text: str):
             email = t.split(" ", 1)[1].strip()
             return {"cmd": "CONNECT", "email": _normalize_email(email)}
 
-    # tenta achar valor
+    # valor
     m = VALUE_RE.search(low)
     if not m:
         return None
@@ -615,52 +766,33 @@ def _parse_wa_text(msg_text: str):
     except Exception:
         return None
 
-    # texto antes e depois do número
     before = (low[: m.start()] or "").strip()
     after = (low[m.end() :] or "").strip(" -–—")
 
-    # tokenização simples
-    before_tokens = [w for w in re.split(r"[\s/,_\-]+", before) if w]
-    after_tokens = [w for w in re.split(r"[\s/,_\-]+", after) if w]
+    before_tokens = _tokenize_words(before)
+    after_tokens = _tokenize_words(after)
 
-    # remove acentuação leve para melhorar match (opcional)
-    def norm_word(w: str) -> str:
-        w = w.strip().lower()
-        w = (
-            w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
-             .replace("é", "e").replace("ê", "e")
-             .replace("í", "i")
-             .replace("ó", "o").replace("ô", "o").replace("õ", "o")
-             .replace("ú", "u")
-             .replace("ç", "c")
-        )
-        return w
+    bset = set(before_tokens)
+    aset = set(after_tokens)
 
-    bset = {norm_word(w) for w in before_tokens}
-    aset = {norm_word(w) for w in after_tokens}
-    allset = bset | aset
-
-    # Heurística de tipo
-    tipo = None
-
+    # Tipo
     if sign == "+":
         tipo = "RECEITA"
     elif sign == "-":
         tipo = "GASTO"
     else:
-        # prioridade: palavras no início (antes do número) pesam mais
-        b_income = len(bset & {norm_word(x) for x in INCOME_HINTS})
-        b_exp = len(bset & {norm_word(x) for x in EXPENSE_HINTS})
-        a_income = len(aset & {norm_word(x) for x in INCOME_HINTS})
-        a_exp = len(aset & {norm_word(x) for x in EXPENSE_HINTS})
+        b_income = len(bset.intersection(set(_tokenize_words(" ".join(INCOME_HINTS)))))
+        b_exp = len(bset.intersection(set(_tokenize_words(" ".join(EXPENSE_HINTS)))))
+        a_income = len(aset.intersection(set(_tokenize_words(" ".join(INCOME_HINTS)))))
+        a_exp = len(aset.intersection(set(_tokenize_words(" ".join(EXPENSE_HINTS)))))
 
-        # caso especial: "pix" sozinho é ambíguo; mas "pix recebido/entrou/recebi" já resolve.
-        # "pagamento" pode ser ambíguo; se tiver "recebi/entrou" junto => receita.
         score_income = (b_income * 3) + a_income
         score_exp = (b_exp * 3) + a_exp
 
-        # negação simples: "não recebi" => não forçar receita
-        has_neg = any(norm_word(w) in NEGATIONS for w in before_tokens[:2])  # pega começo
+        # negação no começo: "não recebi 50" -> não força receita
+        has_neg = False
+        if before_tokens:
+            has_neg = before_tokens[0] in {"nao", "não"} or (len(before_tokens) > 1 and before_tokens[1] in {"nao", "não"})
         if has_neg and score_income > 0 and score_exp == 0:
             score_income = 0
 
@@ -669,23 +801,20 @@ def _parse_wa_text(msg_text: str):
         elif score_exp > score_income and score_exp > 0:
             tipo = "GASTO"
         else:
-            tipo = "GASTO"  # default (mantém compatibilidade)
+            tipo = "GASTO"
 
-    # categoria/descricao (após o valor)
-    if not after:
-        categoria = "Outros"
-        descricao = ""
-    else:
-        parts = after.split(" ", 1)
-        categoria = (parts[0] or "Outros").strip().title()
-        descricao = parts[1].strip() if len(parts) > 1 else ""
+    # A partir daqui: categoria + descricao virão do "after" (texto depois do valor)
+    # Ex: "paguei 32,90 mercado do joao" -> after="mercado do joao"
+    # Se after vazio, deixa "Outros"
+    raw_after = after.strip()
+    descricao = raw_after
 
     return {
         "cmd": "TX",
         "tipo": tipo,
         "valor": valor,
-        "categoria": categoria,
-        "descricao": descricao,
+        "raw_after": raw_after,   # para inferência de categoria
+        "descricao": descricao,   # texto livre (pós-valor)
         "data": datetime.utcnow().date(),
     }
 
@@ -717,6 +846,7 @@ def wa_webhook():
                     wa_from = _normalize_wa_number(msg.get("from") or "")
                     body = ((msg.get("text") or {}) or {}).get("body", "") or ""
 
+                    # de-dup
                     if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
                         continue
                     if msg_id:
@@ -775,17 +905,27 @@ def wa_webhook():
                         )
                         continue
 
+                    # categoria automática (usa texto após o valor + mensagem toda como contexto)
+                    context_text = f"{parsed.get('raw_after','')} {body}"
+                    categoria = _infer_category_for_user(link.user_id, context_text)
+
+                    # descrição = texto pós-valor (mantém)
+                    descricao = (parsed.get("descricao") or "").strip() or None
+
                     t = Transaction(
                         user_id=link.user_id,
                         tipo=parsed["tipo"],
                         data=parsed["data"],
-                        categoria=parsed["categoria"],
-                        descricao=parsed.get("descricao") or None,
+                        categoria=categoria,
+                        descricao=descricao,
                         valor=parsed["valor"],
                         origem="WA",
                     )
                     db.session.add(t)
                     db.session.commit()
+
+                    # aprende para o futuro
+                    _learn_category_for_user(link.user_id, categoria, context_text)
 
                     wa_send_text(
                         wa_from,
