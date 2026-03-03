@@ -2,7 +2,7 @@ import os
 import re
 import json
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -108,9 +108,25 @@ class CategoryRule(db.Model):
     __tablename__ = "category_rules"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    pattern = db.Column(db.String(80), nullable=False)      # keyword simples (sem regex perigoso)
+    pattern = db.Column(db.String(80), nullable=False)      # keyword simples
     categoria = db.Column(db.String(80), nullable=False)
     priority = db.Column(db.Integer, nullable=False, server_default=text("10"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class WaPending(db.Model):
+    """
+    Guarda pendências do WhatsApp (modo dúvida / confirmação).
+    Ex: mensagem ambígua -> pergunta "receita ou gasto?" e salva aqui para completar depois.
+    """
+    __tablename__ = "wa_pending"
+    id = db.Column(db.Integer, primary_key=True)
+    wa_from = db.Column(db.String(40), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    kind = db.Column(db.String(40), nullable=False)  # ex: "CONFIRM_TIPO"
+    payload_json = db.Column(db.Text, nullable=False)  # json do lançamento pendente
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -304,10 +320,13 @@ def api_panic_reset():
 
     try:
         db.session.execute(
-            text("TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, users RESTART IDENTITY CASCADE;")
+            text(
+                "TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, wa_pending, users "
+                "RESTART IDENTITY CASCADE;"
+            )
         )
         db.session.commit()
-        return jsonify({"ok": True, "message": "Banco limpo: users, transactions, wa_links, processed_messages, category_rules."})
+        return jsonify({"ok": True, "message": "Banco limpo."})
     except Exception:
         db.session.rollback()
 
@@ -316,9 +335,10 @@ def api_panic_reset():
         WaLink.query.delete()
         Transaction.query.delete()
         CategoryRule.query.delete()
+        WaPending.query.delete()
         User.query.delete()
         db.session.commit()
-        return jsonify({"ok": True, "message": "Banco limpo (delete fallback)."})
+        return jsonify({"ok": True, "message": "Banco limpo (fallback)."})
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "panic_reset_failed", "detail": str(e)}), 500
@@ -562,7 +582,7 @@ def api_dashboard():
 
 
 # -------------------------
-# WhatsApp Cloud API Webhook (parser inteligente + categorias automáticas)
+# WhatsApp - Inteligência (Opção 1 e Opção 3)
 # -------------------------
 CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
 
@@ -571,20 +591,19 @@ NEGATIONS = {"nao", "não", "nunca", "jamais"}
 # valor com milhares + decimais: 1.234,56 / 1234,56 / 1234.56 / 45 / 45,90
 VALUE_RE = re.compile(r"([+\-])?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:[.,]\d{1,2})?)")
 
-# Heurística de tipo (receita/gasto)
 INCOME_HINTS = {
     "recebi", "recebido", "recebida", "entrou", "entrada", "caiu",
-    "deposito", "depósito", "pixrecebido", "pix_recebido",
-    "salario", "salário", "venda", "vendido", "comissao", "comissão",
-    "bonus", "bônus", "reembolso", "refund", "ganhei", "renda", "receita",
+    "deposito", "depósito", "salario", "salário", "venda", "vendido",
+    "comissao", "comissão", "bonus", "bônus", "reembolso", "ganhei", "renda", "receita",
+    "pixrecebido", "pix_recebido",
 }
+
 EXPENSE_HINTS = {
     "paguei", "pago", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
     "saida", "saída", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
 }
 
-# Categorias automáticas padrão (pode ampliar à vontade)
-# A regra é: se encontrar a palavra (ou sinônimo) no texto, define categoria.
+# Categorias automáticas padrão
 DEFAULT_CATEGORY_KEYWORDS = [
     ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
     ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
@@ -614,16 +633,20 @@ def _norm_word(w: str) -> str:
 
 def _tokenize(textv: str) -> list[str]:
     textv = _norm_word(textv)
-    # mantém letras/números
     parts = re.split(r"[^a-z0-9]+", textv)
     return [p for p in parts if p]
 
 
-def _detect_tipo(sign: str, before_tokens: list[str], after_tokens: list[str]) -> str:
+def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: list[str]):
+    """
+    Retorna (tipo, confidence) onde confidence:
+      - "high" => confiante
+      - "low"  => dúvida (pede confirmação)
+    """
     if sign == "+":
-        return "RECEITA"
+        return "RECEITA", "high"
     if sign == "-":
-        return "GASTO"
+        return "GASTO", "high"
 
     bset = set(before_tokens)
     aset = set(after_tokens)
@@ -639,26 +662,27 @@ def _detect_tipo(sign: str, before_tokens: list[str], after_tokens: list[str]) -
     score_income = (b_income * 3) + a_income
     score_exp = (b_exp * 3) + a_exp
 
-    # negação no comecinho: "não recebi"
     has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for t in before_tokens[:2])
     if has_neg and score_income > 0 and score_exp == 0:
         score_income = 0
 
-    if score_income > score_exp and score_income > 0:
-        return "RECEITA"
-    if score_exp > score_income and score_exp > 0:
-        return "GASTO"
-    return "GASTO"
+    if score_income == 0 and score_exp == 0:
+        # totalmente ambíguo
+        return "GASTO", "low"
+
+    if score_income == score_exp:
+        # empate -> dúvida
+        return ("RECEITA" if score_income > 0 else "GASTO"), "low"
+
+    if score_income > score_exp:
+        return "RECEITA", ("high" if (score_income - score_exp) >= 2 else "low")
+    return "GASTO", ("high" if (score_exp - score_income) >= 2 else "low")
 
 
 def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
-    """
-    1) Regras personalizadas do usuário (CategoryRule) com prioridade
-    2) Regras padrão (DEFAULT_CATEGORY_KEYWORDS)
-    """
     tokens = set(_tokenize(full_text))
 
-    # 1) personalizadas
+    # 1) personalizadas do usuário
     try:
         rules = (
             CategoryRule.query
@@ -670,11 +694,9 @@ def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
             key = _norm_word(r.pattern)
             if not key:
                 continue
-            # match por token ou substring (pra pegar "i-food", "ifood", "pixrecebido")
             if key in tokens or any(key in t for t in tokens):
                 return (r.categoria or "").strip().title() or None
     except Exception:
-        # não derruba
         pass
 
     # 2) padrão
@@ -686,41 +708,107 @@ def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
     return None
 
 
-# Comandos de categorias no WhatsApp:
-#   categoria ifood = Alimentação
-#   remover categoria ifood
-#   categorias
+# ----- comandos WhatsApp (opção 3) -----
+CMD_HELP_RE = re.compile(r"^\s*(ajuda|\?|help)\s*$", re.IGNORECASE)
+CMD_ULTIMOS_RE = re.compile(r"^\s*ultimos\s*$", re.IGNORECASE)
+CMD_APAGAR_RE = re.compile(r"^\s*apagar\s+(\d+)\s*$", re.IGNORECASE)
+CMD_CORRIGIR_ULTIMA_RE = re.compile(r"^\s*corrigir\s+ultima\s+(.+)$", re.IGNORECASE)
+CMD_EDITAR_RE = re.compile(r"^\s*editar\s+(\d+)\s+(.+)$", re.IGNORECASE)
+
+# categoria rules via WhatsApp:
 CAT_SET_RE = re.compile(r"^\s*categoria\s+(.+?)\s*=\s*(.+?)\s*$", re.IGNORECASE)
 CAT_DEL_RE = re.compile(r"^\s*remover\s+categoria\s+(.+?)\s*$", re.IGNORECASE)
 CAT_LIST_RE = re.compile(r"^\s*categorias\s*$", re.IGNORECASE)
 
 
+def _wa_help_text():
+    return (
+        "✅ Comandos disponíveis:\n\n"
+        "🔗 Conectar:\n"
+        "• conectar seuemail@dominio.com\n\n"
+        "🧾 Lançar:\n"
+        "• recebi 1200 salario\n"
+        "• paguei 32,90 mercado\n"
+        "• + 35,90 venda camiseta\n"
+        "• - 18,00 uber\n\n"
+        "🧠 Quando houver dúvida, eu pergunto: RECEITA ou GASTO.\n"
+        "Aí você responde apenas: receita  (ou)  gasto\n\n"
+        "✏️ Corrigir direto aqui:\n"
+        "• ultimos\n"
+        "• apagar 123\n"
+        "• editar 123 valor=35,90 categoria=Alimentação data=2026-03-01 descricao=algo tipo=receita\n"
+        "• corrigir ultima categoria=Transporte\n\n"
+        "🏷️ Ensinar categorias:\n"
+        "• categorias\n"
+        "• categoria ifood = Alimentação\n"
+        "• remover categoria ifood\n"
+    )
+
+
+def _parse_kv_assignments(s: str) -> dict:
+    """
+    Lê pares tipo: valor=35,90 categoria=Alimentação data=2026-03-01 descricao=abc tipo=receita
+    Observação: descrição pode conter espaços se você usar aspas:
+      descricao="compra no mercado"
+    """
+    out = {}
+    # suporta aspas
+    pattern = re.compile(r'(\w+)\s*=\s*(".*?"|\'.*?\'|[^\s]+)')
+    for m in pattern.finditer(s):
+        k = m.group(1).strip().lower()
+        v = m.group(2).strip()
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+        out[k] = v
+    return out
+
+
+def _pending_get(wa_from: str):
+    now = datetime.utcnow()
+    # limpa expirados
+    WaPending.query.filter(WaPending.wa_from == wa_from, WaPending.expires_at < now).delete()
+    db.session.commit()
+    return (
+        WaPending.query
+        .filter(WaPending.wa_from == wa_from, WaPending.expires_at >= now)
+        .order_by(WaPending.id.desc())
+        .first()
+    )
+
+
+def _pending_set(wa_from: str, user_id: int, kind: str, payload: dict, minutes: int = 10):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+    p = WaPending(
+        wa_from=wa_from,
+        user_id=user_id,
+        kind=kind,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        expires_at=datetime.utcnow() + timedelta(minutes=minutes),
+    )
+    db.session.add(p)
+    db.session.commit()
+
+
+def _pending_clear(wa_from: str, user_id: int):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+
+
 def _parse_wa_text(msg_text: str):
     """
-    Comandos:
-      conectar email@dominio.com
-      categorias
-      categoria ifood = Alimentação
-      remover categoria ifood
-
-    Lançamentos:
-      recebi 1200 salario
-      entrou 50 pix joao
-      paguei 32,90 mercado
-      comprei 120 tenis
-      + 35,90 venda camiseta
-      - 18,00 uber
-
-    Regras:
-      - + => RECEITA, - => GASTO
-      - senão: palavras -> receita/gasto
-      - categoria: tenta inferir (custom rules > defaults). Se não achar, usa primeira palavra após valor.
+    Retorna dict com cmd:
+      CONNECT | CAT_* | HELP | ULTIMOS | APAGAR | EDITAR | CORRIGIR_ULTIMA | TX | NONE
     """
     t = (msg_text or "").strip()
     if not t:
-        return None
+        return {"cmd": "NONE"}
 
-    # comandos categoria (não dependem de valor)
+    # ajuda
+    if CMD_HELP_RE.match(t):
+        return {"cmd": "HELP"}
+
+    # comandos de categorias
     mset = CAT_SET_RE.match(t)
     if mset:
         key = mset.group(1).strip()
@@ -739,6 +827,27 @@ def _parse_wa_text(msg_text: str):
     if CAT_LIST_RE.match(t):
         return {"cmd": "CAT_LIST"}
 
+    # edição/correção
+    if CMD_ULTIMOS_RE.match(t):
+        return {"cmd": "ULTIMOS"}
+
+    m = CMD_APAGAR_RE.match(t)
+    if m:
+        return {"cmd": "APAGAR", "id": int(m.group(1))}
+
+    m = CMD_CORRIGIR_ULTIMA_RE.match(t)
+    if m:
+        return {"cmd": "CORRIGIR_ULTIMA", "fields": _parse_kv_assignments(m.group(1))}
+
+    m = CMD_EDITAR_RE.match(t)
+    if m:
+        return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": _parse_kv_assignments(m.group(2))}
+
+    # confirmação simples (para pendência)
+    low_simple = _norm_word(t)
+    if low_simple in ("receita", "gasto"):
+        return {"cmd": "CONFIRM_TIPO", "tipo": "RECEITA" if low_simple == "receita" else "GASTO"}
+
     low = _norm_word(t)
     low = re.sub(r"\s+", " ", low).strip()
 
@@ -751,14 +860,14 @@ def _parse_wa_text(msg_text: str):
     # valor
     m = VALUE_RE.search(low)
     if not m:
-        return None
+        return {"cmd": "NONE"}
 
     sign = m.group(1) or ""
     valor_raw = m.group(2)
     try:
         valor = _parse_brl_value(valor_raw)
     except Exception:
-        return None
+        return {"cmd": "NONE"}
 
     before = (low[: m.start()] or "").strip()
     after = (low[m.end() :] or "").strip(" -–—")
@@ -766,9 +875,8 @@ def _parse_wa_text(msg_text: str):
     before_tokens = _tokenize(before)
     after_tokens = _tokenize(after)
 
-    tipo = _detect_tipo(sign, before_tokens, after_tokens)
+    tipo, confidence = _detect_tipo_with_score(sign, before_tokens, after_tokens)
 
-    # categoria/descricao base (compatível com seu antigo)
     categoria_fallback = "Outros"
     descricao = ""
     if after:
@@ -779,16 +887,63 @@ def _parse_wa_text(msg_text: str):
     return {
         "cmd": "TX",
         "tipo": tipo,
+        "tipo_confidence": confidence,
         "valor": valor,
         "categoria_fallback": categoria_fallback,
         "descricao": descricao,
         "data": datetime.utcnow().date(),
         "raw_text": t,
-        "after_text": after,
-        "before_text": before,
     }
 
 
+def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
+    """
+    Aplica campos vindos do WhatsApp:
+      valor=..., categoria=..., data=..., descricao=..., tipo=receita/gasto
+    """
+    if not fields:
+        return False, "Nenhum campo informado."
+
+    # tipo
+    if "tipo" in fields:
+        v = _norm_word(fields["tipo"])
+        if v in ("receita", "gasto"):
+            tx.tipo = "RECEITA" if v == "receita" else "GASTO"
+        else:
+            return False, "Tipo inválido. Use tipo=receita ou tipo=gasto"
+
+    # valor
+    if "valor" in fields:
+        try:
+            tx.valor = _parse_brl_value(fields["valor"])
+        except Exception:
+            return False, "Valor inválido. Ex: valor=35,90"
+
+    # data
+    if "data" in fields:
+        try:
+            tx.data = _parse_date_any(fields["data"])
+        except Exception:
+            return False, "Data inválida. Ex: data=2026-03-01"
+
+    # categoria
+    if "categoria" in fields:
+        cat = str(fields["categoria"] or "").strip()
+        if not cat:
+            return False, "Categoria vazia."
+        tx.categoria = cat.title()
+
+    # descricao
+    if "descricao" in fields:
+        desc = str(fields["descricao"] or "").strip()
+        tx.descricao = desc or None
+
+    return True, "OK"
+
+
+# -------------------------
+# WhatsApp Cloud API Webhook
+# -------------------------
 @app.get("/webhooks/whatsapp")
 def wa_verify():
     mode = request.args.get("hub.mode")
@@ -824,23 +979,12 @@ def wa_webhook():
                         db.session.commit()
 
                     parsed = _parse_wa_text(body)
-                    if not parsed:
-                        wa_send_text(
-                            wa_from,
-                            "Não entendi 😅\n\nUse:\n"
-                            "• conectar seuemail@dominio.com\n"
-                            "• recebi 1200 salario\n"
-                            "• paguei 32,90 mercado\n"
-                            "• + 35,90 venda camiseta\n"
-                            "• - 18,00 uber\n\n"
-                            "Categorias inteligentes:\n"
-                            "• categorias\n"
-                            "• categoria ifood = Alimentação\n"
-                            "• remover categoria ifood",
-                        )
+
+                    # precisa estar linkado pra quase tudo, exceto CONNECT/HELP
+                    if parsed["cmd"] in ("HELP",):
+                        wa_send_text(wa_from, _wa_help_text())
                         continue
 
-                    # CONNECT (não precisa estar linkado)
                     if parsed["cmd"] == "CONNECT":
                         email = parsed.get("email")
                         if not email or "@" not in email:
@@ -859,42 +1003,66 @@ def wa_webhook():
                             db.session.add(link)
                         db.session.commit()
 
-                        if already:
-                            wa_send_text(
-                                wa_from,
-                                f"✅ Já estava conectado ao email: {email}\n\n"
-                                "Envie lançamentos assim:\n"
-                                "• recebi 1200 salario\n"
-                                "• paguei 32,90 mercado\n"
-                                "• - 18,00 uber\n\n"
-                                "E você pode ensinar categorias:\n"
-                                "• categoria uber = Transporte",
-                            )
-                        else:
-                            wa_send_text(
-                                wa_from,
-                                f"✅ WhatsApp conectado ao email: {email}\n\n"
-                                "Agora envie lançamentos assim:\n"
-                                "• recebi 1200 salario\n"
-                                "• paguei 32,90 mercado\n"
-                                "• - 18,00 uber\n\n"
-                                "E você pode ensinar categorias:\n"
-                                "• categoria uber = Transporte",
-                            )
+                        wa_send_text(
+                            wa_from,
+                            (f"✅ {'Já estava' if already else 'WhatsApp'} conectado ao email: {email}\n\n"
+                             "Digite 'ajuda' para ver todos os comandos.\n"
+                             "Exemplo: paguei 32,90 mercado"),
+                        )
                         continue
 
-                    # daqui pra baixo: precisa estar linkado
                     link = WaLink.query.filter_by(wa_from=wa_from).first()
                     if not link:
                         wa_send_text(
                             wa_from,
                             "🔒 Seu WhatsApp não está conectado.\n\nEnvie:\n"
                             "conectar SEU_EMAIL_DO_APP\n"
-                            "Ex: conectar david@email.com",
+                            "Ex: conectar david@email.com\n\n"
+                            "Depois digite: ajuda",
                         )
                         continue
 
-                    # comandos de categoria exigem usuário linkado (pra salvar regra)
+                    # confirma pendência (modo dúvida)
+                    if parsed["cmd"] == "CONFIRM_TIPO":
+                        pending = _pending_get(wa_from)
+                        if not pending or pending.user_id != link.user_id:
+                            wa_send_text(wa_from, "Não tenho nenhuma dúvida pendente agora. Digite 'ajuda'.")
+                            continue
+                        if pending.kind != "CONFIRM_TIPO":
+                            wa_send_text(wa_from, "Pendência não reconhecida. Digite 'ajuda'.")
+                            continue
+
+                        payload_tx = json.loads(pending.payload_json)
+                        payload_tx["tipo"] = parsed["tipo"]
+
+                        guessed = _guess_category_from_text(link.user_id, payload_tx.get("raw_text", ""))
+                        categoria = guessed or payload_tx.get("categoria_fallback") or "Outros"
+
+                        ttx = Transaction(
+                            user_id=link.user_id,
+                            tipo=payload_tx["tipo"],
+                            data=_parse_date_any(payload_tx.get("data")),
+                            categoria=categoria,
+                            descricao=(payload_tx.get("descricao") or None),
+                            valor=_parse_brl_value(payload_tx.get("valor")),
+                            origem="WA",
+                        )
+                        db.session.add(ttx)
+                        db.session.commit()
+                        _pending_clear(wa_from, link.user_id)
+
+                        wa_send_text(
+                            wa_from,
+                            "✅ Lançamento salvo (confirmado)!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {str(ttx.valor).replace('.', ',')}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    # comandos de categorias
                     if parsed["cmd"] == "CAT_HELP":
                         wa_send_text(
                             wa_from,
@@ -912,19 +1080,24 @@ def wa_webhook():
                             wa_send_text(wa_from, "Formato inválido. Ex: categoria ifood = Alimentação")
                             continue
 
-                        # sanitize simples
                         key_norm = _norm_word(key)
                         if len(key_norm) < 2:
                             wa_send_text(wa_from, "Chave muito curta. Ex: categoria uber = Transporte")
                             continue
 
-                        # upsert
                         existing = CategoryRule.query.filter_by(user_id=link.user_id, pattern=key_norm).first()
                         if existing:
                             existing.categoria = cat.title()
                             existing.priority = 10
                         else:
-                            db.session.add(CategoryRule(user_id=link.user_id, pattern=key_norm, categoria=cat.title(), priority=10))
+                            db.session.add(
+                                CategoryRule(
+                                    user_id=link.user_id,
+                                    pattern=key_norm,
+                                    categoria=cat.title(),
+                                    priority=10,
+                                )
+                            )
                         db.session.commit()
 
                         wa_send_text(wa_from, f"✅ Regra salva: '{key_norm}' => {cat.title()}")
@@ -965,14 +1138,129 @@ def wa_webhook():
                             wa_send_text(wa_from, "\n".join(lines))
                         continue
 
-                    # TX normal
+                    # opção 3: listar/apagar/editar
+                    if parsed["cmd"] == "ULTIMOS":
+                        txs = (
+                            Transaction.query
+                            .filter(Transaction.user_id == link.user_id)
+                            .order_by(Transaction.id.desc())
+                            .limit(5)
+                            .all()
+                        )
+                        if not txs:
+                            wa_send_text(wa_from, "Você ainda não tem lançamentos.")
+                        else:
+                            lines = ["🧾 Últimos 5 lançamentos:"]
+                            for ttx in txs:
+                                lines.append(
+                                    f"• ID {ttx.id} | {ttx.tipo} | R$ {str(ttx.valor).replace('.', ',')} | {ttx.categoria} | {ttx.data.isoformat()}"
+                                )
+                            lines.append("\nPara editar: editar ID valor=... categoria=... data=... tipo=receita/gasto")
+                            lines.append("Para apagar: apagar ID")
+                            wa_send_text(wa_from, "\n".join(lines))
+                        continue
+
+                    if parsed["cmd"] == "APAGAR":
+                        txid = parsed["id"]
+                        ttx = Transaction.query.filter_by(id=txid, user_id=link.user_id).first()
+                        if not ttx:
+                            wa_send_text(wa_from, "Não achei esse ID (ou não é seu). Use: ultimos")
+                            continue
+                        db.session.delete(ttx)
+                        db.session.commit()
+                        wa_send_text(wa_from, f"✅ Apagado: ID {txid}")
+                        continue
+
+                    if parsed["cmd"] == "EDITAR":
+                        txid = parsed["id"]
+                        fields = parsed.get("fields") or {}
+                        ttx = Transaction.query.filter_by(id=txid, user_id=link.user_id).first()
+                        if not ttx:
+                            wa_send_text(wa_from, "Não achei esse ID (ou não é seu). Use: ultimos")
+                            continue
+
+                        ok, msg = _apply_edit_fields(ttx, fields)
+                        if not ok:
+                            wa_send_text(wa_from, f"❌ Não consegui editar: {msg}")
+                            continue
+
+                        db.session.commit()
+                        wa_send_text(
+                            wa_from,
+                            "✅ Editado!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {str(ttx.valor).replace('.', ',')}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "CORRIGIR_ULTIMA":
+                        fields = parsed.get("fields") or {}
+                        ttx = (
+                            Transaction.query
+                            .filter(Transaction.user_id == link.user_id)
+                            .order_by(Transaction.id.desc())
+                            .first()
+                        )
+                        if not ttx:
+                            wa_send_text(wa_from, "Você ainda não tem lançamentos.")
+                            continue
+
+                        ok, msg = _apply_edit_fields(ttx, fields)
+                        if not ok:
+                            wa_send_text(wa_from, f"❌ Não consegui corrigir: {msg}")
+                            continue
+
+                        db.session.commit()
+                        wa_send_text(
+                            wa_from,
+                            "✅ Corrigido na última transação!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {str(ttx.valor).replace('.', ',')}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    # TX normal (modo dúvida + categoria inteligente)
                     if parsed["cmd"] == "TX":
                         raw_text = parsed.get("raw_text") or ""
-                        # tenta categoria inteligente (custom > default) com o texto todo
                         guessed = _guess_category_from_text(link.user_id, raw_text)
                         categoria = guessed or parsed.get("categoria_fallback") or "Outros"
 
-                        t = Transaction(
+                        # Se estiver em dúvida do tipo -> pergunta e salva pendência
+                        if parsed.get("tipo_confidence") == "low":
+                            _pending_set(
+                                wa_from=wa_from,
+                                user_id=link.user_id,
+                                kind="CONFIRM_TIPO",
+                                payload={
+                                    "tipo": parsed["tipo"],  # sugestão
+                                    "valor": str(parsed["valor"]),
+                                    "categoria_fallback": parsed.get("categoria_fallback"),
+                                    "descricao": parsed.get("descricao") or "",
+                                    "data": parsed.get("data").isoformat() if isinstance(parsed.get("data"), date) else None,
+                                    "raw_text": raw_text,
+                                },
+                                minutes=10,
+                            )
+                            wa_send_text(
+                                wa_from,
+                                "🤔 Fiquei em dúvida se isso foi *RECEITA* ou *GASTO*.\n\n"
+                                f"Mensagem: {raw_text}\n"
+                                f"Valor: R$ {str(parsed['valor']).replace('.', ',')}\n"
+                                f"Categoria sugerida: {categoria}\n\n"
+                                "Responda apenas com:\n"
+                                "• receita\n"
+                                "ou\n"
+                                "• gasto",
+                            )
+                            continue
+
+                        ttx = Transaction(
                             user_id=link.user_id,
                             tipo=parsed["tipo"],
                             data=parsed["data"],
@@ -981,20 +1269,23 @@ def wa_webhook():
                             valor=parsed["valor"],
                             origem="WA",
                         )
-                        db.session.add(t)
+                        db.session.add(ttx)
                         db.session.commit()
 
                         wa_send_text(
                             wa_from,
                             "✅ Lançamento salvo!\n"
-                            f"Tipo: {t.tipo}\n"
-                            f"Valor: R$ {str(t.valor).replace('.', ',')}\n"
-                            f"Categoria: {t.categoria}\n"
-                            f"Data: {t.data.isoformat()}\n\n"
-                            "Dica: ensine regras:\n"
-                            "categoria ifood = Alimentação",
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {str(ttx.valor).replace('.', ',')}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}\n\n"
+                            "Dica: digite 'ultimos' para ver e editar.",
                         )
                         continue
+
+                    # se chegou aqui, não reconheceu
+                    wa_send_text(wa_from, "Não entendi. Digite: ajuda")
 
     except Exception as e:
         print("WA webhook error:", repr(e))
