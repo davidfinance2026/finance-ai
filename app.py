@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 
-_raw_db_url = (os.getenv('DATABASE_URL') or '').strip()
+_raw_db_url = os.getenv('DATABASE_URL', '').strip()
 if _raw_db_url.startswith('postgres://'):
     _raw_db_url = _raw_db_url.replace('postgres://', 'postgresql://', 1)
 
@@ -33,13 +33,9 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 DB_ENABLED = bool(_raw_db_url)
 
-# Cookies (Railway HTTPS)
-# Em dev/local, SESSION_COOKIE_SECURE pode atrapalhar; então deixo condicional:
-IS_PROD = (os.getenv("FLASK_ENV") == "production") or bool(_raw_db_url)
-app.config['SESSION_COOKIE_SECURE'] = bool(IS_PROD)
+# Cookies de sessão (Railway/HTTPS)
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-
-MIN_PASSWORD_LEN = int(os.getenv("MIN_PASSWORD_LEN", "6"))
 
 # -------------------------
 # DB
@@ -65,12 +61,13 @@ class Transaction(db.Model):
 
     tipo = db.Column(db.String(16), nullable=False)
 
-    # colunas reais: data / valor
+    # Mapeia para a coluna real do Postgres
     date = db.Column('data', db.Date, nullable=False, index=True)
 
     categoria = db.Column(db.String(80), nullable=False)
     descricao = db.Column(db.Text, nullable=True)
 
+    # Mapeia para a coluna real do Postgres
     valor = db.Column('valor', db.Numeric(12, 2), nullable=False)
 
     origem = db.Column(db.String(16), nullable=False, default='APP')
@@ -79,21 +76,18 @@ class Transaction(db.Model):
 
 class WaLink(db.Model):
     """
-    IMPORTANTE:
-    Seu banco já tem wa_links.user_id NOT NULL (pelo erro do log).
-    Então aqui o modelo já nasce alinhado com isso.
+    Tabela de vínculo WhatsApp -> Usuário.
+    IMPORTANTE: alinhada com o DB que exige NOT NULL em wa_number e user_id.
     """
     __tablename__ = 'wa_links'
 
     id = db.Column(db.Integer, primary_key=True)
 
-    wa_from = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    # número (string do "from" do WhatsApp Cloud API)
+    wa_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
 
-    # user_id é a forma canônica
+    # usuário dono desse número
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-
-    # mantemos user_email como legado (opcional), ajuda no backfill
-    user_email = db.Column(db.String(255), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -103,17 +97,16 @@ class ProcessedMessage(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     msg_id = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    wa_from = db.Column(db.String(40), nullable=True)
+    wa_number = db.Column(db.String(40), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 def _create_tables_if_needed() -> None:
     """
-    create_all + migrações leves sem Alembic.
+    create_all + migrações leves para manter compatibilidade com DB antigo.
     """
     try:
         db.create_all()
-
         insp = inspect(db.engine)
         table_names = set(insp.get_table_names())
 
@@ -124,11 +117,23 @@ def _create_tables_if_needed() -> None:
             except Exception:
                 db.session.rollback()
 
-        # migração users.password_set
+        # ---- users
         if 'users' in table_names:
             _run("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT false")
 
-        # migração transactions
+        # ---- processed_messages
+        if 'processed_messages' in table_names:
+            # versões antigas podem ter wa_from
+            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_number VARCHAR(40)")
+            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
+            # se existir wa_from e wa_number estiver vazio, copia (best effort)
+            _run("""
+                UPDATE processed_messages
+                SET wa_number = wa_from
+                WHERE (wa_number IS NULL OR wa_number = '') AND (wa_from IS NOT NULL AND wa_from <> '')
+            """)
+
+        # ---- transactions (garantir data/valor)
         if 'transactions' in table_names:
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS data DATE")
             _run("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS valor NUMERIC(12,2)")
@@ -147,63 +152,41 @@ def _create_tables_if_needed() -> None:
             END$$;
             """)
 
-        # migração wa_links: garantir wa_from, user_email, user_id
+        # ---- wa_links (compatibilidade: wa_from/user_email -> wa_number/user_id)
         if 'wa_links' in table_names:
+            # cria colunas novas se faltarem
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_number VARCHAR(40)")
+            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_id INTEGER")
             _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
             _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_email VARCHAR(255)")
-            _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS user_id INTEGER")
             _run("ALTER TABLE wa_links ADD COLUMN IF NOT EXISTS created_at TIMESTAMP")
 
-            # tenta backfill user_id usando user_email
-            # 1) cria usuários ausentes
+            # copia wa_from -> wa_number se necessário
             _run("""
-            INSERT INTO users (email, password_hash, password_set, created_at)
-            SELECT DISTINCT wl.user_email,
-                   md5(random()::text), false, NOW()
-            FROM wa_links wl
-            LEFT JOIN users u ON u.email = wl.user_email
-            WHERE wl.user_email IS NOT NULL AND u.id IS NULL;
-            """)
-            # 2) atualiza wa_links.user_id
-            _run("""
-            UPDATE wa_links wl
-            SET user_id = u.id
-            FROM users u
-            WHERE wl.user_id IS NULL
-              AND wl.user_email IS NOT NULL
-              AND u.email = wl.user_email;
+                UPDATE wa_links
+                SET wa_number = wa_from
+                WHERE (wa_number IS NULL OR wa_number = '') AND (wa_from IS NOT NULL AND wa_from <> '')
             """)
 
-            # tenta criar FK (se já existir, ignora)
+            # tenta preencher user_id a partir do user_email (se existir)
             _run("""
-            DO $$
-            BEGIN
-              BEGIN
-                ALTER TABLE wa_links
-                ADD CONSTRAINT wa_links_user_id_fkey
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-              EXCEPTION WHEN others THEN
-              END;
-            END$$;
+                UPDATE wa_links wl
+                SET user_id = u.id
+                FROM users u
+                WHERE (wl.user_id IS NULL)
+                  AND (wl.user_email IS NOT NULL AND wl.user_email <> '')
+                  AND lower(u.email) = lower(wl.user_email)
             """)
 
-            # tenta reforçar NOT NULL (se houver NULL restante, pode falhar — e a gente ignora)
-            _run("""
-            DO $$
-            BEGIN
-              BEGIN
-                ALTER TABLE wa_links ALTER COLUMN user_id SET NOT NULL;
-              EXCEPTION WHEN others THEN
-              END;
-            END$$;
-            """)
+            # índices/unique (best effort)
+            _run("CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_links_wa_number ON wa_links (wa_number)")
+            _run("CREATE INDEX IF NOT EXISTS ix_wa_links_user_id ON wa_links (user_id)")
 
-        # migração processed_messages
-        if 'processed_messages' in table_names:
-            _run("ALTER TABLE processed_messages ADD COLUMN IF NOT EXISTS wa_from VARCHAR(40)")
+            # Se o DB já tiver NOT NULL, ok.
+            # Se não tiver, a app funciona mesmo assim. (Não forçamos aqui para não quebrar bancos com dados antigos.)
 
     except Exception as e:
-        print('DB create_all failed:', repr(e))
+        print('DB create_all/migrate failed:', repr(e))
 
 
 with app.app_context():
@@ -294,6 +277,16 @@ def _status_payload():
     return {'ok': True, 'db_enabled': DB_ENABLED, 'db_uri_set': bool(_raw_db_url)}
 
 
+def _normalize_wa_number(v: str) -> str:
+    """
+    WhatsApp Cloud API manda como string numérica (ex: "5537....").
+    Vamos manter só dígitos para evitar duplicidade.
+    """
+    s = (v or '').strip()
+    s = re.sub(r'\D+', '', s)
+    return s
+
+
 # -------------------------
 # Static / Frontend
 # -------------------------
@@ -340,12 +333,13 @@ def api_register():
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
-    if len(password) < MIN_PASSWORD_LEN:
-        return jsonify({'error': f'Senha deve ter no mínimo {MIN_PASSWORD_LEN} caracteres'}), 400
+
+    # ALINHADO COM SUA TELA (min 6)
+    if len(password) < 6:
+        return jsonify({'error': 'Senha deve ter no mínimo 6 caracteres'}), 400
 
     existing = User.query.filter_by(email=email).first()
     if existing:
-        # “claim” de conta criada sem senha (caso legado)
         if getattr(existing, 'password_set', False) is False:
             existing.password_hash = _hash_password(password)
             existing.password_set = True
@@ -355,8 +349,8 @@ def api_register():
         return jsonify({'error': 'Email já cadastrado'}), 409
 
     user = _get_or_create_user(email, password=password)
-    session['user_email'] = user.email
-    return jsonify({'ok': True, 'email': user.email})
+    session['user_email'] = email
+    return jsonify({'ok': True, 'email': email})
 
 
 @app.post('/api/reset_password')
@@ -367,8 +361,8 @@ def api_reset_password():
 
     if not email or '@' not in email:
         return jsonify({'error': 'Email inválido'}), 400
-    if len(new_password) < MIN_PASSWORD_LEN:
-        return jsonify({'error': f'Senha deve ter no mínimo {MIN_PASSWORD_LEN} caracteres'}), 400
+    if len(new_password) < 6:
+        return jsonify({'error': 'Senha deve ter no mínimo 6 caracteres'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
@@ -403,6 +397,60 @@ def api_logout():
 @app.get('/api/me')
 def api_me():
     return jsonify({'email': _get_logged_email()})
+
+
+# -------------------------
+# PWA -> WhatsApp Linking (confirmação no app)
+# -------------------------
+@app.get('/api/wa/status')
+def api_wa_status():
+    email = _require_login()
+    if not email:
+        return jsonify({'linked': False, 'error': 'Você precisa estar logado.'}), 401
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'linked': False})
+
+    link = WaLink.query.filter_by(user_id=user.id).first()
+    if not link:
+        return jsonify({'linked': False})
+
+    masked = link.wa_number
+    if masked and len(masked) >= 4:
+        masked = f"***{masked[-4:]}"
+    return jsonify({'linked': True, 'wa_number': masked})
+
+
+@app.post('/api/wa/link')
+def api_wa_link():
+    """
+    Você chama isso no PWA para registrar o WhatsApp no usuário logado.
+    Ex payload: {"wa_number": "5537999999999"}
+    """
+    email = _require_login()
+    if not email:
+        return jsonify({'error': 'Você precisa estar logado.'}), 401
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado'}), 404
+
+    data = request.get_json(silent=True) or {}
+    wa_number = _normalize_wa_number(data.get('wa_number') or '')
+    if not wa_number or len(wa_number) < 8:
+        return jsonify({'error': 'Número do WhatsApp inválido'}), 400
+
+    # upsert pelo wa_number
+    link = WaLink.query.filter_by(wa_number=wa_number).first()
+    if link:
+        link.user_id = user.id
+    else:
+        link = WaLink(wa_number=wa_number, user_id=user.id)
+        db.session.add(link)
+
+    db.session.commit()
+    return jsonify({'ok': True, 'linked': True})
 
 
 # -------------------------
@@ -549,44 +597,41 @@ def api_dashboard():
 
 
 # -------------------------
-# Panic reset (opcional)
+# Panic Reset (opcional, protegido por chave)
 # -------------------------
-PANIC_TOKEN = (os.getenv("PANIC_TOKEN") or "").strip()
+PANIC_KEY = (os.getenv('PANIC_KEY') or '').strip()
 
-@app.route('/api/panic_reset', methods=['GET', 'POST'])
+@app.get('/api/panic_reset')
 def api_panic_reset():
     """
-    Reset rápido (use com MUITO cuidado).
-    Recomendo usar token por env:
-      PANIC_TOKEN=um_token_forte
-    Chamada:
-      /api/panic_reset?token=...
-      ou Header: X-Panic-Token: ...
+    Se PANIC_KEY estiver definido, exige header:
+      X-Panic-Key: <PANIC_KEY>
+    Caso não esteja definido, permite somente se estiver logado.
     """
-    token = (request.args.get("token") or "").strip()
-    if not token:
-        token = (request.headers.get("X-Panic-Token") or "").strip()
+    if PANIC_KEY:
+        key = (request.headers.get('X-Panic-Key') or '').strip()
+        if key != PANIC_KEY:
+            return jsonify({'error': 'Forbidden'}), 403
+    else:
+        if not _require_login():
+            return jsonify({'error': 'Forbidden'}), 403
 
-    if not PANIC_TOKEN or token != PANIC_TOKEN:
-        return jsonify({"error": "Forbidden"}), 403
+    # aqui você define o que "reset" faz no seu sistema.
+    # Exemplo: apagar transações do usuário logado (quando não tem PANIC_KEY)
+    email = _get_logged_email()
+    if email:
+        user = User.query.filter_by(email=email).first()
+        if user:
+            Transaction.query.filter_by(user_id=user.id).delete()
+            db.session.commit()
 
-    try:
-        db.session.execute(text("DELETE FROM processed_messages"))
-        db.session.execute(text("DELETE FROM wa_links"))
-        # Não apago users por padrão; só transações
-        db.session.execute(text("DELETE FROM transactions"))
-        db.session.commit()
-        return jsonify({"ok": True})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": "panic_reset_failed", "detail": repr(e)}), 500
+    return jsonify({'ok': True})
 
 
 # -------------------------
 # WhatsApp Cloud API Webhook
 # -------------------------
 WA_VERIFY_TOKEN = (os.getenv('WA_VERIFY_TOKEN') or '').strip()
-
 
 def _parse_wa_text_to_transaction(msg_text: str):
     textv = (msg_text or '').strip()
@@ -598,7 +643,7 @@ def _parse_wa_text_to_transaction(msg_text: str):
     if not parts:
         return None
 
-    # se mandar só um email -> comando link
+    # (opcional) comando: "email@dominio.com" para vincular
     if len(parts) == 1 and '@' in parts[0] and '.' in parts[0]:
         return {'cmd': 'LINK_EMAIL', 'email': parts[0]}
 
@@ -659,10 +704,6 @@ def wa_verify():
 
 @app.post('/webhooks/whatsapp')
 def wa_webhook():
-    """
-    Observação:
-    O payload do WhatsApp vem em entry[0].changes[0].value.messages[0] etc. 0
-    """
     payload = request.get_json(silent=True) or {}
 
     try:
@@ -675,7 +716,8 @@ def wa_webhook():
 
         msg = messages[0]
         msg_id = msg.get('id')
-        wa_from = msg.get('from')  # remetente 1
+        wa_from_raw = msg.get('from')  # número do remetente (string)
+        wa_number = _normalize_wa_number(wa_from_raw or '')
         msg_text = ((msg.get('text') or {}).get('body') or '').strip()
 
         # idempotência
@@ -683,36 +725,36 @@ def wa_webhook():
             return jsonify({'ok': True})
 
         if msg_id:
-            db.session.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from))
+            db.session.add(ProcessedMessage(msg_id=msg_id, wa_number=wa_number))
             db.session.commit()
 
         parsed = _parse_wa_text_to_transaction(msg_text)
         if not parsed:
             return jsonify({'ok': True})
 
-        # 1) LINK_EMAIL -> resolve user_id e grava/atualiza wa_links com user_id (NUNCA null)
+        # 1) se mandar um email, tenta vincular wa_number -> user_id
         if parsed.get('cmd') == 'LINK_EMAIL':
             email = (parsed.get('email') or '').strip().lower()
-            if email and wa_from:
+            if email and '@' in email:
                 user = _get_or_create_user(email)
 
-                link = WaLink.query.filter_by(wa_from=wa_from).first()
+                if not wa_number:
+                    return jsonify({'ok': True})
+
+                link = WaLink.query.filter_by(wa_number=wa_number).first()
                 if link:
                     link.user_id = user.id
-                    link.user_email = email
                 else:
-                    link = WaLink(wa_from=wa_from, user_id=user.id, user_email=email)
+                    link = WaLink(wa_number=wa_number, user_id=user.id)
                     db.session.add(link)
-
                 db.session.commit()
-
             return jsonify({'ok': True})
 
-        # 2) TX -> procura o vínculo pelo wa_from e pega user_id
-        if not wa_from:
+        # 2) transação: precisa estar vinculado
+        if not wa_number:
             return jsonify({'ok': True})
 
-        link = WaLink.query.filter_by(wa_from=wa_from).first()
+        link = WaLink.query.filter_by(wa_number=wa_number).first()
         if not link or not link.user_id:
             return jsonify({'ok': True})
 
