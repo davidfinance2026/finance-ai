@@ -8,10 +8,9 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
 import requests
-from flask import Flask, request, jsonify, send_from_directory, session, render_template
+from flask import Flask, request, jsonify, send_from_directory, session, render_template, redirect
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from urllib.parse import quote
 
 # -------------------------
 # App / Config
@@ -51,11 +50,11 @@ WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "").strip()
 WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "").strip()
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0").strip()
 
+# Número público do WhatsApp do bot (wa.me)
+WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
+
 # Botão de pânico (token opcional)
 PANIC_TOKEN = os.getenv("PANIC_TOKEN", "").strip()
-
-# WhatsApp público (para botões/atalhos no PWA)
-WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
 
 # -------------------------
 # DB
@@ -215,7 +214,6 @@ def _parse_brl_value(v) -> Decimal:
 
 
 def _parse_date_any(v) -> date:
-    """Aceita: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY. Fallback: hoje (UTC)."""
     if not v:
         return datetime.utcnow().date()
     s = str(v).strip()
@@ -224,8 +222,6 @@ def _parse_date_any(v) -> date:
             return datetime.strptime(s, "%Y-%m-%d").date()
         if re.match(r"^\d{2}/\d{2}/\d{4}$", s):
             return datetime.strptime(s, "%d/%m/%Y").date()
-        if re.match(r"^\d{2}-\d{2}-\d{4}$", s):
-            return datetime.strptime(s, "%d-%m-%Y").date()
     except Exception:
         pass
     return datetime.utcnow().date()
@@ -326,37 +322,6 @@ def robots():
 @app.get("/health")
 def health():
     return jsonify(_status_payload())
-
-@app.get("/api/wa_link")
-def api_wa_link():
-    """Retorna link do WhatsApp com mensagem pronta: conectar <email_logado>."""
-    uid = _get_logged_user_id()
-    email = _get_logged_email()
-
-    to = _normalize_wa_number(WA_PUBLIC_NUMBER)
-    if not uid or not email:
-        return jsonify(url=f"https://wa.me/{to}")
-
-    text_msg = f"conectar {email}"
-    url = f"https://wa.me/{to}?text={quote(text_msg)}"
-    return jsonify(url=url)
-
-
-@app.get("/wa")
-def wa_shortcut():
-    """Atalho do PWA (manifest shortcuts). Redireciona para WhatsApp."""
-    uid = _get_logged_user_id()
-    email = _get_logged_email()
-    to = _normalize_wa_number(WA_PUBLIC_NUMBER)
-
-    if uid and email:
-        text_msg = f"conectar {email}"
-        url = f"https://wa.me/{to}?text={quote(text_msg)}"
-    else:
-        url = f"https://wa.me/{to}"
-
-    return ("", 302, {"Location": url})
-
 
 # -------------------------
 # Panic Reset (limpa tudo)
