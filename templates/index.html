@@ -25,7 +25,7 @@
       color:var(--text);
     }
     code{opacity:.9}
-    .wrap{max-width:980px;margin:0 auto;padding:22px 16px 90px}
+    .wrap{max-width:980px;margin:0 auto;padding:22px 16px 70px}
     .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
     .brand h1{margin:0;font-size:28px}
     .brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
@@ -136,55 +136,101 @@
       padding: 12px;
       margin-top: 12px;
     }
-    .chartTitle{display:flex;align-items:center;gap:10px;font-weight:900;margin:0 0 8px;}
+    .chartTitle{
+      display:flex;align-items:center;gap:10px;
+      font-weight:900;
+      margin:0 0 8px;
+    }
     .chartHint{color:var(--muted);font-size:12px;margin:0 0 10px}
     canvas{width:100% !important; height:260px !important;}
-    @media(min-width:840px){canvas{height:280px !important;}}
-
-    /* Floating menu (estilo app bancário) */
-    .fabWrap{position:fixed;right:16px;bottom:16px;z-index:999;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
-    .fabActions{display:flex;flex-direction:column;gap:10px;align-items:flex-end;opacity:0;transform:translateY(10px) scale(.98);pointer-events:none;transition:.18s ease}
-    .fabWrap.open .fabActions{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
-
-    .fabAction{
-      display:flex;align-items:center;gap:10px;
-      border-radius:999px;
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background: rgba(11,16,36,.86);
-      box-shadow:0 14px 36px rgba(0,0,0,.45);
-      cursor:pointer;
-      user-select:none;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+    @media(min-width:840px){
+      canvas{height:280px !important;}
     }
-    .fabAction .tag{font-weight:900}
-    .fabIcon{width:38px;height:38px;border-radius:999px;display:grid;place-items:center;font-size:18px}
-    .fabIcon.brand{background:rgba(75,140,255,.22);border:1px solid rgba(75,140,255,.25)}
-    .fabIcon.wa{background:#25D366;color:#05210f;border:1px solid rgba(0,0,0,.15)}
-    .fabIcon.new{background:rgba(46,229,157,.18);border:1px solid rgba(46,229,157,.22)}
+  
+  
+  /* Floating menu (estilo app bancário) */
+  .fab-wrap{
+    position:fixed;
+    right:16px;
+    bottom:16px;
+    z-index:999;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:10px;
+  }
+  .fab-actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    align-items:flex-end;
+    opacity:0;
+    transform: translateY(8px);
+    pointer-events:none;
+    transition: .18s ease;
+  }
+  .fab-wrap.open .fab-actions{
+    opacity:1;
+    transform: translateY(0);
+    pointer-events:auto;
+  }
+  .fab-action{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    text-decoration:none;
+    color:var(--text);
+  }
+  .fab-label{
+    font-weight:900;
+    font-size:13px;
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background: rgba(0,0,0,.30);
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    backdrop-filter: blur(8px);
+  }
+  .fab-btn{
+    width:54px;height:54px;border-radius:999px;
+    border:1px solid var(--border);
+    background: linear-gradient(180deg, rgba(75,140,255,.42), rgba(45,107,255,.20));
+    box-shadow:0 14px 40px rgba(0,0,0,.45);
+    color:var(--text);
+    display:grid;place-items:center;
+    cursor:pointer;
+    user-select:none;
+    transition:.15s transform;
+  }
+  .fab-btn:active{transform:translateY(1px)}
+  .fab-btn.small{
+    width:48px;height:48px;
+    background: rgba(255,255,255,.06);
+  }
+  .fab-btn.wa{
+    background:#25D366;
+    border-color: rgba(255,255,255,.18);
+    color:#05131a;
+    font-weight:900;
+  }
+  .fab-ico{font-size:20px;line-height:1}
+  .fab-plus{font-size:22px;line-height:1}
+  .fab-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.18);
+    backdrop-filter: blur(1px);
+    z-index:998;
+    opacity:0;
+    pointer-events:none;
+    transition:.18s ease;
+  }
+  .fab-wrap.open + .fab-backdrop{
+    opacity:1;
+    pointer-events:auto;
+  }
 
-    .fabMain{
-      width:56px;height:56px;border-radius:999px;border:1px solid rgba(75,140,255,.30);
-      background: linear-gradient(180deg, rgba(75,140,255,.40), rgba(45,107,255,.20));
-      box-shadow:0 16px 44px rgba(0,0,0,.50);
-      color:var(--text);
-      cursor:pointer;
-      display:grid;place-items:center;
-      font-size:22px;
-      transition:.15s transform;
-    }
-    .fabMain:active{transform:translateY(1px)}
-
-    .fabBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.0);z-index:998;display:none}
-    .fabWrap.open + .fabBackdrop{display:block}
-
-    /* Alerts */
-    .alertItem{display:flex;gap:10px;align-items:flex-start}
-    .alertIcon{width:22px;height:22px;border-radius:999px;display:grid;place-items:center;font-size:14px;margin-top:1px}
-    .alertWarn{background:rgba(255,75,110,.18);border:1px solid rgba(255,75,110,.25)}
-    .alertOk{background:rgba(46,229,157,.16);border:1px solid rgba(46,229,157,.22)}
-  </style>
+</style>
 </head>
 
 <body>
@@ -247,24 +293,6 @@
               <div class="spacer"></div>
               <div id="valSaldo" class="kpi">R$ 0,00</div>
             </div>
-          </div>
-
-          <div class="miniCard" id="projCard">
-            <div class="row">
-              <div class="muted" style="font-weight:900">PROJEÇÃO DO MÊS</div>
-              <div class="spacer"></div>
-              <div id="valProjSaldo" class="kpi">R$ 0,00</div>
-            </div>
-            <div class="hint" id="projHint">Baseado na média diária até hoje.</div>
-          </div>
-
-          <div class="miniCard" id="alertsCard">
-            <div class="row">
-              <div class="muted" style="font-weight:900">ALERTAS</div>
-              <div class="spacer"></div>
-              <div class="pill" id="alertsCount">0</div>
-            </div>
-            <div id="alertsList" style="margin-top:10px;display:grid;gap:8px"></div>
           </div>
         </div>
 
@@ -534,10 +562,58 @@
     </div>
   </div>
 
+
+  <!-- Menu flutuante (Novo / WhatsApp / Dashboard) -->
+  <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
+    <div class="fab-actions" aria-hidden="true">
+      <a class="fab-action" href="#" id="fabNovo">
+        <span class="fab-label">Novo</span>
+        <div class="fab-btn small"><span class="fab-ico">➕</span></div>
+      </a>
+
+      <a class="fab-action" href="/wa" target="_blank" rel="noopener" id="fabWhats">
+        <span class="fab-label" id="fabWaLabel">WhatsApp</span>
+        <div class="fab-btn wa"><span class="fab-ico">💬</span></div>
+      </a>
+
+      <a class="fab-action" href="#" id="fabDash">
+        <span class="fab-label">Dashboard</span>
+        <div class="fab-btn small"><span class="fab-ico">📊</span></div>
+      </a>
+    </div>
+
+    <div class="fab-btn" id="fabMain" aria-expanded="false">
+      <span class="fab-plus" id="fabMainIco">☰</span>
+    </div>
+  </div>
+  <div class="fab-backdrop" id="fabBackdrop" aria-hidden="true"></div>
+
+
   <script>
     const $ = (id) => document.getElementById(id);
 
-    // Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
+    
+    // WhatsApp (link dinâmico com "conectar EMAIL_DO_LOGADO")
+    const WA_NUMBER = "5537998675231";
+
+    function buildWaLink(email){
+      const base = `https://wa.me/${WA_NUMBER}`;
+      const e = String(email || "").trim();
+      if(!e) return base;
+      return `${base}?text=${encodeURIComponent("conectar " + e)}`;
+    }
+
+    function refreshWaLink(){
+      const a = $("fabWhats") || $("waFab");
+      if(!a) return;
+      const href = buildWaLink(currentUserEmail);
+      a.href = href;
+      const lbl = $("fabWaLabel");
+      if(lbl){
+        lbl.textContent = currentUserEmail ? "WhatsApp (conectar)" : "WhatsApp";
+      }
+    }
+// Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
     function isoToBR(iso){
       if(!iso) return "";
       const s=String(iso).slice(0,10);
@@ -548,11 +624,12 @@
     function brToISO(br){
       if(!br) return "";
       const s=String(br).trim();
-      const m=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+      const m=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
       if(!m) return s;
       const dd=m[1], mm=m[2], yyyy=m[3];
       return `${yyyy}-${mm}-${dd}`;
     }
+
 
     const moneyBR = (n) => {
       const v = Number(n || 0);
@@ -652,6 +729,7 @@
       $("btnLogout").classList.toggle("hidden", !isLogged);
       pill.classList.toggle("hidden", !isLogged);
       pill.textContent = isLogged ? email : "";
+      refreshWaLink();
     }
 
     if (currentUserEmail) setLoggedUI(true, currentUserEmail);
@@ -876,20 +954,7 @@
       return isNaN(n) ? 0 : n;
     }
 
-    async function loadMonthItems(mes, ano) {
-      try {
-        const res = await api("/api/lancamentos?limit=200", "GET");
-        const items = res.items || [];
-        return items.filter(it => {
-          const dt = parseISODate(it.data);
-          return dt && dt.y === ano && dt.m === mes;
-        });
-      } catch(e) {
-        return [];
-      }
-    }
-
-    function updateDailyChartFromItems(items, mes, ano) {
+    async function updateDailyChart(mes, ano) {
       ensureCharts();
       if (!chartDaily) return;
 
@@ -898,18 +963,28 @@
       const receitasDia = Array.from({length: dim}, () => 0);
       const gastosDia = Array.from({length: dim}, () => 0);
 
-      for (const it of items) {
-        const dt = parseISODate(it.data);
-        if (!dt) continue;
-        const idx = dt.d - 1;
-        if (idx < 0 || idx >= dim) continue;
+      try {
+        const res = await api("/api/lancamentos?limit=200", "GET");
+        const items = res.items || [];
 
-        const tipo = String(it.tipo || "").toUpperCase();
-        const val = parseMoneyLoose(it.valor);
-        if (tipo === "RECEITA") receitasDia[idx] += val;
-        if (tipo === "GASTO") gastosDia[idx] += val;
+        for (const it of items) {
+          const dt = parseISODate(it.data);
+          if (!dt) continue;
+          if (dt.y !== ano || dt.m !== mes) continue;
+          const idx = dt.d - 1;
+          if (idx < 0 || idx >= dim) continue;
+
+          const tipo = String(it.tipo || "").toUpperCase();
+          const val = parseMoneyLoose(it.valor);
+
+          if (tipo === "RECEITA") receitasDia[idx] += val;
+          if (tipo === "GASTO") gastosDia[idx] += val;
+        }
+      } catch (e) {
+        // não logado => fica zerado
       }
 
+      // saldo acumulado
       const saldoAcum = [];
       let acc = 0;
       for (let i = 0; i < dim; i++) {
@@ -922,142 +997,6 @@
       chartDaily.data.datasets[1].data = gastosDia;
       chartDaily.data.datasets[2].data = saldoAcum;
       chartDaily.update();
-
-      return { receitasDia, gastosDia, saldoAcum };
-    }
-
-    function setAlerts(alerts) {
-      const box = $("alertsList");
-      const count = $("alertsCount");
-      box.innerHTML = "";
-
-      const arr = alerts || [];
-      count.textContent = String(arr.length);
-
-      if (arr.length === 0) {
-        box.innerHTML = `
-          <div class="alertItem">
-            <div class="alertIcon alertOk">✓</div>
-            <div class="muted">Sem alertas por enquanto.</div>
-          </div>
-        `;
-        return;
-      }
-
-      box.innerHTML = arr.map(a => {
-        const kind = a.kind || "warn";
-        const icon = kind === "ok" ? "✓" : "!";
-        const cls = kind === "ok" ? "alertOk" : "alertWarn";
-        return `
-          <div class="alertItem">
-            <div class="alertIcon ${cls}">${icon}</div>
-            <div>
-              <div style="font-weight:900">${a.title || "Alerta"}</div>
-              <div class="muted" style="font-size:13px;margin-top:2px">${a.desc || ""}</div>
-            </div>
-          </div>
-        `;
-      }).join("");
-    }
-
-    function computeProjectionAndAlerts(items, mes, ano) {
-      const now = new Date();
-      const isThisMonth = (now.getFullYear() === ano) && ((now.getMonth()+1) === mes);
-      const dim = daysInMonth(ano, mes);
-
-      let receitas = 0;
-      let gastos = 0;
-      const catGastos = {};
-
-      for (const it of items) {
-        const tipo = String(it.tipo || "").toUpperCase();
-        const val = parseMoneyLoose(it.valor);
-        if (tipo === "RECEITA") receitas += val;
-        if (tipo === "GASTO") {
-          gastos += val;
-          const cat = String(it.categoria || "Outros");
-          catGastos[cat] = (catGastos[cat] || 0) + val;
-        }
-      }
-
-      let projSaldo = receitas - gastos;
-      let hint = "Mês fechado.";
-
-      if (isThisMonth) {
-        const daysElapsed = Math.max(1, now.getDate());
-        const avgR = receitas / daysElapsed;
-        const avgG = gastos / daysElapsed;
-        const projR = avgR * dim;
-        const projG = avgG * dim;
-        projSaldo = projR - projG;
-        hint = `Baseado na média diária (${daysElapsed} dia(s)).`;
-      }
-
-      $("valProjSaldo").textContent = moneyBR(projSaldo);
-      $("projHint").textContent = hint;
-
-      // alerts
-      const alerts = [];
-
-      if (isThisMonth && projSaldo < 0) {
-        alerts.push({
-          kind: "warn",
-          title: "Projeção negativa",
-          desc: `Se continuar nesse ritmo, o saldo projetado do mês fica ${moneyBR(projSaldo)}.`
-        });
-      }
-
-      if (isThisMonth && gastos > receitas) {
-        alerts.push({
-          kind: "warn",
-          title: "Gastos acima das receitas",
-          desc: `Até agora: gastos ${moneyBR(gastos)} vs receitas ${moneyBR(receitas)}.`
-        });
-      }
-
-      // categoria dominante
-      const entries = Object.entries(catGastos).sort((a,b)=>b[1]-a[1]);
-      if (entries.length) {
-        const [topCat, topVal] = entries[0];
-        const pct = gastos > 0 ? (topVal / gastos) : 0;
-        if (pct >= 0.45 && gastos > 0) {
-          alerts.push({
-            kind: "warn",
-            title: "Categoria concentrada",
-            desc: `${topCat} representa ${(pct*100).toFixed(0)}% dos seus gastos do mês.`
-          });
-        }
-      }
-
-      // pico recente (últimos 3 dias)
-      if (isThisMonth) {
-        const byDay = Array.from({length: dim}, ()=>({r:0,g:0}));
-        for (const it of items) {
-          const dt = parseISODate(it.data);
-          if (!dt) continue;
-          const idx = dt.d - 1;
-          if (idx < 0 || idx >= dim) continue;
-          const tipo = String(it.tipo || "").toUpperCase();
-          const val = parseMoneyLoose(it.valor);
-          if (tipo === "RECEITA") byDay[idx].r += val;
-          if (tipo === "GASTO") byDay[idx].g += val;
-        }
-        const todayIdx = now.getDate() - 1;
-        const last3 = [todayIdx, todayIdx-1, todayIdx-2].filter(i=>i>=0);
-        const sum3 = last3.reduce((acc,i)=>acc + (byDay[i]?.g || 0), 0);
-        const daysElapsed = Math.max(1, now.getDate());
-        const avgG = gastos / daysElapsed;
-        const thr = avgG * last3.length * 1.8; // 80% acima da média
-        if (last3.length >= 2 && sum3 > thr && avgG > 0) {
-          alerts.push({
-            kind: "warn",
-            title: "Gastos acelerando",
-            desc: `Nos últimos ${last3.length} dias você gastou ${moneyBR(sum3)} (média esperada: ${moneyBR(avgG*last3.length)}).`
-          });
-        }
-      }
-
-      setAlerts(alerts);
     }
 
     // -----------------------
@@ -1085,21 +1024,13 @@
         $("valSaldo").textContent = moneyBR(res.saldo);
 
         updateChartsTotals(res.receitas, res.gastos, res.saldo);
-
-        const items = await loadMonthItems(mes, ano);
-        updateDailyChartFromItems(items, mes, ano);
-        computeProjectionAndAlerts(items, mes, ano);
-
+        await updateDailyChart(mes, ano);
       }catch(e){
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
-        $("valProjSaldo").textContent = "R$ 0,00";
-        $("projHint").textContent = "Faça login para ver a projeção.";
-        setAlerts([]);
-
         updateChartsTotals(0, 0, 0);
-        updateDailyChartFromItems([], mes, ano);
+        await updateDailyChart(mes, ano);
         showToast(toast, "err", "Faça login para ver o dashboard", e.message);
       }
     }
@@ -1172,12 +1103,11 @@
 
           const desc = (it.descricao || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
           const cat = (it.categoria || "Sem categoria").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-          const dt = isoToBR(it.data);
 
           return `
             <div class="miniCard">
               <div class="row" style="gap:12px;align-items:flex-start">
-                <div style="min-width:92px" class="muted"><b>${dt}</b></div>
+                <div style="min-width:92px" class="muted"><b>${isoToBR(it.data)}</b></div>
                 <div style="flex:1">
                   <div style="font-weight:900">${it.tipo} • ${cat}</div>
                   <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
@@ -1208,6 +1138,7 @@
         await api(`/api/lancamentos/${row}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Lançamento removido.");
         await carregarUltimos();
+      await refreshWaLink();
         await refreshDashboard();
       } catch (e) {
         showToast(toast, "err", "Não foi possível apagar", e.message);
@@ -1222,7 +1153,7 @@
       $("editBlock").classList.remove("hidden");
       $("modalIcon").textContent = "✏️";
       $("modalTitle").textContent = "Editar lançamento";
-      $("modalSub").textContent = "Edite e salve.";
+      $("modalSub").textContent = "Edite e salve. A alteração atualiza sua planilha.";
       openModal();
     }
 
@@ -1231,7 +1162,7 @@
 
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
-      $("edtData").value = isoToBR(it.data || new Date().toISOString().slice(0,10));
+      $("edtData").value = isoToBR(it.data) || isoToBR(new Date().toISOString().slice(0,10));
       $("edtCategoria").value = it.categoria || "";
       $("edtDescricao").value = it.descricao || "";
       $("edtValor").value = normalizeValorToMoneyBR(it.valor);
@@ -1268,6 +1199,7 @@
         await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
         showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
         await carregarUltimos();
+      await refreshWaLink();
         await refreshDashboard();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
@@ -1275,53 +1207,57 @@
       }
     });
 
+    
     // -----------------------
     // Floating menu
     // -----------------------
-    const fabWrap = document.querySelector(".fabWrap");
-    const fabBackdrop = document.querySelector(".fabBackdrop");
+    const fabWrap = $("fabWrap");
+    const fabMain = $("fabMain");
+    const fabBackdrop = $("fabBackdrop");
+    const fabNovo = $("fabNovo");
+    const fabDash = $("fabDash");
 
-    function closeFab(){ fabWrap.classList.remove("open"); }
-    function toggleFab(){ fabWrap.classList.toggle("open"); }
+    function fabClose(){
+      if(!fabWrap) return;
+      fabWrap.classList.remove("open");
+      if(fabMain) fabMain.setAttribute("aria-expanded","false");
+      const actions = fabWrap.querySelector(".fab-actions");
+      if(actions) actions.setAttribute("aria-hidden","true");
+      const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
+    }
+    function fabToggle(){
+      if(!fabWrap) return;
+      const open = !fabWrap.classList.contains("open");
+      fabWrap.classList.toggle("open", open);
+      if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
+      const actions = fabWrap.querySelector(".fab-actions");
+      if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
+      const ico = $("fabMainIco"); if(ico) ico.textContent = open ? "✕" : "☰";
+    }
 
-    $("fabMain").addEventListener("click", toggleFab);
-    fabBackdrop.addEventListener("click", closeFab);
+    if(fabMain) fabMain.addEventListener("click", fabToggle);
+    if(fabBackdrop) fabBackdrop.addEventListener("click", fabClose);
 
-    $("fabNovo").addEventListener("click", () => { closeFab(); setTab("lancar"); });
-    $("fabDash").addEventListener("click", () => { closeFab(); setTab("dashboard"); });
-    $("fabWa").addEventListener("click", () => {
-      closeFab();
-      // /wa redireciona para wa.me já com "conectar email_logado" (se logado)
-      window.open("/wa", "_blank", "noopener");
-    });
+    if(fabNovo) fabNovo.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("lancar"); });
+    if(fabDash) fabDash.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("dashboard"); });
+
+    // fecha o menu quando trocar aba pelo topo
+    tabEls.forEach(t => t.addEventListener("click", fabClose));
+
 
     // -----------------------
     // Boot
     // -----------------------
     initMesAno();
-    ensureCharts();
+    refreshWaLink();
+ensureCharts();
     refreshDashboard().catch(()=>{});
   </script>
 
-  <!-- Menu flutuante -->
-  <div class="fabWrap" aria-label="Menu rápido">
-    <div class="fabActions">
-      <div class="fabAction" id="fabDash" role="button" tabindex="0">
-        <div class="fabIcon brand">📊</div>
-        <div class="tag">Dashboard</div>
-      </div>
-      <div class="fabAction" id="fabNovo" role="button" tabindex="0">
-        <div class="fabIcon new">➕</div>
-        <div class="tag">Novo</div>
-      </div>
-      <div class="fabAction" id="fabWa" role="button" tabindex="0">
-        <div class="fabIcon wa">🟢</div>
-        <div class="tag">WhatsApp</div>
-      </div>
-    </div>
-    <button class="fabMain" id="fabMain" aria-label="Abrir menu">≡</button>
-  </div>
-  <div class="fabBackdrop" aria-hidden="true"></div>
+
+  
+  
+
 
 </body>
 </html>
