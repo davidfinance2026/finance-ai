@@ -87,6 +87,21 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Investment(db.Model):
+    __tablename__ = "investments"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+
+    data = db.Column(db.Date, nullable=False)
+    ativo = db.Column(db.String(120), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False, default="APORTE")  # APORTE | RESGATE
+    valor = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    descricao = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    user = db.relationship("User", backref=db.backref("investments", lazy=True))
+
 class WaLink(db.Model):
     __tablename__ = "wa_links"
     id = db.Column(db.Integer, primary_key=True)
@@ -262,361 +277,6 @@ def _status_payload():
         "wa_ready": bool(WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID and WA_VERIFY_TOKEN),
         "min_password_len": MIN_PASSWORD_LEN,
     }
-
-
-# =========================================================
-# Novas rotas (Consolidados / Resumos inteligentes / Analítico / Recorrentes)
-# =========================================================
-
-def _parse_mes_ano_args():
-    now = datetime.now()
-    try:
-        mes = int(request.args.get("mes", now.month))
-    except Exception:
-        mes = now.month
-    try:
-        ano = int(request.args.get("ano", now.year))
-    except Exception:
-        ano = now.year
-    if mes < 1 or mes > 12:
-        mes = now.month
-    if ano < 2000 or ano > 2100:
-        ano = now.year
-    return mes, ano
-
-
-def _month_bounds(ano: int, mes: int):
-    start = date(ano, mes, 1)
-    end_day = calendar.monthrange(ano, mes)[1]
-    end = date(ano, mes, end_day)
-    return start, end
-
-
-def _txs_of_month(user_id: int, mes: int, ano: int):
-    d1, d2 = _month_bounds(ano, mes)
-    return (
-        Transaction.query
-        .filter(Transaction.user_id == user_id)
-        .filter(Transaction.data >= d1)
-        .filter(Transaction.data <= d2)
-        .order_by(Transaction.data.asc(), Transaction.id.asc())
-        .all()
-    )
-
-
-def _sum_by_type(txs):
-    rec = Decimal("0")
-    gas = Decimal("0")
-    for t in txs:
-        if (t.tipo or "").upper() == "RECEITA":
-            rec += (t.valor or Decimal("0"))
-        else:
-            gas += (t.valor or Decimal("0"))
-    return rec, gas, rec - gas
-
-
-def _group_by_categoria(txs):
-    mapa = {}
-    for t in txs:
-        tipo = (t.tipo or "GASTO").upper()
-        cat = (t.categoria or "Sem categoria").strip() or "Sem categoria"
-        key = (tipo, cat)
-        mapa[key] = mapa.get(key, Decimal("0")) + (t.valor or Decimal("0"))
-    out = [{"tipo": k[0], "categoria": k[1], "total": float(v)} for k, v in mapa.items()]
-    out.sort(key=lambda x: abs(x["total"]), reverse=True)
-    return out
-
-
-def _daily_series(txs, mes: int, ano: int):
-    dim = calendar.monthrange(ano, mes)[1]
-    receitas = [0.0] * dim
-    gastos = [0.0] * dim
-    for t in txs:
-        try:
-            idx = int(t.data.day) - 1
-        except Exception:
-            continue
-        if idx < 0 or idx >= dim:
-            continue
-        v = float(t.valor or 0)
-        if (t.tipo or "").upper() == "RECEITA":
-            receitas[idx] += v
-        else:
-            gastos[idx] += v
-    saldo_acum = []
-    acc = 0.0
-    for i in range(dim):
-        acc += (receitas[i] - gastos[i])
-        saldo_acum.append(acc)
-    return {"labels": [str(i + 1) for i in range(dim)], "receitas": receitas, "gastos": gastos, "saldo_acumulado": saldo_acum}
-
-
-@app.get("/api/consolidados")
-def api_consolidados():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    mes, ano = _parse_mes_ano_args()
-    txs = _txs_of_month(user_id, mes, ano)
-    receitas, gastos, saldo = _sum_by_type(txs)
-    return jsonify({
-        "mes": mes,
-        "ano": ano,
-        "totais": {"receitas": float(receitas), "gastos": float(gastos), "saldo": float(saldo)},
-        "por_categoria": _group_by_categoria(txs),
-        "diario": _daily_series(txs, mes, ano),
-        "qtd_lancamentos": len(txs),
-    })
-
-
-@app.get("/api/resumos_inteligentes")
-def api_resumos_inteligentes():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    mes, ano = _parse_mes_ano_args()
-    txs = _txs_of_month(user_id, mes, ano)
-    receitas, gastos, saldo = _sum_by_type(txs)
-
-    resumo_txt = _make_resumo_text(txs, mes, ano)
-    analise_txt = _make_analise_text(txs, mes, ano)
-
-    alertas = []
-    por_cat_gasto = {}
-    for t in txs:
-        if (t.tipo or "").upper() != "GASTO":
-            continue
-        cat = (t.categoria or "Sem categoria").strip() or "Sem categoria"
-        por_cat_gasto[cat] = por_cat_gasto.get(cat, 0.0) + float(t.valor or 0)
-
-    total_gastos = float(gastos)
-    if por_cat_gasto and total_gastos > 0:
-        top_cat, top_val = max(por_cat_gasto.items(), key=lambda kv: kv[1])
-        perc = top_val / total_gastos
-        if perc >= 0.45:
-            alertas.append({"tipo": "concentracao_gastos", "mensagem": f"Categoria '{top_cat}' concentra {round(perc*100)}% dos gastos do mês.", "categoria": top_cat, "percentual": perc})
-
-    serie = _daily_series(txs, mes, ano)
-    dim = len(serie["labels"])
-    hoje = datetime.now().date()
-    dias_decorridos = min(hoje.day, dim) if hoje.year == ano and hoje.month == mes else dim
-    saldo_atual = serie["saldo_acumulado"][dias_decorridos-1] if dias_decorridos > 0 and dim > 0 else float(saldo)
-    proj_saldo = saldo_atual
-    if dias_decorridos > 0 and dim > dias_decorridos:
-        proj_saldo = (saldo_atual / float(dias_decorridos)) * float(dim)
-
-    return jsonify({
-        "mes": mes,
-        "ano": ano,
-        "kpis": {"receitas": float(receitas), "gastos": float(gastos), "saldo": float(saldo)},
-        "projecao_saldo": proj_saldo,
-        "alertas": alertas,
-        "por_categoria": _group_by_categoria(txs),
-        "diario": serie,
-        "texto_resumo": resumo_txt,
-        "texto_analise": analise_txt,
-    })
-
-
-@app.get("/api/analitico")
-def api_analitico():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    mes, ano = _parse_mes_ano_args()
-    txs = _txs_of_month(user_id, mes, ano)
-    receitas, gastos, saldo = _sum_by_type(txs)
-    texto = _make_analise_text(txs, mes, ano)
-    return jsonify({
-        "mes": mes,
-        "ano": ano,
-        "kpis": {"receitas": float(receitas), "gastos": float(gastos), "saldo": float(saldo)},
-        "por_categoria": _group_by_categoria(txs),
-        "diario": _daily_series(txs, mes, ano),
-        "texto": texto,
-    })
-
-
-def _rr_to_dict(rr: RecurringRule):
-    return {
-        "id": rr.id,
-        "tipo": rr.tipo,
-        "categoria": rr.categoria,
-        "valor": float(rr.valor or 0),
-        "descricao": rr.descricao or "",
-        "freq": rr.freq,
-        "day_of_month": rr.day_of_month,
-        "weekday": rr.weekday,
-        "start_date": rr.start_date.isoformat() if rr.start_date else None,
-        "next_run": rr.next_run.isoformat() if rr.next_run else None,
-        "is_active": bool(rr.is_active),
-        "created_at": rr.created_at.isoformat() if rr.created_at else None,
-    }
-
-
-def _validate_rr_payload(payload: dict):
-    tipo = (payload.get("tipo") or "GASTO").upper().strip()
-    if tipo not in ("RECEITA", "GASTO"):
-        tipo = "GASTO"
-    categoria = (payload.get("categoria") or "Sem categoria").strip() or "Sem categoria"
-    descricao = (payload.get("descricao") or "").strip()
-    valor = _parse_brl_value(payload.get("valor", ""))
-
-    freq = (payload.get("freq") or payload.get("frequency") or "monthly").lower().strip()
-    if freq not in ("daily", "weekly", "monthly"):
-        freq = "monthly"
-
-    dom = payload.get("day_of_month")
-    wd = payload.get("weekday") if payload.get("weekday") is not None else payload.get("day_of_week")
-    try:
-        dom = int(dom) if dom not in (None, "") else None
-    except Exception:
-        dom = None
-    try:
-        wd = int(wd) if wd not in (None, "") else None
-    except Exception:
-        wd = None
-    if dom is not None and not (1 <= dom <= 31):
-        dom = None
-    if wd is not None and not (0 <= wd <= 6):
-        wd = None
-
-    is_active = payload.get("is_active", payload.get("active", True))
-    is_active = bool(is_active)
-
-    sd_raw = (payload.get("start_date") or "").strip()
-    sd = None
-    if sd_raw:
-        try:
-            y, m, d = [int(x) for x in sd_raw.split("-")]
-            sd = date(y, m, d)
-        except Exception:
-            sd = None
-
-    return {"tipo": tipo, "categoria": categoria, "descricao": descricao, "valor": valor, "freq": freq, "day_of_month": dom, "weekday": wd, "is_active": is_active, "start_date": sd}
-
-
-def _compute_next_run(freq: str, start_date: date, day_of_month, weekday):
-    today = date.today()
-    base = max(start_date, today)
-
-    if freq == "daily":
-        return base
-
-    if freq == "weekly":
-        wd = weekday if weekday is not None else 0
-        delta = (wd - base.weekday()) % 7
-        return base + timedelta(days=delta)
-
-    dom = day_of_month if day_of_month is not None else min(base.day, 28)
-    try:
-        candidate = date(base.year, base.month, dom)
-    except Exception:
-        candidate = date(base.year, base.month, min(dom, calendar.monthrange(base.year, base.month)[1]))
-    if candidate < base:
-        candidate = _next_monthly_date(candidate, dom)
-    return candidate
-
-
-@app.get("/api/recorrentes")
-def api_recorrentes_list():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    items = RecurringRule.query.filter(RecurringRule.user_id == user_id).order_by(RecurringRule.created_at.desc(), RecurringRule.id.desc()).all()
-    return jsonify({"items": [_rr_to_dict(x) for x in items]})
-
-
-@app.post("/api/recorrentes")
-def api_recorrentes_create():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    payload = request.get_json(silent=True) or {}
-    data = _validate_rr_payload(payload)
-    sd = data["start_date"] or date.today()
-    nr = _compute_next_run(data["freq"], sd, data["day_of_month"], data["weekday"])
-
-    rr = RecurringRule(
-        user_id=user_id,
-        tipo=data["tipo"],
-        categoria=data["categoria"],
-        valor=data["valor"],
-        descricao=data["descricao"],
-        freq=data["freq"],
-        day_of_month=data["day_of_month"],
-        weekday=data["weekday"],
-        start_date=sd,
-        next_run=nr,
-        is_active=data["is_active"],
-    )
-    db.session.add(rr)
-    db.session.commit()
-    return jsonify(_rr_to_dict(rr))
-
-
-@app.put("/api/recorrentes/<int:rid>")
-def api_recorrentes_update(rid: int):
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    rr = RecurringRule.query.filter_by(id=rid, user_id=user_id).first()
-    if not rr:
-        return jsonify({"error": "Recorrente não encontrado."}), 404
-    payload = request.get_json(silent=True) or {}
-    data = _validate_rr_payload(payload)
-
-    rr.tipo = data["tipo"]
-    rr.categoria = data["categoria"]
-    rr.valor = data["valor"]
-    rr.descricao = data["descricao"]
-    rr.freq = data["freq"]
-    rr.day_of_month = data["day_of_month"]
-    rr.weekday = data["weekday"]
-    rr.is_active = data["is_active"]
-    if data["start_date"]:
-        rr.start_date = data["start_date"]
-
-    recalc = bool(payload.get("recalc_next", False)) or (rr.next_run is None)
-    if recalc:
-        rr.next_run = _compute_next_run(rr.freq, rr.start_date or date.today(), rr.day_of_month, rr.weekday)
-
-    db.session.commit()
-    return jsonify(_rr_to_dict(rr))
-
-
-@app.delete("/api/recorrentes/<int:rid>")
-def api_recorrentes_delete(rid: int):
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Faça login."}), 401
-    rr = RecurringRule.query.filter_by(id=rid, user_id=user_id).first()
-    if not rr:
-        return jsonify({"error": "Recorrente não encontrado."}), 404
-    db.session.delete(rr)
-    db.session.commit()
-    return jsonify({"ok": True})
-
-
-@app.post("/api/recorrentes/run")
-def api_recorrentes_run():
-    if not _panic_allowed(request):
-        return jsonify({"error": "Token inválido."}), 403
-
-    user_id = _require_login()
-    if user_id:
-        created = _run_recorrentes_for_user(user_id)
-        return jsonify({"ok": True, "scope": "user", "created": created})
-
-    users = User.query.order_by(User.id.asc()).all()
-    total_created = 0
-    by_user = []
-    for u in users:
-        c = _run_recorrentes_for_user(u.id)
-        total_created += c
-        by_user.append({"user_id": u.id, "email": u.email, "created": c})
-    return jsonify({"ok": True, "scope": "all", "created": total_created, "by_user": by_user})
-
 
 # -------------------------
 # WhatsApp send (Meta Cloud API)
@@ -949,6 +609,87 @@ def api_delete_lancamento(row: int):
     uid = _require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
+
+# -----------------------
+# Investimentos (Postgres)
+# -----------------------
+def _parse_money_br_to_decimal(value):
+    """Aceita '1.234,56' ou '1234.56' e retorna Decimal."""
+    s = str(value or "").strip()
+    if not s:
+        return Decimal("0")
+    s = s.replace(" ", "")
+    # se tiver vírgula, assume pt-BR
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(s)
+    except Exception:
+        return Decimal("0")
+
+def _iso_date(value):
+    """Aceita yyyy-mm-dd e retorna date."""
+    s = str(value or "").strip()
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except Exception:
+        return datetime.utcnow().date()
+
+@app.get("/api/investimentos")
+def api_investimentos_list():
+    user_id = _require_login()
+    limit = int(request.args.get("limit", "50"))
+    q = Investment.query.filter_by(user_id=user_id).order_by(Investment.data.desc(), Investment.id.desc())
+    items = q.limit(min(limit, 200)).all()
+    out = []
+    for it in items:
+        out.append({
+            "id": it.id,
+            "data": it.data.isoformat(),
+            "ativo": it.ativo,
+            "tipo": it.tipo,
+            "valor": str(it.valor),
+            "descricao": it.descricao or "",
+        })
+    return jsonify({"items": out})
+
+@app.post("/api/investimentos")
+def api_investimentos_create():
+    user_id = _require_login()
+    data = request.get_json(silent=True) or {}
+    ativo = str(data.get("ativo") or "").strip()
+    if not ativo:
+        return jsonify({"error": "Informe o ativo (ex: Tesouro Selic, PETR4, BTC)."}), 400
+
+    tipo = str(data.get("tipo") or "APORTE").strip().upper()
+    if tipo not in ("APORTE", "RESGATE"):
+        return jsonify({"error": "Tipo inválido. Use APORTE ou RESGATE."}), 400
+
+    valor = _parse_money_br_to_decimal(data.get("valor"))
+    if valor <= 0:
+        return jsonify({"error": "Informe um valor válido (> 0)."}), 400
+
+    it = Investment(
+        user_id=user_id,
+        data=_iso_date(data.get("data")),
+        ativo=ativo,
+        tipo=tipo,
+        valor=valor,
+        descricao=str(data.get("descricao") or "").strip() or None,
+    )
+    db.session.add(it)
+    db.session.commit()
+    return jsonify({"ok": True, "id": it.id})
+
+@app.delete("/api/investimentos/<int:item_id>")
+def api_investimentos_delete(item_id: int):
+    user_id = _require_login()
+    it = Investment.query.filter_by(user_id=user_id, id=item_id).first()
+    if not it:
+        return jsonify({"error": "Investimento não encontrado."}), 404
+    db.session.delete(it)
+    db.session.commit()
+    return jsonify({"ok": True})
 
     t = Transaction.query.filter_by(id=row, user_id=uid).first()
     if not t:
