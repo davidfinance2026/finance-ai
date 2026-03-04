@@ -146,91 +146,89 @@
     @media(min-width:840px){
       canvas{height:280px !important;}
     }
-  
-  
-  /* Floating menu (estilo app bancário) */
-  .fab-wrap{
-    position:fixed;
-    right:16px;
-    bottom:16px;
-    z-index:999;
-    display:flex;
-    flex-direction:column;
-    align-items:flex-end;
-    gap:10px;
-  }
-  .fab-actions{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-    align-items:flex-end;
-    opacity:0;
-    transform: translateY(8px);
-    pointer-events:none;
-    transition: .18s ease;
-  }
-  .fab-wrap.open .fab-actions{
-    opacity:1;
-    transform: translateY(0);
-    pointer-events:auto;
-  }
-  .fab-action{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    text-decoration:none;
-    color:var(--text);
-  }
-  .fab-label{
-    font-weight:900;
-    font-size:13px;
-    padding:10px 12px;
-    border-radius:999px;
-    border:1px solid var(--border);
-    background: rgba(0,0,0,.30);
-    box-shadow:0 10px 30px rgba(0,0,0,.25);
-    backdrop-filter: blur(8px);
-  }
-  .fab-btn{
-    width:54px;height:54px;border-radius:999px;
-    border:1px solid var(--border);
-    background: linear-gradient(180deg, rgba(75,140,255,.42), rgba(45,107,255,.20));
-    box-shadow:0 14px 40px rgba(0,0,0,.45);
-    color:var(--text);
-    display:grid;place-items:center;
-    cursor:pointer;
-    user-select:none;
-    transition:.15s transform;
-  }
-  .fab-btn:active{transform:translateY(1px)}
-  .fab-btn.small{
-    width:48px;height:48px;
-    background: rgba(255,255,255,.06);
-  }
-  .fab-btn.wa{
-    background:#25D366;
-    border-color: rgba(255,255,255,.18);
-    color:#05131a;
-    font-weight:900;
-  }
-  .fab-ico{font-size:20px;line-height:1}
-  .fab-plus{font-size:22px;line-height:1}
-  .fab-backdrop{
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,.18);
-    backdrop-filter: blur(1px);
-    z-index:998;
-    opacity:0;
-    pointer-events:none;
-    transition:.18s ease;
-  }
-  .fab-wrap.open + .fab-backdrop{
-    opacity:1;
-    pointer-events:auto;
-  }
 
-</style>
+    /* Floating menu (estilo app bancário) */
+    .fab-wrap{
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      z-index:999;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:10px;
+    }
+    .fab-actions{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:flex-end;
+      opacity:0;
+      transform: translateY(8px);
+      pointer-events:none;
+      transition: .18s ease;
+    }
+    .fab-wrap.open .fab-actions{
+      opacity:1;
+      transform: translateY(0);
+      pointer-events:auto;
+    }
+    .fab-action{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      text-decoration:none;
+      color:var(--text);
+    }
+    .fab-label{
+      font-weight:900;
+      font-size:13px;
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background: rgba(0,0,0,.30);
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      backdrop-filter: blur(8px);
+    }
+    .fab-btn{
+      width:54px;height:54px;border-radius:999px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(75,140,255,.42), rgba(45,107,255,.20));
+      box-shadow:0 14px 40px rgba(0,0,0,.45);
+      color:var(--text);
+      display:grid;place-items:center;
+      cursor:pointer;
+      user-select:none;
+      transition:.15s transform;
+    }
+    .fab-btn:active{transform:translateY(1px)}
+    .fab-btn.small{
+      width:48px;height:48px;
+      background: rgba(255,255,255,.06);
+    }
+    .fab-btn.wa{
+      background:#25D366;
+      border-color: rgba(255,255,255,.18);
+      color:#05131a;
+      font-weight:900;
+    }
+    .fab-ico{font-size:20px;line-height:1}
+    .fab-plus{font-size:22px;line-height:1}
+    .fab-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.18);
+      backdrop-filter: blur(1px);
+      z-index:998;
+      opacity:0;
+      pointer-events:none;
+      transition:.18s ease;
+    }
+    .fab-wrap.open + .fab-backdrop{
+      opacity:1;
+      pointer-events:auto;
+    }
+  </style>
 </head>
 
 <body>
@@ -562,7 +560,6 @@
     </div>
   </div>
 
-
   <!-- Menu flutuante (Novo / WhatsApp / Dashboard) -->
   <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
     <div class="fab-actions" aria-hidden="true">
@@ -571,7 +568,8 @@
         <div class="fab-btn small"><span class="fab-ico">➕</span></div>
       </a>
 
-      <a class="fab-action" href="/wa" target="_blank" rel="noopener" id="fabWhats">
+      <!-- href será preenchido dinamicamente pelo JS (rota /api/wa_link) -->
+      <a class="fab-action" href="#" target="_blank" rel="noopener" id="fabWhats">
         <span class="fab-label" id="fabWaLabel">WhatsApp</span>
         <div class="fab-btn wa"><span class="fab-ico">💬</span></div>
       </a>
@@ -588,49 +586,12 @@
   </div>
   <div class="fab-backdrop" id="fabBackdrop" aria-hidden="true"></div>
 
-
   <script>
     const $ = (id) => document.getElementById(id);
 
-    
-    // WhatsApp (link dinâmico com "conectar EMAIL_DO_LOGADO")
-    const WA_NUMBER = "5537998675231";
-
-    function buildWaLink(email){
-      const base = `https://wa.me/${WA_NUMBER}`;
-      const e = String(email || "").trim();
-      if(!e) return base;
-      return `${base}?text=${encodeURIComponent("conectar " + e)}`;
-    }
-
-    function refreshWaLink(){
-      const a = $("fabWhats") || $("waFab");
-      if(!a) return;
-      const href = buildWaLink(currentUserEmail);
-      a.href = href;
-      const lbl = $("fabWaLabel");
-      if(lbl){
-        lbl.textContent = currentUserEmail ? "WhatsApp (conectar)" : "WhatsApp";
-      }
-    }
-// Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
-    function isoToBR(iso){
-      if(!iso) return "";
-      const s=String(iso).slice(0,10);
-      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if(!m) return s;
-      return `${m[3]}-${m[2]}-${m[1]}`;
-    }
-    function brToISO(br){
-      if(!br) return "";
-      const s=String(br).trim();
-      const m=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-      if(!m) return s;
-      const dd=m[1], mm=m[2], yyyy=m[3];
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-
+    // -----------------------
+    // Helpers
+    // -----------------------
     const moneyBR = (n) => {
       const v = Number(n || 0);
       return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
@@ -654,6 +615,63 @@
       el.innerHTML = `<div class="t">${title}</div>` + (desc ? `<div class="d">${desc}</div>` : "");
     }
     function hideToast(el) { el.className = "toast"; el.innerHTML = ""; }
+
+    // Datas (UI): dd-mm-aaaa  <->  ISO yyyy-mm-dd
+    function isoToBR(iso){
+      if(!iso) return "";
+      const s=String(iso).slice(0,10);
+      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(!m) return s;
+      return `${m[3]}-${m[2]}-${m[1]}`;
+    }
+    function brToISO(br){
+      if(!br) return "";
+      const s=String(br).trim();
+      const m=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if(!m) return s;
+      const dd=m[1], mm=m[2], yyyy=m[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // -----------------------
+    // WhatsApp (sempre "conectar email_do_usuario_logado")
+    // Preferência:
+    //  1) GET /api/wa_link (backend decide o link correto)
+    //  2) fallback: wa.me fixo (sem email)
+    // -----------------------
+    const WA_NUMBER_FALLBACK = "5537998675231";
+    function buildWaLinkFallback(email){
+      const base = `https://wa.me/${WA_NUMBER_FALLBACK}`;
+      const e = String(email || "").trim();
+      if(!e) return base;
+      return `${base}?text=${encodeURIComponent("conectar " + e)}`;
+    }
+
+    async function refreshWaLink(){
+      const a = $("fabWhats") || $("waFab");
+      if(!a) return;
+
+      // se não estiver logado, deixa o fallback sem texto
+      if (!currentUserEmail) {
+        a.href = buildWaLinkFallback("");
+        const lbl = $("fabWaLabel");
+        if (lbl) lbl.textContent = "WhatsApp";
+        return;
+      }
+
+      // tenta pegar do backend (rota pronta no seu README: /api/wa_link)
+      try {
+        const res = await api("/api/wa_link", "GET");
+        const href = (res && (res.url || res.href || res.link)) ? (res.url || res.href || res.link) : "";
+        a.href = href || buildWaLinkFallback(currentUserEmail);
+      } catch (e) {
+        // fallback para garantir que SEMPRE funcione
+        a.href = buildWaLinkFallback(currentUserEmail);
+      }
+
+      const lbl = $("fabWaLabel");
+      if (lbl) lbl.textContent = "WhatsApp (conectar)";
+    }
 
     // -----------------------
     // Tabs
@@ -719,9 +737,9 @@
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
     // -----------------------
-    // Auth state (front only)
+    // Auth state (session real)
     // -----------------------
-    let currentUserEmail = localStorage.getItem("financeai_user") || "";
+    let currentUserEmail = "";
 
     function setLoggedUI(isLogged, email="") {
       const pill = $("userPill");
@@ -732,14 +750,22 @@
       refreshWaLink();
     }
 
-    if (currentUserEmail) setLoggedUI(true, currentUserEmail);
-    else setLoggedUI(false);
+    // sincroniza com backend (cookie de sessão)
+    async function syncSession() {
+      try {
+        const me = await api("/api/me", "GET"); // <-- backend deve retornar {email: "..."} quando logado
+        currentUserEmail = (me && me.email) ? String(me.email) : "";
+        setLoggedUI(!!currentUserEmail, currentUserEmail);
+      } catch (e) {
+        currentUserEmail = "";
+        setLoggedUI(false);
+      }
+    }
 
     $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
 
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
-      localStorage.removeItem("financeai_user");
       currentUserEmail = "";
       setLoggedUI(false);
       refreshDashboard().catch(()=>{});
@@ -754,12 +780,13 @@
       try {
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
+
         const res = await api("/api/login", "POST", { email, senha });
-        localStorage.setItem("financeai_user", res.email);
-        currentUserEmail = res.email;
-        setLoggedUI(true, res.email);
+        currentUserEmail = (res && res.email) ? res.email : email;
+
+        setLoggedUI(true, currentUserEmail);
         showToast(t, "ok", "Login realizado", "Você já pode lançar e ver o dashboard.");
-        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
+        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); carregarUltimos().catch(()=>{}); }, 600);
       } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
       }
@@ -779,12 +806,11 @@
           nome_apelido, nome_completo, telefone, email, senha, confirmar_senha
         });
 
-        localStorage.setItem("financeai_user", res.email);
-        currentUserEmail = res.email;
-        setLoggedUI(true, res.email);
+        currentUserEmail = (res && res.email) ? res.email : email;
+        setLoggedUI(true, currentUserEmail);
 
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
-        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); }, 600);
+        setTimeout(() => { closeModal(); refreshDashboard().catch(()=>{}); carregarUltimos().catch(()=>{}); }, 600);
       } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
       }
@@ -1138,7 +1164,7 @@
         await api(`/api/lancamentos/${row}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Lançamento removido.");
         await carregarUltimos();
-      await refreshWaLink();
+        await refreshWaLink();
         await refreshDashboard();
       } catch (e) {
         showToast(toast, "err", "Não foi possível apagar", e.message);
@@ -1199,7 +1225,7 @@
         await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
         showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
         await carregarUltimos();
-      await refreshWaLink();
+        await refreshWaLink();
         await refreshDashboard();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
@@ -1207,7 +1233,6 @@
       }
     });
 
-    
     // -----------------------
     // Floating menu
     // -----------------------
@@ -1244,20 +1269,15 @@
     // fecha o menu quando trocar aba pelo topo
     tabEls.forEach(t => t.addEventListener("click", fabClose));
 
-
     // -----------------------
     // Boot
     // -----------------------
     initMesAno();
-    refreshWaLink();
-ensureCharts();
-    refreshDashboard().catch(()=>{});
+    ensureCharts();
+    syncSession().finally(() => {
+      refreshWaLink();
+      refreshDashboard().catch(()=>{});
+    });
   </script>
-
-
-  
-  
-
-
 </body>
 </html>
