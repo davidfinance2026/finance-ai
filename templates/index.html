@@ -402,15 +402,65 @@
     </section>
 
     <!-- INVESTIMENTOS -->
-    <section id="tab-investimentos" class="hidden">
-      <div class="card">
-        <h2>Investimentos</h2>
-        <p class="muted" style="margin:0;line-height:1.6">
-          Tela pronta para evoluir. Se você quiser registrar investimentos no Sheets, eu adiciono:
-          <b>POST /api/investimentos</b> e <b>GET /api/investimentos</b>.
-        </p>
+<section id="tab-investimentos" class="hidden">
+  <div class="card">
+    <div class="row" style="align-items:center">
+      <h2 style="margin:0">Investimentos</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btnRecarregarInv">Recarregar</button>
+    </div>
+
+    <div class="hint" style="margin-top:8px">
+      Registre aportes e resgates. (Esses dados ficam no Postgres, por usuário.)
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="split">
+      <div class="field">
+        <label>Data</label>
+        <input id="invData" type="text" inputmode="numeric" placeholder="dd-mm-aaaa" />
       </div>
-    </section>
+
+      <div class="field">
+        <label>Tipo</label>
+        <select id="invTipo">
+          <option value="APORTE">APORTE</option>
+          <option value="RESGATE">RESGATE</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="field">
+        <label>Ativo</label>
+        <input id="invAtivo" placeholder="Ex: Tesouro Selic, PETR4, BTC..." />
+      </div>
+      <div class="field">
+        <label>Valor (R$)</label>
+        <input id="invValor" inputmode="decimal" placeholder="Ex: 150,00" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Descrição</label>
+      <textarea id="invDescricao" placeholder="Opcional..."></textarea>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="btnSalvarInv" class="btn primary">Salvar investimento</button>
+      <button id="btnLimparInv" class="btn">Limpar</button>
+      <div class="spacer"></div>
+      <span class="hint">Você precisa estar logado.</span>
+    </div>
+
+    <div id="toastInv" class="toast"></div>
+
+    <div class="divider"></div>
+
+    <div id="listaInv" style="margin-top:12px;display:grid;gap:10px"></div>
+  </div>
+</section>
   </div>
 
   <!-- MODAL AUTH + EDIT -->
@@ -685,6 +735,7 @@
       });
       if (name === "dashboard") refreshDashboard().catch(()=>{});
       if (name === "ultimos") carregarUltimos().catch(()=>{});
+      if (name === "investimentos") carregarInvestimentos().catch(()=>{});
     }
 
     let setTab = _setTabBase;
@@ -1036,6 +1087,7 @@
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
       $("lanData").value = isoToBR(now.toISOString().slice(0,10));
+      const invD = $("invData"); if (invD) invD.value = isoToBR(now.toISOString().slice(0,10));
     }
 
     async function refreshDashboard() {
@@ -1234,6 +1286,105 @@
     });
 
     // -----------------------
+// Investimentos (Postgres)
+// -----------------------
+$("btnRecarregarInv").addEventListener("click", () => carregarInvestimentos());
+
+function normalizeValorToInput(raw){
+  const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(/\./g,"").replace(",", "."));
+  if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return String(raw ?? "");
+}
+
+async function carregarInvestimentos(){
+  const toast = $("toastInv");
+  const list = $("listaInv");
+  hideToast(toast);
+  list.innerHTML = "";
+
+  if (!currentUserEmail){
+    showToast(toast, "err", "Faça login", "Entre para ver e registrar investimentos.");
+    return;
+  }
+
+  try{
+    const res = await api("/api/investimentos?limit=50", "GET");
+    const items = res.items || [];
+    if(items.length === 0){
+      list.innerHTML = `<div class="muted">Nenhum investimento ainda.</div>`;
+      return;
+    }
+
+    list.innerHTML = items.map(it => {
+      const v = moneyBR(Number(String(it.valor).replace(/\./g,"").replace(",", ".")));
+      const desc = (it.descricao || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const ativo = (it.ativo || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const tipo = (it.tipo || "APORTE").toUpperCase();
+      return `
+        <div class="miniCard">
+          <div class="row" style="gap:12px;align-items:flex-start">
+            <div style="min-width:92px" class="muted"><b>${isoToBR(it.data)}</b></div>
+            <div style="flex:1">
+              <div style="font-weight:900">${tipo} • ${ativo}</div>
+              <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
+            </div>
+            <div style="text-align:right;min-width:130px">
+              <div style="font-weight:900">${v}</div>
+              <div class="row" style="justify-content:flex-end;margin-top:8px">
+                <button class="btn danger small" onclick="apagarInvestimento(${it.id})">Apagar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }catch(e){
+    showToast(toast, "err", "Erro ao carregar investimentos", e.message);
+  }
+}
+
+window.apagarInvestimento = async (id) => {
+  const toast = $("toastInv");
+  hideToast(toast);
+  if (!confirm("Quer mesmo apagar este investimento?")) return;
+  try{
+    await api(`/api/investimentos/${id}`, "DELETE");
+    showToast(toast, "ok", "Apagado!", "Investimento removido.");
+    await carregarInvestimentos();
+  }catch(e){
+    showToast(toast, "err", "Não foi possível apagar", e.message);
+  }
+};
+
+$("btnSalvarInv").addEventListener("click", async () => {
+  const toast = $("toastInv"); hideToast(toast);
+
+  try{
+    const payload = {
+      data: brToISO($("invData").value),
+      tipo: $("invTipo").value,
+      ativo: $("invAtivo").value.trim(),
+      valor: $("invValor").value.trim(),
+      descricao: $("invDescricao").value.trim(),
+    };
+    await api("/api/investimentos", "POST", payload);
+    showToast(toast, "ok", "Salvo!", "Investimento registrado.");
+    $("invAtivo").value = "";
+    $("invValor").value = "";
+    $("invDescricao").value = "";
+    await carregarInvestimentos();
+  }catch(e){
+    showToast(toast, "err", "Erro ao salvar", e.message);
+  }
+});
+
+$("btnLimparInv").addEventListener("click", () => {
+  $("invAtivo").value = "";
+  $("invValor").value = "";
+  $("invDescricao").value = "";
+  hideToast($("toastInv"));
+});
+// -----------------------
     // Floating menu
     // -----------------------
     const fabWrap = $("fabWrap");
