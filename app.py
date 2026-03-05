@@ -10,7 +10,8 @@ from decimal import Decimal, InvalidOperation
 import requests
 from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
+from sqlalchemy import text, inspect
+from sqlalchemy.exc import SQLAlchemyError
 from urllib.parse import quote
 
 # -------------------------
@@ -182,8 +183,67 @@ def _create_tables_if_needed():
         print("DB create_all failed:", repr(e))
 
 
+def _bootstrap_schema():
+    """Migração leve/idempotente (sem Alembic).
+
+    Em produção, o Postgres pode ter sido criado numa versão antiga. O db.create_all()
+    NÃO adiciona colunas novas, então garantimos colunas críticas aqui.
+    """
+    try:
+        insp = inspect(db.engine)
+        dialect = db.engine.dialect.name
+
+        def has_table(t: str) -> bool:
+            try:
+                return insp.has_table(t)
+            except Exception:
+                return t in insp.get_table_names()
+
+        def has_col(t: str, c: str) -> bool:
+            if not has_table(t):
+                return False
+            cols = {col.get("name") for col in insp.get_columns(t)}
+            return c in cols
+
+        def add_col(t: str, col_name: str, col_ddl: str):
+            # Postgres suporta IF NOT EXISTS
+            if dialect == "postgresql":
+                db.session.execute(text(
+                    f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {col_name} {col_ddl}"
+                ))
+                db.session.commit()
+                return
+
+            # SQLite não suporta IF NOT EXISTS em ADD COLUMN
+            if has_col(t, col_name):
+                return
+            try:
+                db.session.execute(text(f"ALTER TABLE {t} ADD COLUMN {col_name} {col_ddl}"))
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+
+        # ---- recurring_rules: evita UndefinedColumn em produção ----
+        if has_table("recurring_rules"):
+            add_col("recurring_rules", "start_date", "DATE")
+            add_col("recurring_rules", "weekday", "INTEGER")
+            add_col("recurring_rules", "day_of_month", "INTEGER")
+            add_col("recurring_rules", "next_run", "DATE")
+            add_col("recurring_rules", "is_active", "BOOLEAN DEFAULT TRUE")
+
+        # (investments e outras tabelas novas: create_all já cria)
+
+    except Exception as e:
+        print("DB bootstrap_schema failed:", repr(e))
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
 with app.app_context():
     _create_tables_if_needed()
+    _bootstrap_schema()
 
 # -------------------------
 # Helpers
