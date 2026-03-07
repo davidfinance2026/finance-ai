@@ -4,14 +4,16 @@ import re
 import json
 import hashlib
 import calendar
+import base64
+import tempfile
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
 import requests
+from PyPDF2 import PdfReader
 from flask import Flask, request, jsonify, send_from_directory, session, render_template
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, inspect
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 from urllib.parse import quote
 
 # -------------------------
@@ -43,7 +45,7 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 }
 DB_ENABLED = bool(_raw_db_url)
 
-# Senha mínima
+# Senha mínima (ALINHADO com seu front: "mínimo 6")
 MIN_PASSWORD_LEN = int(os.getenv("MIN_PASSWORD_LEN", "6"))
 
 # WhatsApp Cloud API (Meta)
@@ -55,8 +57,14 @@ GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0").strip()
 # Botão de pânico (token opcional)
 PANIC_TOKEN = os.getenv("PANIC_TOKEN", "").strip()
 
-# WhatsApp público
+# WhatsApp público (para botões/atalhos no PWA)
 WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
+
+# OpenAI (para áudio / imagem / PDF)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini").strip()
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", OPENAI_CHAT_MODEL).strip()
+OPENAI_TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe").strip()
 
 # -------------------------
 # DB
@@ -88,26 +96,10 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
-class Investment(db.Model):
-    __tablename__ = "investments"
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-
-    data = db.Column(db.Date, nullable=False)
-    ativo = db.Column(db.String(120), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False, default="APORTE")  # APORTE | RESGATE
-    valor = db.Column(db.Numeric(12, 2), nullable=False, default=0)
-    descricao = db.Column(db.Text, nullable=True)
-
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-    user = db.relationship("User", backref=db.backref("investments", lazy=True))
-
-
 class WaLink(db.Model):
     __tablename__ = "wa_links"
     id = db.Column(db.Integer, primary_key=True)
-    wa_from = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    wa_from = db.Column(db.String(40), unique=True, nullable=False, index=True)  # número sem +
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -121,35 +113,49 @@ class ProcessedMessage(db.Model):
 
 
 class CategoryRule(db.Model):
+    """
+    Regras personalizadas por usuário para categorias no WhatsApp.
+    Ex: pattern="ifood" => categoria="Alimentação"
+    """
     __tablename__ = "category_rules"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    pattern = db.Column(db.String(80), nullable=False)
+    pattern = db.Column(db.String(80), nullable=False)      # keyword simples
     categoria = db.Column(db.String(80), nullable=False)
     priority = db.Column(db.Integer, nullable=False, server_default=text("10"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class WaPending(db.Model):
+    """
+    Guarda pendências do WhatsApp (modo dúvida / confirmação).
+    """
     __tablename__ = "wa_pending"
     id = db.Column(db.Integer, primary_key=True)
     wa_from = db.Column(db.String(40), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    kind = db.Column(db.String(40), nullable=False)
+    kind = db.Column(db.String(40), nullable=False)  # ex: "CONFIRM_TIPO"
     payload_json = db.Column(db.Text, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class RecurringRule(db.Model):
+    """
+    Lançamentos recorrentes criados via WhatsApp.
+    Exemplos:
+      - mensal dia 5
+      - semanal seg
+      - diário
+    """
     __tablename__ = "recurring_rules"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     freq = db.Column(db.String(16), nullable=False)  # DAILY/WEEKLY/MONTHLY
-    day_of_month = db.Column(db.Integer, nullable=True)
-    weekday = db.Column(db.Integer, nullable=True)  # 0=seg ... 6=dom
+    day_of_month = db.Column(db.Integer, nullable=True)  # 1-28/29/30/31 (mensal)
+    weekday = db.Column(db.Integer, nullable=True)  # 0=seg ... 6=dom (semanal)
 
     tipo = db.Column(db.String(16), nullable=False)  # RECEITA/GASTO
     valor = db.Column(db.Numeric(12, 2), nullable=False)
@@ -170,104 +176,8 @@ def _create_tables_if_needed():
         print("DB create_all failed:", repr(e))
 
 
-def _bootstrap_schema():
-    """Migração leve/idempotente (sem Alembic)."""
-    try:
-        insp = inspect(db.engine)
-        dialect = db.engine.dialect.name
-
-        def has_table(t: str) -> bool:
-            try:
-                return insp.has_table(t)
-            except Exception:
-                return t in insp.get_table_names()
-
-        def has_col(t: str, c: str) -> bool:
-            if not has_table(t):
-                return False
-            cols = {col.get("name") for col in insp.get_columns(t)}
-            return c in cols
-
-        def add_col(t: str, col_name: str, col_ddl: str):
-            if dialect == "postgresql":
-                db.session.execute(text(
-                    f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {col_name} {col_ddl}"
-                ))
-                db.session.commit()
-                return
-
-            if has_col(t, col_name):
-                return
-
-            try:
-                db.session.execute(text(f"ALTER TABLE {t} ADD COLUMN {col_name} {col_ddl}"))
-                db.session.commit()
-            except SQLAlchemyError:
-                db.session.rollback()
-
-        if has_table("recurring_rules"):
-            add_col("recurring_rules", "start_date", "DATE")
-            add_col("recurring_rules", "weekday", "INTEGER")
-            add_col("recurring_rules", "day_of_month", "INTEGER")
-            add_col("recurring_rules", "next_run", "DATE")
-            add_col("recurring_rules", "is_active", "BOOLEAN DEFAULT TRUE")
-            add_col("recurring_rules", "tipo", "VARCHAR(16)")
-            add_col("recurring_rules", "valor", "NUMERIC(12,2)")
-            add_col("recurring_rules", "categoria", "VARCHAR(80)")
-            add_col("recurring_rules", "descricao", "TEXT")
-
-            if dialect == "postgresql":
-                if has_col("recurring_rules", "next_date"):
-                    try:
-                        db.session.execute(text("""
-                            ALTER TABLE recurring_rules
-                            ALTER COLUMN next_date DROP NOT NULL
-                        """))
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-
-                    try:
-                        db.session.execute(text("""
-                            UPDATE recurring_rules
-                            SET next_run = COALESCE(next_run, next_date)
-                            WHERE next_run IS NULL AND next_date IS NOT NULL
-                        """))
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-
-                try:
-                    db.session.execute(text("""
-                        UPDATE recurring_rules
-                        SET start_date = COALESCE(start_date, CURRENT_DATE)
-                        WHERE start_date IS NULL
-                    """))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-
-                try:
-                    db.session.execute(text("""
-                        UPDATE recurring_rules
-                        SET next_run = COALESCE(next_run, CURRENT_DATE)
-                        WHERE next_run IS NULL
-                    """))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-
-    except Exception as e:
-        print("DB bootstrap_schema failed:", repr(e))
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-
-
 with app.app_context():
     _create_tables_if_needed()
-    _bootstrap_schema()
 
 # -------------------------
 # Helpers
@@ -314,6 +224,7 @@ def _parse_brl_value(v) -> Decimal:
 
 
 def _parse_date_any(v) -> date:
+    """Aceita: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY. Fallback: hoje (UTC)."""
     if not v:
         return datetime.utcnow().date()
     s = str(v).strip()
@@ -327,27 +238,6 @@ def _parse_date_any(v) -> date:
     except Exception:
         pass
     return datetime.utcnow().date()
-
-
-def _parse_money_br_to_decimal(value):
-    s = str(value or "").strip()
-    if not s:
-        return Decimal("0")
-    s = s.replace(" ", "")
-    if "," in s:
-        s = s.replace(".", "").replace(",", ".")
-    try:
-        return Decimal(s)
-    except Exception:
-        return Decimal("0")
-
-
-def _iso_date(value):
-    s = str(value or "").strip()
-    try:
-        return datetime.strptime(s[:10], "%Y-%m-%d").date()
-    except Exception:
-        return datetime.utcnow().date()
 
 
 def _get_or_create_user_by_email(email: str, password: str | None = None) -> User:
@@ -380,9 +270,12 @@ def _status_payload():
         "graph_version": GRAPH_VERSION,
         "wa_ready": bool(WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID and WA_VERIFY_TOKEN),
         "min_password_len": MIN_PASSWORD_LEN,
+        "openai_ready": bool(OPENAI_API_KEY),
     }
 
-
+# -------------------------
+# WhatsApp send (Meta Cloud API)
+# -------------------------
 def _normalize_wa_number(raw: str) -> str:
     s = (raw or "").strip().replace("+", "")
     s = re.sub(r"[^0-9]", "", s)
@@ -411,309 +304,315 @@ def wa_send_text(to_number: str, text_msg: str):
         print("WA send exception:", repr(e))
 
 
-def _fmt_brl(v: Decimal | float | int | None) -> str:
-    try:
-        d = Decimal(v or 0)
-    except Exception:
-        d = Decimal("0")
-    s = f"{d:.2f}"
-    return s.replace(".", ",")
-
-
-def _month_bounds(year: int, month: int):
-    start = date(year, month, 1)
-    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    return start, end
-
-
-def _period_range(kind: str):
-    today = datetime.utcnow().date()
-    k = _norm_word(kind)
-    if k in ("hoje", "dia"):
-        start = today
-        end = today + timedelta(days=1)
-        label = "hoje"
-        return start, end, label
-    if k == "semana":
-        start = today - timedelta(days=today.weekday())
-        end = start + timedelta(days=7)
-        label = "esta semana"
-        return start, end, label
-
-    start = date(today.year, today.month, 1)
-    if today.month == 12:
-        end = date(today.year + 1, 1, 1)
-    else:
-        end = date(today.year, today.month + 1, 1)
-    label = "este mês"
-    return start, end, label
-
-
-def _sum_period(user_id: int, start: date, end: date):
-    q = (
-        Transaction.query
-        .filter(Transaction.user_id == user_id)
-        .filter(Transaction.data >= start)
-        .filter(Transaction.data < end)
-        .all()
-    )
-    receitas = Decimal("0")
-    gastos = Decimal("0")
-    for t in q:
-        v = Decimal(t.valor or 0)
-        if (t.tipo or "").upper() == "RECEITA":
-            receitas += v
-        else:
-            gastos += v
-    return receitas, gastos, (receitas - gastos), q
-
-
-def _calc_projection(user_id: int, ref_date: date | None = None):
-    today = ref_date or datetime.utcnow().date()
-    start, end = _month_bounds(today.year, today.month)
-
-    rows = (
-        Transaction.query
-        .filter(Transaction.user_id == user_id)
-        .filter(Transaction.data >= start)
-        .filter(Transaction.data < end)
-        .all()
-    )
-
-    receitas = Decimal("0")
-    gastos = Decimal("0")
-    gastos_variaveis = Decimal("0")
-
-    for t in rows:
-        v = Decimal(t.valor or 0)
-        if (t.tipo or "").upper() == "RECEITA":
-            receitas += v
-        else:
-            gastos += v
-            if (t.origem or "").upper() != "REC":
-                gastos_variaveis += v
-
-    saldo_atual = receitas - gastos
-
-    future_receitas_rec = Decimal("0")
-    future_gastos_rec = Decimal("0")
-
-    recurring_rules = (
-        RecurringRule.query
-        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)
-        .all()
-    )
-
-    for r in recurring_rules:
-        if not r.next_run:
-            continue
-        if today < r.next_run < end:
-            val = Decimal(r.valor or 0)
-            if (r.tipo or "").upper() == "RECEITA":
-                future_receitas_rec += val
-            else:
-                future_gastos_rec += val
-
-    days_elapsed = max(1, today.day)
-    days_in_month = calendar.monthrange(today.year, today.month)[1]
-    days_left = max(0, days_in_month - today.day)
-
-    gasto_medio_diario = (gastos_variaveis / Decimal(days_elapsed)) if gastos_variaveis > 0 else Decimal("0")
-    estimativa_gastos_restantes = gasto_medio_diario * Decimal(days_left)
-
-    saldo_previsto = saldo_atual + future_receitas_rec - future_gastos_rec - estimativa_gastos_restantes
-
+def _openai_headers() -> dict:
     return {
-        "saldo_atual": saldo_atual,
-        "receitas_recorrentes_futuras": future_receitas_rec,
-        "gastos_recorrentes_futuros": future_gastos_rec,
-        "gasto_medio_diario": gasto_medio_diario,
-        "estimativa_gastos_restantes": estimativa_gastos_restantes,
-        "saldo_previsto": saldo_previsto,
-        "dias_restantes": days_left,
-        "alerta_negativo": saldo_previsto < 0,
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
     }
 
 
-def _calc_alerts(user_id: int, ref_date: date | None = None):
-    today = ref_date or datetime.utcnow().date()
-    start, end = _month_bounds(today.year, today.month)
-
-    current_rows = (
-        Transaction.query
-        .filter(Transaction.user_id == user_id)
-        .filter(Transaction.data >= start)
-        .filter(Transaction.data < end)
-        .all()
-    )
-
-    cat_current = {}
-    total_gastos = Decimal("0")
-
-    for t in current_rows:
-        if (t.tipo or "").upper() != "GASTO":
-            continue
-        v = Decimal(t.valor or 0)
-        total_gastos += v
-        cat_current[t.categoria] = cat_current.get(t.categoria, Decimal("0")) + v
-
-    alerts = []
-    projection = _calc_projection(user_id, today)
-
-    if projection["alerta_negativo"]:
-        alerts.append({
-            "nivel": "alto",
-            "titulo": "Saldo previsto negativo",
-            "mensagem": f"Seu saldo projetado para o fim do mês é R$ {_fmt_brl(projection['saldo_previsto'])}.",
-        })
-
-    if total_gastos > 0:
-        cat_top = max(cat_current.items(), key=lambda kv: kv[1])
-        if (cat_top[1] / total_gastos) >= Decimal("0.45"):
-            alerts.append({
-                "nivel": "medio",
-                "titulo": f"{cat_top[0]} está pesado no mês",
-                "mensagem": f"{cat_top[0]} representa {(cat_top[1] / total_gastos * 100):.0f}% dos seus gastos.",
-            })
-
-    for cat, current_value in sorted(cat_current.items(), key=lambda kv: kv[1], reverse=True)[:5]:
-        hist_values = []
-        for i in range(1, 4):
-            base_month = today.month - i
-            base_year = today.year
-            while base_month <= 0:
-                base_month += 12
-                base_year -= 1
-
-            h_start, h_end = _month_bounds(base_year, base_month)
-            rows = (
-                Transaction.query
-                .filter(Transaction.user_id == user_id)
-                .filter(Transaction.tipo == "GASTO")
-                .filter(Transaction.data >= h_start)
-                .filter(Transaction.data < h_end)
-                .filter(Transaction.categoria == cat)
-                .all()
-            )
-            hist_values.append(sum(Decimal(r.valor or 0) for r in rows))
-
-        if hist_values:
-            media_hist = sum(hist_values) / Decimal(len(hist_values))
-            if media_hist > 0 and current_value >= media_hist * Decimal("1.40"):
-                alerts.append({
-                    "nivel": "medio",
-                    "titulo": f"{cat} acima da média",
-                    "mensagem": f"Você gastou R$ {_fmt_brl(current_value)} em {cat}; média recente R$ {_fmt_brl(media_hist)}.",
-                })
-
-    return alerts[:5]
+def _openai_available() -> bool:
+    return bool(OPENAI_API_KEY)
 
 
-def _calc_patrimonio_series(user_id: int, months: int = 6):
-    today = datetime.utcnow().date()
-    labels = []
-    values = []
+def _download_whatsapp_media(media_id: str, fallback_name: str = "arquivo"):
+    if not media_id or not WA_ACCESS_TOKEN:
+        raise ValueError("mídia indisponível")
 
-    first_month = today.month - (months - 1)
-    first_year = today.year
-    while first_month <= 0:
-        first_month += 12
-        first_year -= 1
+    meta_url = f"https://graph.facebook.com/{GRAPH_VERSION}/{media_id}"
+    headers = {"Authorization": f"Bearer {WA_ACCESS_TOKEN}"}
+    r = requests.get(meta_url, headers=headers, timeout=20)
+    r.raise_for_status()
+    meta = r.json()
 
-    running = Decimal("0")
+    dl_url = meta.get("url")
+    mime_type = meta.get("mime_type") or "application/octet-stream"
+    ext_map = {
+        "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a",
+        "image/jpeg": ".jpg", "image/png": ".png",
+        "application/pdf": ".pdf",
+    }
+    ext = ext_map.get(mime_type, "")
 
-    for offset in range(months):
-        month = first_month + offset
-        year = first_year
-        while month > 12:
-            month -= 12
-            year += 1
+    r2 = requests.get(dl_url, headers=headers, timeout=60)
+    r2.raise_for_status()
 
-        start, end = _month_bounds(year, month)
+    fd, tmp_path = tempfile.mkstemp(prefix="wa_media_", suffix=ext)
+    with os.fdopen(fd, "wb") as f:
+        f.write(r2.content)
 
-        txs = (
-            Transaction.query
-            .filter(Transaction.user_id == user_id)
-            .filter(Transaction.data >= start)
-            .filter(Transaction.data < end)
-            .all()
+    return tmp_path, mime_type, os.path.basename(tmp_path) or fallback_name
+
+
+def _transcribe_audio_file(file_path: str) -> str:
+    if not _openai_available():
+        raise RuntimeError("OPENAI_API_KEY não configurada")
+
+    with open(file_path, "rb") as f:
+        files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
+        data = {"model": OPENAI_TRANSCRIBE_MODEL}
+        r = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            files=files,
+            data=data,
+            timeout=120,
         )
-        invs = (
-            Investment.query
-            .filter(Investment.user_id == user_id)
-            .filter(Investment.data >= start)
-            .filter(Investment.data < end)
-            .all()
-        )
-
-        receitas = sum(Decimal(t.valor or 0) for t in txs if (t.tipo or "").upper() == "RECEITA")
-        gastos = sum(Decimal(t.valor or 0) for t in txs if (t.tipo or "").upper() == "GASTO")
-        aportes = sum(Decimal(i.valor or 0) for i in invs if (i.tipo or "").upper() == "APORTE")
-        resgates = sum(Decimal(i.valor or 0) for i in invs if (i.tipo or "").upper() == "RESGATE")
-
-        running += (receitas - gastos) + (aportes - resgates)
-
-        labels.append(f"{month:02d}/{str(year)[2:]}")
-        values.append(float(running))
-
-    return labels, values
+    r.raise_for_status()
+    return (r.json().get("text") or "").strip()
 
 
-def _norm_word(w: str) -> str:
-    w = (w or "").strip().lower()
-    w = (
-        w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
-         .replace("é", "e").replace("ê", "e")
-         .replace("í", "i")
-         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
-         .replace("ú", "u")
-         .replace("ç", "c")
-    )
-    return w
-
-
-def _tokenize(textv: str) -> list[str]:
-    textv = _norm_word(textv)
-    parts = re.split(r"[^a-z0-9]+", textv)
-    return [p for p in parts if p]
-
-
-def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
-    tokens = set(_tokenize(full_text))
-
+def _extract_pdf_text(file_path: str) -> str:
     try:
-        rules = (
-            CategoryRule.query
-            .filter(CategoryRule.user_id == user_id)
-            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
-            .all()
-        )
-        for r in rules:
-            key = _norm_word(r.pattern)
-            if not key:
-                continue
-            if key in tokens or any(key in t for t in tokens):
-                return (r.categoria or "").strip().title() or None
+        reader = PdfReader(file_path)
+        chunks = []
+        for page in reader.pages[:10]:
+            chunks.append(page.extract_text() or "")
+        return "\n".join(chunks).strip()
+    except Exception:
+        return ""
+
+
+def _extract_json_from_text(raw: str) -> dict:
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
     except Exception:
         pass
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return {}
 
-    default_category_keywords = [
-        ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
-        ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
-        ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
-        ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
-        ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
-        ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
-        ("Impostos", {"imposto", "taxa", "multa"}),
-        ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
-    ]
 
-    for cat, keys in default_category_keywords:
-        nkeys = {_norm_word(k) for k in keys}
-        if tokens & nkeys:
-            return cat
+def _normalize_ai_result(obj: dict) -> dict | None:
+    if not obj:
+        return None
+    try:
+        valor = _parse_brl_value(obj.get("valor"))
+    except Exception:
+        return None
 
+    tipo = str(obj.get("tipo") or "").strip().upper()
+    if tipo not in ("RECEITA", "GASTO"):
+        return None
+
+    categoria = (str(obj.get("categoria") or "").strip() or "Outros").title()
+    descricao = str(obj.get("descricao") or "").strip() or None
+    confidence = str(obj.get("confidence") or obj.get("confianca") or "medium").strip().lower()
+    if confidence not in ("high", "medium", "low"):
+        confidence = "medium"
+
+    return {
+        "tipo": tipo,
+        "valor": str(valor),
+        "categoria": categoria,
+        "descricao": descricao,
+        "data": _parse_date_any(obj.get("data")).isoformat(),
+        "confidence": confidence,
+        "justificativa": str(obj.get("justificativa") or "").strip(),
+    }
+
+
+def _call_openai_finance_json(user_prompt: str, image_base64: str | None = None, mime_type: str | None = None) -> dict | None:
+    if not _openai_available():
+        raise RuntimeError("OPENAI_API_KEY não configurada")
+
+    system = (
+        "Você é um extrator financeiro. Analise comprovantes, conversas e descrições em português do Brasil. "
+        "Retorne SOMENTE JSON válido com as chaves: tipo, valor, categoria, descricao, data, confidence, justificativa. "
+        "tipo deve ser RECEITA ou GASTO. valor numérico em formato brasileiro ou ponto decimal. "
+        "confidence deve ser high, medium ou low. "
+        "Se houver pix enviado/pagamento/compra, normalmente é GASTO. Se houver pix recebido/recebi/depósito recebido, normalmente é RECEITA."
+    )
+
+    content = [{"type": "text", "text": user_prompt}]
+    if image_base64 and mime_type:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}
+        })
+
+    payload = {
+        "model": OPENAI_VISION_MODEL if image_base64 else OPENAI_CHAT_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": content if image_base64 else user_prompt},
+        ],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+    }
+
+    r = requests.post("https://api.openai.com/v1/chat/completions", headers=_openai_headers(), json=payload, timeout=120)
+    r.raise_for_status()
+    raw = r.json()["choices"][0]["message"]["content"]
+    return _normalize_ai_result(_extract_json_from_text(raw))
+
+
+def _analyze_text_transaction(text_value: str, source_name: str = "texto") -> dict | None:
+    txt = (text_value or "").strip()
+    if not txt:
+        return None
+    prompt = (
+        f"Analise o conteúdo abaixo vindo de {source_name} e extraia um lançamento financeiro.\n\n"
+        f"Conteúdo:\n{txt}"
+    )
+    return _call_openai_finance_json(prompt)
+
+
+def _analyze_image_transaction(file_path: str, mime_type: str) -> dict | None:
+    with open(file_path, "rb") as f:
+        img64 = base64.b64encode(f.read()).decode("utf-8")
+    prompt = (
+        "Analise esta imagem de comprovante, recibo, nota ou print bancário. "
+        "Extraia um único lançamento financeiro mais provável."
+    )
+    return _call_openai_finance_json(prompt, image_base64=img64, mime_type=mime_type)
+
+
+def _save_ai_transaction(user_id: int, tx_data: dict, origem: str = "WA") -> Transaction:
+    tx = Transaction(
+        user_id=user_id,
+        tipo=tx_data["tipo"],
+        data=_parse_date_any(tx_data.get("data")),
+        categoria=(tx_data.get("categoria") or "Outros").title(),
+        descricao=tx_data.get("descricao") or None,
+        valor=_parse_brl_value(tx_data.get("valor")),
+        origem=origem,
+    )
+    db.session.add(tx)
+    db.session.commit()
+    return tx
+
+
+def _pending_confirmation_choice(text_msg: str) -> str | None:
+    norm = _norm_word(text_msg)
+    if norm in ("1", "sim", "s", "confirmar", "ok"): return "confirm"
+    if norm in ("2", "nao", "não", "n", "cancelar", "cancela"): return "cancel"
     return None
+
+
+def _handle_pending_ai_confirmation(wa_from: str, user_id: int, text_msg: str) -> bool:
+    choice = _pending_confirmation_choice(text_msg)
+    if not choice:
+        return False
+    pending = _pending_get(wa_from)
+    if not pending or pending.user_id != user_id or pending.kind != "CONFIRM_AI_TX":
+        return False
+
+    if choice == "cancel":
+        _pending_clear(wa_from, user_id)
+        wa_send_text(wa_from, "❌ Lançamento cancelado. Pode enviar outro comprovante, PDF, foto ou áudio.")
+        return True
+
+    payload = json.loads(pending.payload_json or "{}")
+    tx_data = payload.get("tx") or {}
+    tx = _save_ai_transaction(user_id, tx_data, origem="WA")
+    _pending_clear(wa_from, user_id)
+    wa_send_text(wa_from,
+        "✅ Lançamento salvo!\n"
+        f"ID: {tx.id}\n"
+        f"Tipo: {tx.tipo}\n"
+        f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+        f"Categoria: {tx.categoria}\n"
+        f"Data: {tx.data.isoformat()}"
+    )
+    return True
+
+
+def _send_ai_confirmation_request(wa_from: str, user_id: int, tx_data: dict, source_label: str):
+    _pending_set(wa_from, user_id, "CONFIRM_AI_TX", {"tx": tx_data, "source": source_label}, minutes=15)
+    wa_send_text(wa_from,
+        "🤖 Identifiquei este lançamento, mas quero sua confirmação:\n\n"
+        f"Tipo: {tx_data['tipo']}\n"
+        f"Valor: R$ {_fmt_brl(tx_data['valor'])}\n"
+        f"Categoria: {tx_data['categoria']}\n"
+        f"Descrição: {tx_data.get('descricao') or '-'}\n"
+        f"Data: {tx_data['data']}\n\n"
+        "Responda com:\n"
+        "1 = confirmar\n"
+        "2 = cancelar"
+    )
+
+
+def _handle_whatsapp_media_message(link: WaLink, wa_from: str, msg: dict) -> bool:
+    msg_type = msg.get("type")
+    if msg_type not in ("audio", "image", "document"):
+        return False
+
+    if not _openai_available():
+        wa_send_text(wa_from, "⚠️ O reconhecimento por IA ainda não está ativo no servidor. Configure OPENAI_API_KEY no Railway.")
+        return True
+
+    media_obj = (msg.get(msg_type) or {})
+    media_id = media_obj.get("id")
+    tmp_path = None
+
+    try:
+        tmp_path, mime_type, _ = _download_whatsapp_media(media_id, msg_type)
+
+        tx_data = None
+        source_label = msg_type
+
+        if msg_type == "audio":
+            transcript = _transcribe_audio_file(tmp_path)
+            if not transcript:
+                wa_send_text(wa_from, "Não consegui transcrever esse áudio. Tente novamente com um áudio mais curto e claro.")
+                return True
+            tx_data = _analyze_text_transaction(transcript, "áudio transcrito")
+            source_label = f"áudio: {transcript}"
+
+        elif msg_type == "image":
+            tx_data = _analyze_image_transaction(tmp_path, mime_type)
+            source_label = "imagem/comprovante"
+
+        elif msg_type == "document":
+            if mime_type == "application/pdf":
+                pdf_text = _extract_pdf_text(tmp_path)
+                if pdf_text:
+                    tx_data = _analyze_text_transaction(pdf_text, "PDF de comprovante")
+                else:
+                    wa_send_text(wa_from, "Li o PDF, mas não consegui extrair texto suficiente para lançar. Tente enviar print ou foto do comprovante.")
+                    return True
+                source_label = "PDF"
+            else:
+                wa_send_text(wa_from, "Por enquanto consigo interpretar PDF, imagem e áudio. Esse documento ainda não é suportado.")
+                return True
+
+        if not tx_data:
+            wa_send_text(wa_from, "Não consegui identificar um lançamento confiável nesse arquivo. Pode enviar outro comprovante ou escrever em texto.")
+            return True
+
+        if tx_data.get("confidence") == "high":
+            tx = _save_ai_transaction(link.user_id, tx_data, origem="WA")
+            wa_send_text(wa_from,
+                "✅ Lançamento salvo pela IA!\n"
+                f"ID: {tx.id}\n"
+                f"Tipo: {tx.tipo}\n"
+                f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+                f"Categoria: {tx.categoria}\n"
+                f"Data: {tx.data.isoformat()}"
+            )
+        else:
+            _send_ai_confirmation_request(wa_from, link.user_id, tx_data, source_label)
+
+        return True
+
+    except Exception as e:
+        print("WA media handle error:", repr(e))
+        wa_send_text(wa_from, "Não consegui processar essa mídia agora. Tente novamente em alguns instantes.")
+        return True
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 # -------------------------
 # Static / Frontend
@@ -749,9 +648,9 @@ def robots():
 def health():
     return jsonify(_status_payload())
 
-
 @app.get("/api/wa_link")
 def api_wa_link():
+    """Retorna link do WhatsApp com mensagem pronta: conectar <email_logado>."""
     uid = _get_logged_user_id()
     email = _get_logged_email()
 
@@ -766,6 +665,7 @@ def api_wa_link():
 
 @app.get("/wa")
 def wa_shortcut():
+    """Atalho do PWA (manifest shortcuts). Redireciona para WhatsApp."""
     uid = _get_logged_user_id()
     email = _get_logged_email()
     to = _normalize_wa_number(WA_PUBLIC_NUMBER)
@@ -780,7 +680,7 @@ def wa_shortcut():
 
 
 # -------------------------
-# Panic Reset
+# Panic Reset (limpa tudo)
 # -------------------------
 def _panic_allowed() -> bool:
     if not PANIC_TOKEN:
@@ -802,7 +702,7 @@ def api_panic_reset():
     try:
         db.session.execute(
             text(
-                "TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, wa_pending, recurring_rules, investments, users "
+                "TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, wa_pending, recurring_rules, users "
                 "RESTART IDENTITY CASCADE;"
             )
         )
@@ -818,7 +718,6 @@ def api_panic_reset():
         CategoryRule.query.delete()
         WaPending.query.delete()
         RecurringRule.query.delete()
-        Investment.query.delete()
         User.query.delete()
         db.session.commit()
         return jsonify({"ok": True, "message": "Banco limpo (fallback)."})
@@ -826,9 +725,8 @@ def api_panic_reset():
         db.session.rollback()
         return jsonify({"error": "panic_reset_failed", "detail": str(e)}), 500
 
-
 # -------------------------
-# Auth API
+# Auth API (ALINHADO COM SEU index.html)
 # -------------------------
 @app.post("/api/register")
 def api_register():
@@ -908,9 +806,8 @@ def api_reset_password():
 def api_me():
     return jsonify(email=_get_logged_email(), user_id=_get_logged_user_id())
 
-
 # -------------------------
-# Transactions API
+# Transactions API (ALINHADO COM SEU index.html)
 # -------------------------
 @app.get("/api/lancamentos")
 def api_list_lancamentos():
@@ -960,12 +857,8 @@ def api_create_lancamento():
     if tipo not in ("RECEITA", "GASTO"):
         return jsonify(error="Tipo inválido"), 400
 
+    categoria = (str(dataj.get("categoria") or "").strip() or "Outros").title()
     descricao = str(dataj.get("descricao") or "").strip() or None
-    raw_categoria = str(dataj.get("categoria") or "").strip()
-    categoria = raw_categoria.title() if raw_categoria else None
-    if not categoria:
-        categoria = _guess_category_from_text(uid, f"{raw_categoria} {descricao or ''}") or "Outros"
-
     d = _parse_date_any(dataj.get("data"))
 
     try:
@@ -1032,81 +925,6 @@ def api_delete_lancamento(row: int):
     return jsonify(ok=True)
 
 
-# -----------------------
-# Investimentos
-# -----------------------
-@app.get("/api/investimentos")
-def api_investimentos_list():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    limit = int(request.args.get("limit", "50"))
-    q = Investment.query.filter_by(user_id=user_id).order_by(Investment.data.desc(), Investment.id.desc())
-    items = q.limit(min(limit, 200)).all()
-    out = []
-    for it in items:
-        out.append({
-            "id": it.id,
-            "data": it.data.isoformat(),
-            "ativo": it.ativo,
-            "tipo": it.tipo,
-            "valor": str(it.valor),
-            "descricao": it.descricao or "",
-        })
-    return jsonify({"items": out})
-
-
-@app.post("/api/investimentos")
-def api_investimentos_create():
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    data = request.get_json(silent=True) or {}
-    ativo = str(data.get("ativo") or "").strip()
-    if not ativo:
-        return jsonify({"error": "Informe o ativo (ex: Tesouro Selic, PETR4, BTC)."}), 400
-
-    tipo = str(data.get("tipo") or "APORTE").strip().upper()
-    if tipo not in ("APORTE", "RESGATE"):
-        return jsonify({"error": "Tipo inválido. Use APORTE ou RESGATE."}), 400
-
-    valor = _parse_money_br_to_decimal(data.get("valor"))
-    if valor <= 0:
-        return jsonify({"error": "Informe um valor válido (> 0)."}), 400
-
-    it = Investment(
-        user_id=user_id,
-        data=_iso_date(data.get("data")),
-        ativo=ativo,
-        tipo=tipo,
-        valor=valor,
-        descricao=str(data.get("descricao") or "").strip() or None,
-    )
-    db.session.add(it)
-    db.session.commit()
-    return jsonify({"ok": True, "id": it.id})
-
-
-@app.delete("/api/investimentos/<int:item_id>")
-def api_investimentos_delete(item_id: int):
-    user_id = _require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    it = Investment.query.filter_by(user_id=user_id, id=item_id).first()
-    if not it:
-        return jsonify({"error": "Investimento não encontrado."}), 404
-
-    db.session.delete(it)
-    db.session.commit()
-    return jsonify({"ok": True})
-
-
-# -------------------------
-# Dashboard + IA v3
-# -------------------------
 @app.get("/api/dashboard")
 def api_dashboard():
     uid = _require_login()
@@ -1142,45 +960,6 @@ def api_dashboard():
     saldo = receitas - gastos
     return jsonify(receitas=float(receitas), gastos=float(gastos), saldo=float(saldo))
 
-
-@app.get("/api/projecao")
-def api_projecao():
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    p = _calc_projection(uid)
-    return jsonify({
-        "saldo_atual": float(p["saldo_atual"]),
-        "receitas_recorrentes_futuras": float(p["receitas_recorrentes_futuras"]),
-        "gastos_recorrentes_futuros": float(p["gastos_recorrentes_futuros"]),
-        "gasto_medio_diario": float(p["gasto_medio_diario"]),
-        "estimativa_gastos_restantes": float(p["estimativa_gastos_restantes"]),
-        "saldo_previsto": float(p["saldo_previsto"]),
-        "dias_restantes": p["dias_restantes"],
-        "alerta_negativo": p["alerta_negativo"],
-    })
-
-
-@app.get("/api/alertas")
-def api_alertas():
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-    return jsonify(items=_calc_alerts(uid))
-
-
-@app.get("/api/patrimonio")
-def api_patrimonio():
-    uid = _require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    months = int(request.args.get("months", "6"))
-    months = max(3, min(12, months))
-    labels, values = _calc_patrimonio_series(uid, months)
-    return jsonify(labels=labels, values=values)
-
 # -------------------------
 # WhatsApp - inteligência
 # -------------------------
@@ -1203,31 +982,36 @@ EXPENSE_HINTS = {
 DEFAULT_CATEGORY_KEYWORDS = [
     ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
     ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
-    ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
+    ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento"}),
+    ("Contas", {"luz", "energia", "agua", "água", "internet", "telefone", "celular", "netflix", "spotify", "assinatura", "streaming"}),
     ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
     ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
     ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
     ("Impostos", {"imposto", "taxa", "multa"}),
+    ("Trabalho", {"salario", "salário", "pagamento", "prolabore", "pró-labore", "pro-labore", "freela", "freelancer"}),
     ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
 ]
 
+# comandos gerais
 CMD_HELP_RE = re.compile(r"^\s*(ajuda|\?|help)\s*$", re.IGNORECASE)
 CMD_ULTIMOS_RE = re.compile(r"^\s*ultimos\s*$", re.IGNORECASE)
 CMD_APAGAR_RE = re.compile(r"^\s*apagar\s+(\d+)\s*$", re.IGNORECASE)
 CMD_CORRIGIR_ULTIMA_RE = re.compile(r"^\s*corrigir\s+ultima\s+(.+)$", re.IGNORECASE)
 CMD_EDITAR_RE = re.compile(r"^\s*editar\s+(\d+)\s+(.+)$", re.IGNORECASE)
+
 CMD_DESFAZER_RE = re.compile(r"^\s*desfazer\s*$", re.IGNORECASE)
 
 CMD_RESUMO_RE = re.compile(r"^\s*resumo\s+(hoje|dia|semana|mes|m[eê]s)\s*$", re.IGNORECASE)
 CMD_SALDO_MES_RE = re.compile(r"^\s*saldo\s+m[eê]s\s*$", re.IGNORECASE)
-CMD_ANALISE_RE = re.compile(r"^\s*(analise|an[aá]lise|insights)\s*(hoje|semana|mes|m[eê]s)?\s*$", re.IGNORECASE)
-CMD_PROJECAO_RE = re.compile(r"^\s*(projecao|projeção)\s*$", re.IGNORECASE)
-CMD_ALERTAS_RE = re.compile(r"^\s*alertas?\s*$", re.IGNORECASE)
 
+CMD_ANALISE_RE = re.compile(r"^\s*(analise|an[aá]lise|insights)\s*(hoje|semana|mes|m[eê]s)?\s*$", re.IGNORECASE)
+
+# categorias ensináveis
 CAT_SET_RE = re.compile(r"^\s*categoria\s+(.+?)\s*=\s*(.+?)\s*$", re.IGNORECASE)
 CAT_DEL_RE = re.compile(r"^\s*remover\s+categoria\s+(.+?)\s*$", re.IGNORECASE)
 CAT_LIST_RE = re.compile(r"^\s*categorias\s*$", re.IGNORECASE)
 
+# recorrentes
 REC_ADD_RE = re.compile(r"^\s*recorrente\s+(diario|di[aá]rio|semanal|mensal)\s+(.+)$", re.IGNORECASE)
 REC_LIST_RE = re.compile(r"^\s*recorrentes\s*$", re.IGNORECASE)
 REC_DEL_RE = re.compile(r"^\s*remover\s+recorrente\s+(\d+)\s*$", re.IGNORECASE)
@@ -1242,6 +1026,25 @@ WEEKDAY_MAP = {
     "sab": 5, "sábado": 5, "sabado": 5,
     "dom": 6, "domingo": 6,
 }
+
+
+def _norm_word(w: str) -> str:
+    w = (w or "").strip().lower()
+    w = (
+        w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
+         .replace("é", "e").replace("ê", "e")
+         .replace("í", "i")
+         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+         .replace("ú", "u")
+         .replace("ç", "c")
+    )
+    return w
+
+
+def _tokenize(textv: str) -> list[str]:
+    textv = _norm_word(textv)
+    parts = re.split(r"[^a-z0-9]+", textv)
+    return [p for p in parts if p]
 
 
 def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: list[str]):
@@ -1264,7 +1067,7 @@ def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: l
     score_income = (b_income * 3) + a_income
     score_exp = (b_exp * 3) + a_exp
 
-    has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for n in NEGATIONS for t in before_tokens[:2])
+    has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for t in before_tokens[:2])
     if has_neg and score_income > 0 and score_exp == 0:
         score_income = 0
 
@@ -1277,6 +1080,35 @@ def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: l
     return "GASTO", ("high" if (score_exp - score_income) >= 2 else "low")
 
 
+def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
+    tokens = set(_tokenize(full_text))
+
+    # 1) regras do usuário
+    try:
+        rules = (
+            CategoryRule.query
+            .filter(CategoryRule.user_id == user_id)
+            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
+            .all()
+        )
+        for r in rules:
+            key = _norm_word(r.pattern)
+            if not key:
+                continue
+            if key in tokens or any(key in t for t in tokens):
+                return (r.categoria or "").strip().title() or None
+    except Exception:
+        pass
+
+    # 2) padrão
+    for cat, keys in DEFAULT_CATEGORY_KEYWORDS:
+        nkeys = {_norm_word(k) for k in keys}
+        if tokens & nkeys:
+            return cat
+
+    return None
+
+
 def _wa_help_text():
     return (
         "✅ Comandos disponíveis:\n\n"
@@ -1287,12 +1119,10 @@ def _wa_help_text():
         "• paguei 32,90 mercado\n"
         "• + 35,90 venda camiseta\n"
         "• - 18,00 uber\n\n"
-        "📊 Inteligência Finance AI:\n"
-        "• projeção\n"
-        "• alertas\n"
-        "• analise\n"
-        "• analise semana\n"
-        "• analise mês\n\n"
+        "📎 Mídias com IA:\n"
+        "• envie áudio contando a movimentação\n"
+        "• envie foto de comprovante\n"
+        "• envie PDF de comprovante\n\n"
         "🧠 Se houver dúvida, eu pergunto: RECEITA ou GASTO.\n"
         "Responda apenas: receita  (ou)  gasto\n\n"
         "✏️ Corrigir aqui:\n"
@@ -1314,114 +1144,15 @@ def _wa_help_text():
         "• recorrentes\n"
         "• remover recorrente 7\n"
         "• rodar recorrentes\n\n"
+        "🧠 Inteligência analítica:\n"
+        "• analise\n"
+        "• analise semana\n"
+        "• analise mês\n\n"
         "🏷️ Ensinar categorias:\n"
         "• categorias\n"
         "• categoria ifood = Alimentação\n"
         "• remover categoria ifood\n"
     )
-
-
-def _make_resumo_text(user_id: int, kind: str):
-    start, end, label = _period_range(kind)
-    receitas, gastos, saldo, _ = _sum_period(user_id, start, end)
-    return (
-        f"📊 Resumo ({label}):\n"
-        f"Receitas: R$ {_fmt_brl(receitas)}\n"
-        f"Gastos: R$ {_fmt_brl(gastos)}\n"
-        f"Saldo: R$ {_fmt_brl(saldo)}"
-    )
-
-
-def _make_analise_text(user_id: int, kind: str | None):
-    start, end, label = _period_range(kind or "mes")
-    receitas, gastos, saldo, rows = _sum_period(user_id, start, end)
-
-    cat_map = {}
-    biggest = None
-    for t in rows:
-        v = Decimal(t.valor or 0)
-        if (t.tipo or "").upper() != "GASTO":
-            continue
-        cat_map[t.categoria] = cat_map.get(t.categoria, Decimal("0")) + v
-        if biggest is None or v > Decimal(biggest.valor or 0):
-            biggest = t
-
-    top = sorted(cat_map.items(), key=lambda kv: kv[1], reverse=True)[:5]
-    top_lines = []
-    total_gastos = Decimal(gastos or 0)
-    for cat, val in top:
-        pct = (val / total_gastos * 100) if total_gastos > 0 else Decimal("0")
-        top_lines.append(f"• {cat}: R$ {_fmt_brl(val)} ({pct:.0f}%)")
-
-    today = datetime.utcnow().date()
-    if label == "este mês":
-        days_elapsed = max(1, today.day)
-        days_in_month = calendar.monthrange(today.year, today.month)[1]
-        daily_avg = (total_gastos / Decimal(days_elapsed)) if total_gastos > 0 else Decimal("0")
-        forecast = daily_avg * Decimal(days_in_month)
-        proj_line = f"Média/dia: R$ {_fmt_brl(daily_avg)} | Projeção mês: R$ {_fmt_brl(forecast)}"
-    else:
-        proj_line = None
-
-    alerts = []
-    if total_gastos > 0:
-        for cat, val in top[:1]:
-            if (val / total_gastos) >= Decimal("0.45"):
-                alerts.append(f"⚠️ {cat} está alto ({(val/total_gastos*100):.0f}% dos gastos).")
-
-    msg = [
-        f"🧠 Análise ({label}):",
-        f"Receitas: R$ {_fmt_brl(receitas)}",
-        f"Gastos: R$ {_fmt_brl(gastos)}",
-        f"Saldo: R$ {_fmt_brl(saldo)}",
-    ]
-    if proj_line:
-        msg.append(proj_line)
-
-    if top_lines:
-        msg.append("\nTop gastos por categoria:")
-        msg.extend(top_lines)
-
-    if biggest and Decimal(biggest.valor or 0) > 0:
-        msg.append(
-            f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})"
-        )
-
-    if alerts:
-        msg.append("\n" + "\n".join(alerts))
-
-    msg.append("\nDica: use 'resumo semana' e 'resumo mês' também.")
-    return "\n".join(msg)
-
-
-def _make_projection_text(user_id: int):
-    p = _calc_projection(user_id)
-    lines = [
-        "📈 Projeção Finance AI",
-        "",
-        f"Saldo atual: R$ {_fmt_brl(p['saldo_atual'])}",
-        f"Receitas recorrentes futuras: R$ {_fmt_brl(p['receitas_recorrentes_futuras'])}",
-        f"Gastos recorrentes futuros: R$ {_fmt_brl(p['gastos_recorrentes_futuros'])}",
-        f"Gasto médio/dia: R$ {_fmt_brl(p['gasto_medio_diario'])}",
-        f"Estimativa do restante do mês: R$ {_fmt_brl(p['estimativa_gastos_restantes'])}",
-        f"Saldo previsto: R$ {_fmt_brl(p['saldo_previsto'])}",
-    ]
-    if p["alerta_negativo"]:
-        lines.append("")
-        lines.append("⚠️ Atenção: a projeção indica saldo negativo até o fim do mês.")
-    return "\n".join(lines)
-
-
-def _make_alerts_text(user_id: int):
-    alerts = _calc_alerts(user_id)
-    if not alerts:
-        return "✅ Nenhum alerta importante no momento."
-
-    lines = ["🚨 Alertas Finance AI", ""]
-    for a in alerts:
-        lines.append(f"• {a['titulo']}")
-        lines.append(f"  {a['mensagem']}")
-    return "\n".join(lines)
 
 
 def _parse_kv_assignments(s: str) -> dict:
@@ -1503,14 +1234,141 @@ def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
     return True, "OK"
 
 
+def _fmt_brl(v: Decimal | float | int | None) -> str:
+    try:
+        d = Decimal(v or 0)
+    except Exception:
+        d = Decimal("0")
+    s = f"{d:.2f}"
+    return s.replace(".", ",")
+
+
+def _period_range(kind: str):
+    today = datetime.utcnow().date()
+    k = _norm_word(kind)
+    if k in ("hoje", "dia"):
+        start = today
+        end = today + timedelta(days=1)
+        label = "hoje"
+        return start, end, label
+    if k == "semana":
+        # semana começando segunda
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=7)
+        label = "esta semana"
+        return start, end, label
+    # mês (default)
+    start = date(today.year, today.month, 1)
+    if today.month == 12:
+        end = date(today.year + 1, 1, 1)
+    else:
+        end = date(today.year, today.month + 1, 1)
+    label = "este mês"
+    return start, end, label
+
+
+def _sum_period(user_id: int, start: date, end: date):
+    q = (
+        Transaction.query
+        .filter(Transaction.user_id == user_id)
+        .filter(Transaction.data >= start)
+        .filter(Transaction.data < end)
+        .all()
+    )
+    receitas = Decimal("0")
+    gastos = Decimal("0")
+    for t in q:
+        v = Decimal(t.valor or 0)
+        if (t.tipo or "").upper() == "RECEITA":
+            receitas += v
+        else:
+            gastos += v
+    return receitas, gastos, (receitas - gastos), q
+
+
+def _make_resumo_text(user_id: int, kind: str):
+    start, end, label = _period_range(kind)
+    receitas, gastos, saldo, _ = _sum_period(user_id, start, end)
+    return (
+        f"📊 Resumo ({label}):\n"
+        f"Receitas: R$ {_fmt_brl(receitas)}\n"
+        f"Gastos: R$ {_fmt_brl(gastos)}\n"
+        f"Saldo: R$ {_fmt_brl(saldo)}"
+    )
+
+
+def _make_analise_text(user_id: int, kind: str | None):
+    start, end, label = _period_range(kind or "mes")
+    receitas, gastos, saldo, rows = _sum_period(user_id, start, end)
+
+    # top categorias (gastos)
+    cat_map = {}
+    biggest = None
+    for t in rows:
+        v = Decimal(t.valor or 0)
+        if (t.tipo or "").upper() != "GASTO":
+            continue
+        cat_map[t.categoria] = cat_map.get(t.categoria, Decimal("0")) + v
+        if biggest is None or v > Decimal(biggest.valor or 0):
+            biggest = t
+
+    top = sorted(cat_map.items(), key=lambda kv: kv[1], reverse=True)[:5]
+    top_lines = []
+    total_gastos = Decimal(gastos or 0)
+    for cat, val in top:
+        pct = (val / total_gastos * 100) if total_gastos > 0 else Decimal("0")
+        top_lines.append(f"• {cat}: R$ {_fmt_brl(val)} ({pct:.0f}%)")
+
+    today = datetime.utcnow().date()
+    if label == "este mês":
+        days_elapsed = max(1, today.day)
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        daily_avg = (total_gastos / Decimal(days_elapsed)) if total_gastos > 0 else Decimal("0")
+        forecast = daily_avg * Decimal(days_in_month)
+        proj_line = f"Média/dia: R$ {_fmt_brl(daily_avg)} | Projeção mês: R$ {_fmt_brl(forecast)}"
+    else:
+        proj_line = None
+
+    alerts = []
+    if total_gastos > 0:
+        for cat, val in top[:1]:
+            if (val / total_gastos) >= Decimal("0.45"):
+                alerts.append(f"⚠️ {cat} está alto ({(val/total_gastos*100):.0f}% dos gastos).")
+
+    msg = [
+        f"🧠 Análise ({label}):",
+        f"Receitas: R$ {_fmt_brl(receitas)}",
+        f"Gastos: R$ {_fmt_brl(gastos)}",
+        f"Saldo: R$ {_fmt_brl(saldo)}",
+    ]
+    if proj_line:
+        msg.append(proj_line)
+
+    if top_lines:
+        msg.append("\nTop gastos por categoria:")
+        msg.extend(top_lines)
+
+    if biggest and Decimal(biggest.valor or 0) > 0:
+        msg.append(
+            f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})"
+        )
+
+    if alerts:
+        msg.append("\n" + "\n".join(alerts))
+
+    msg.append("\nDica: use 'resumo semana' e 'resumo mês' também.")
+    return "\n".join(msg)
+
+
 def _next_monthly_date(from_date: date, day_of_month: int) -> date:
     y, m = from_date.year, from_date.month
+    # tenta no mesmo mês se ainda não passou
     last_day = calendar.monthrange(y, m)[1]
     d = min(day_of_month, last_day)
     cand = date(y, m, d)
     if cand >= from_date:
         return cand
-
+    # próximo mês
     if m == 12:
         y, m = y + 1, 1
     else:
@@ -1529,10 +1387,18 @@ def _next_weekly_date(from_date: date, weekday: int) -> date:
 
 
 def _parse_recorrente_args(rest: str):
+    """
+    Retorna dict com freq e parâmetros:
+      mensal: "<dia> <valor> <categoria> [descricao...]"
+      semanal: "<dia_semana> <valor> <categoria> [descricao...]"
+      diario: "<valor> <categoria> [descricao...]"
+    """
     rest = (rest or "").strip()
     if not rest:
         return None
-    return rest.split()
+
+    parts = rest.split()
+    return parts
 
 
 def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
@@ -1556,6 +1422,7 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
 
         categoria = parts[2].title()
         descricao = " ".join(parts[3:]).strip() or None
+
         next_run = _next_monthly_date(today, dom)
 
         rule = RecurringRule(
@@ -1584,7 +1451,6 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
             valor = _parse_brl_value(parts[1])
         except Exception:
             return None, "Valor inválido."
-
         categoria = parts[2].title()
         descricao = " ".join(parts[3:]).strip() or None
         next_run = _next_weekly_date(today, weekday)
@@ -1610,9 +1476,9 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
             valor = _parse_brl_value(parts[0])
         except Exception:
             return None, "Valor inválido."
-
         categoria = parts[1].title()
         descricao = " ".join(parts[2:]).strip() or None
+        next_run = today
 
         rule = RecurringRule(
             user_id=user_id,
@@ -1624,7 +1490,7 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
             categoria=categoria,
             descricao=descricao,
             start_date=today,
-            next_run=today,
+            next_run=next_run,
         )
         return rule, None
 
@@ -1637,12 +1503,13 @@ def _run_recorrentes_for_user(user_id: int, today: date | None = None):
 
     rules = (
         RecurringRule.query
-        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)
+        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)  # noqa: E712
         .order_by(RecurringRule.id.asc())
         .all()
     )
 
     for r in rules:
+        # gera todas as ocorrências até hoje (inclusive)
         while r.next_run <= today:
             tx = Transaction(
                 user_id=user_id,
@@ -1656,14 +1523,17 @@ def _run_recorrentes_for_user(user_id: int, today: date | None = None):
             db.session.add(tx)
             created += 1
 
+            # avança próxima data
             if r.freq == "DAILY":
                 r.next_run = r.next_run + timedelta(days=1)
             elif r.freq == "WEEKLY":
                 r.next_run = r.next_run + timedelta(days=7)
             elif r.freq == "MONTHLY":
+                # próximo mês mantendo dia
                 base = r.next_run + timedelta(days=1)
                 r.next_run = _next_monthly_date(base, int(r.day_of_month or 1))
             else:
+                # se algo estranho, desativa
                 r.is_active = False
                 break
 
@@ -1672,6 +1542,11 @@ def _run_recorrentes_for_user(user_id: int, today: date | None = None):
 
 
 def _parse_wa_text(msg_text: str):
+    """
+    Retorna dict com cmd:
+      CONNECT | CAT_* | HELP | ULTIMOS | APAGAR | EDITAR | CORRIGIR_ULTIMA | DESFAZER
+      | RESUMO | SALDO_MES | ANALISE | REC_* | CONFIRM_TIPO | TX | NONE
+    """
     t = (msg_text or "").strip()
     if not t:
         return {"cmd": "NONE"}
@@ -1681,12 +1556,6 @@ def _parse_wa_text(msg_text: str):
 
     if CMD_DESFAZER_RE.match(t):
         return {"cmd": "DESFAZER"}
-
-    if CMD_PROJECAO_RE.match(t):
-        return {"cmd": "PROJECAO"}
-
-    if CMD_ALERTAS_RE.match(t):
-        return {"cmd": "ALERTAS"}
 
     m = CMD_RESUMO_RE.match(t)
     if m:
@@ -1699,6 +1568,7 @@ def _parse_wa_text(msg_text: str):
     if m:
         return {"cmd": "ANALISE", "kind": m.group(2)}
 
+    # categorias
     mset = CAT_SET_RE.match(t)
     if mset:
         key = mset.group(1).strip()
@@ -1717,20 +1587,19 @@ def _parse_wa_text(msg_text: str):
     if CAT_LIST_RE.match(t):
         return {"cmd": "CAT_LIST"}
 
+    # recorrentes
     m = REC_ADD_RE.match(t)
     if m:
         return {"cmd": "REC_ADD", "freq": m.group(1), "rest": m.group(2)}
-
     if REC_LIST_RE.match(t):
         return {"cmd": "REC_LIST"}
-
     m = REC_DEL_RE.match(t)
     if m:
         return {"cmd": "REC_DEL", "id": int(m.group(1))}
-
     if REC_RUN_RE.match(t):
         return {"cmd": "REC_RUN"}
 
+    # edição
     if CMD_ULTIMOS_RE.match(t):
         return {"cmd": "ULTIMOS"}
 
@@ -1746,10 +1615,12 @@ def _parse_wa_text(msg_text: str):
     if m:
         return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": _parse_kv_assignments(m.group(2))}
 
+    # confirmação simples (para pendência)
     low_simple = _norm_word(t)
     if low_simple in ("receita", "gasto"):
         return {"cmd": "CONFIRM_TIPO", "tipo": "RECEITA" if low_simple == "receita" else "GASTO"}
 
+    # CONNECT
     low = _norm_word(t)
     low = re.sub(r"\s+", " ", low).strip()
     for alias in CONNECT_ALIASES:
@@ -1757,6 +1628,7 @@ def _parse_wa_text(msg_text: str):
             email = t.split(" ", 1)[1].strip()
             return {"cmd": "CONNECT", "email": _normalize_email(email)}
 
+    # valor (TX)
     m = VALUE_RE.search(low)
     if not m:
         return {"cmd": "NONE"}
@@ -1769,7 +1641,7 @@ def _parse_wa_text(msg_text: str):
         return {"cmd": "NONE"}
 
     before = (low[: m.start()] or "").strip()
-    after = (low[m.end():] or "").strip(" -–—")
+    after = (low[m.end() :] or "").strip(" -–—")
 
     before_tokens = _tokenize(before)
     after_tokens = _tokenize(after)
@@ -1794,7 +1666,6 @@ def _parse_wa_text(msg_text: str):
         "raw_text": t,
     }
 
-
 # -------------------------
 # WhatsApp Cloud API Webhook
 # -------------------------
@@ -1818,26 +1689,30 @@ def wa_webhook():
             for change in entry.get("changes", []) or []:
                 value = change.get("value", {}) or {}
                 for msg in value.get("messages", []) or []:
-                    if msg.get("type") != "text":
+                    msg_type = msg.get("type")
+                    if msg_type not in ("text", "audio", "image", "document"):
                         continue
 
                     msg_id = msg.get("id")
                     wa_from = _normalize_wa_number(msg.get("from") or "")
                     body = ((msg.get("text") or {}) or {}).get("body", "") or ""
 
+                    # dedup
                     if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
                         continue
                     if msg_id:
                         db.session.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from))
                         db.session.commit()
 
-                    parsed = _parse_wa_text(body)
+                    parsed = _parse_wa_text(body) if msg_type == "text" else {"cmd": "MEDIA", "media_type": msg_type}
 
-                    if parsed["cmd"] == "HELP":
+                    # HELP sempre
+                    if msg_type == "text" and parsed["cmd"] == "HELP":
                         wa_send_text(wa_from, _wa_help_text())
                         continue
 
-                    if parsed["cmd"] == "CONNECT":
+                    # CONNECT não exige link
+                    if msg_type == "text" and parsed["cmd"] == "CONNECT":
                         email = parsed.get("email")
                         if not email or "@" not in email:
                             wa_send_text(wa_from, "Email inválido. Ex: conectar david@email.com")
@@ -1863,6 +1738,7 @@ def wa_webhook():
                         )
                         continue
 
+                    # daqui pra baixo: precisa estar linkado
                     link = WaLink.query.filter_by(wa_from=wa_from).first()
                     if not link:
                         wa_send_text(
@@ -1874,6 +1750,7 @@ def wa_webhook():
                         )
                         continue
 
+                    # DESFAZER (última transação WA em 5 min)
                     if parsed["cmd"] == "DESFAZER":
                         limit_dt = datetime.utcnow() - timedelta(minutes=5)
                         last = (
@@ -1894,26 +1771,20 @@ def wa_webhook():
                         wa_send_text(wa_from, f"✅ Desfeito: ID {txid}")
                         continue
 
-                    if parsed["cmd"] == "PROJECAO":
-                        wa_send_text(wa_from, _make_projection_text(link.user_id))
-                        continue
-
-                    if parsed["cmd"] == "ALERTAS":
-                        wa_send_text(wa_from, _make_alerts_text(link.user_id))
-                        continue
-
+                    # RESUMOS
                     if parsed["cmd"] == "RESUMO":
                         wa_send_text(wa_from, _make_resumo_text(link.user_id, parsed.get("kind") or "mes"))
                         continue
-
                     if parsed["cmd"] == "SALDO_MES":
                         wa_send_text(wa_from, _make_resumo_text(link.user_id, "mes"))
                         continue
 
+                    # ANALISE
                     if parsed["cmd"] == "ANALISE":
                         wa_send_text(wa_from, _make_analise_text(link.user_id, parsed.get("kind")))
                         continue
 
+                    # confirma pendência (modo dúvida)
                     if parsed["cmd"] == "CONFIRM_TIPO":
                         pending = _pending_get(wa_from)
                         if not pending or pending.user_id != link.user_id:
@@ -1953,6 +1824,7 @@ def wa_webhook():
                         )
                         continue
 
+                    # categorias
                     if parsed["cmd"] == "CAT_HELP":
                         wa_send_text(
                             wa_from,
@@ -2028,6 +1900,7 @@ def wa_webhook():
                             wa_send_text(wa_from, "\n".join(lines))
                         continue
 
+                    # recorrentes
                     if parsed["cmd"] == "REC_ADD":
                         parts = _parse_recorrente_args(parsed.get("rest") or "")
                         if not parts:
@@ -2095,6 +1968,7 @@ def wa_webhook():
                         wa_send_text(wa_from, f"✅ Recorrentes geradas: {created} lançamento(s).")
                         continue
 
+                    # listar/apagar/editar
                     if parsed["cmd"] == "ULTIMOS":
                         txs = (
                             Transaction.query
@@ -2181,11 +2055,13 @@ def wa_webhook():
                         )
                         continue
 
+                    # TX normal (modo dúvida + categoria inteligente)
                     if parsed["cmd"] == "TX":
                         raw_text = parsed.get("raw_text") or ""
                         guessed = _guess_category_from_text(link.user_id, raw_text)
                         categoria = guessed or parsed.get("categoria_fallback") or "Outros"
 
+                        # dúvida do tipo -> pergunta
                         if parsed.get("tipo_confidence") == "low":
                             _pending_set(
                                 wa_from=wa_from,
