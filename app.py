@@ -62,19 +62,7 @@ WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
 # DB
 # -------------------------
 db = SQLAlchemy(app)
-from sqlalchemy import text
 
-def migrate_database():
-    try:
-        with db.engine.connect() as conn:
-            conn.execute(text("""
-                ALTER TABLE recurring_rules
-                ALTER COLUMN next_date DROP NOT NULL;
-            """))
-            conn.commit()
-            print("✅ Migração do banco aplicada.")
-    except Exception as e:
-        print("⚠️ Migração ignorada:", e)
 
 class User(db.Model):
     __tablename__ = "users"
@@ -196,11 +184,8 @@ def _create_tables_if_needed():
 
 
 def _bootstrap_schema():
-    """Migração leve/idempotente (sem Alembic).
+    """Migração leve/idempotente (sem Alembic)."""
 
-    Em produção, o Postgres pode ter sido criado numa versão antiga. O db.create_all()
-    NÃO adiciona colunas novas, então garantimos colunas críticas aqui.
-    """
     try:
         insp = inspect(db.engine)
         dialect = db.engine.dialect.name
@@ -218,7 +203,6 @@ def _bootstrap_schema():
             return c in cols
 
         def add_col(t: str, col_name: str, col_ddl: str):
-            # Postgres suporta IF NOT EXISTS
             if dialect == "postgresql":
                 db.session.execute(text(
                     f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {col_name} {col_ddl}"
@@ -226,24 +210,66 @@ def _bootstrap_schema():
                 db.session.commit()
                 return
 
-            # SQLite não suporta IF NOT EXISTS em ADD COLUMN
             if has_col(t, col_name):
                 return
+
             try:
                 db.session.execute(text(f"ALTER TABLE {t} ADD COLUMN {col_name} {col_ddl}"))
                 db.session.commit()
             except SQLAlchemyError:
                 db.session.rollback()
 
-        # ---- recurring_rules: evita UndefinedColumn em produção ----
         if has_table("recurring_rules"):
             add_col("recurring_rules", "start_date", "DATE")
             add_col("recurring_rules", "weekday", "INTEGER")
             add_col("recurring_rules", "day_of_month", "INTEGER")
             add_col("recurring_rules", "next_run", "DATE")
             add_col("recurring_rules", "is_active", "BOOLEAN DEFAULT TRUE")
+            add_col("recurring_rules", "tipo", "VARCHAR(16)")
+            add_col("recurring_rules", "valor", "NUMERIC(12,2)")
+            add_col("recurring_rules", "categoria", "VARCHAR(80)")
+            add_col("recurring_rules", "descricao", "TEXT")
 
-        # (investments e outras tabelas novas: create_all já cria)
+            if dialect == "postgresql":
+                if has_col("recurring_rules", "next_date"):
+                    try:
+                        db.session.execute(text("""
+                            ALTER TABLE recurring_rules
+                            ALTER COLUMN next_date DROP NOT NULL
+                        """))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                    try:
+                        db.session.execute(text("""
+                            UPDATE recurring_rules
+                            SET next_run = COALESCE(next_run, next_date)
+                            WHERE next_run IS NULL AND next_date IS NOT NULL
+                        """))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                try:
+                    db.session.execute(text("""
+                        UPDATE recurring_rules
+                        SET start_date = COALESCE(start_date, CURRENT_DATE)
+                        WHERE start_date IS NULL
+                    """))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
+                try:
+                    db.session.execute(text("""
+                        UPDATE recurring_rules
+                        SET next_run = COALESCE(next_run, CURRENT_DATE)
+                        WHERE next_run IS NULL
+                    """))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
 
     except Exception as e:
         print("DB bootstrap_schema failed:", repr(e))
@@ -251,7 +277,6 @@ def _bootstrap_schema():
             db.session.rollback()
         except Exception:
             pass
-
 
 with app.app_context():
     _create_tables_if_needed()
@@ -682,6 +707,15 @@ def api_delete_lancamento(row: int):
     if not uid:
         return jsonify(error="Não logado"), 401
 
+    t = Transaction.query.filter_by(id=row, user_id=uid).first()
+    if not t:
+        return jsonify(error="Sem permissão ou inexistente"), 403
+
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
 # -----------------------
 # Investimentos (Postgres)
 # -----------------------
@@ -691,13 +725,13 @@ def _parse_money_br_to_decimal(value):
     if not s:
         return Decimal("0")
     s = s.replace(" ", "")
-    # se tiver vírgula, assume pt-BR
     if "," in s:
         s = s.replace(".", "").replace(",", ".")
     try:
         return Decimal(s)
     except Exception:
         return Decimal("0")
+
 
 def _iso_date(value):
     """Aceita yyyy-mm-dd e retorna date."""
@@ -707,9 +741,13 @@ def _iso_date(value):
     except Exception:
         return datetime.utcnow().date()
 
+
 @app.get("/api/investimentos")
 def api_investimentos_list():
     user_id = _require_login()
+    if not user_id:
+        return jsonify({"error": "Não logado"}), 401
+
     limit = int(request.args.get("limit", "50"))
     q = Investment.query.filter_by(user_id=user_id).order_by(Investment.data.desc(), Investment.id.desc())
     items = q.limit(min(limit, 200)).all()
@@ -725,9 +763,13 @@ def api_investimentos_list():
         })
     return jsonify({"items": out})
 
+
 @app.post("/api/investimentos")
 def api_investimentos_create():
     user_id = _require_login()
+    if not user_id:
+        return jsonify({"error": "Não logado"}), 401
+
     data = request.get_json(silent=True) or {}
     ativo = str(data.get("ativo") or "").strip()
     if not ativo:
@@ -753,23 +795,20 @@ def api_investimentos_create():
     db.session.commit()
     return jsonify({"ok": True, "id": it.id})
 
+
 @app.delete("/api/investimentos/<int:item_id>")
 def api_investimentos_delete(item_id: int):
     user_id = _require_login()
+    if not user_id:
+        return jsonify({"error": "Não logado"}), 401
+
     it = Investment.query.filter_by(user_id=user_id, id=item_id).first()
     if not it:
         return jsonify({"error": "Investimento não encontrado."}), 404
+
     db.session.delete(it)
     db.session.commit()
     return jsonify({"ok": True})
-
-    t = Transaction.query.filter_by(id=row, user_id=uid).first()
-    if not t:
-        return jsonify(error="Sem permissão ou inexistente"), 403
-
-    db.session.delete(t)
-    db.session.commit()
-    return jsonify(ok=True)
 
 
 @app.get("/api/dashboard")
@@ -1970,4 +2009,3 @@ def wa_webhook():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
-
