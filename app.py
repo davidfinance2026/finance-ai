@@ -1180,3 +1180,1075 @@ def api_patrimonio():
     months = max(3, min(12, months))
     labels, values = _calc_patrimonio_series(uid, months)
     return jsonify(labels=labels, values=values)
+
+# -------------------------
+# WhatsApp - inteligência
+# -------------------------
+CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
+NEGATIONS = {"nao", "não", "nunca", "jamais"}
+
+VALUE_RE = re.compile(r"([+\-])?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})|\d+(?:[.,]\d{1,2})?)")
+
+INCOME_HINTS = {
+    "recebi", "recebido", "recebida", "entrou", "entrada", "caiu",
+    "deposito", "depósito", "salario", "salário", "venda", "vendido",
+    "comissao", "comissão", "bonus", "bônus", "reembolso", "ganhei", "renda", "receita",
+    "pixrecebido", "pix_recebido",
+}
+EXPENSE_HINTS = {
+    "paguei", "pago", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
+    "saida", "saída", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
+}
+
+DEFAULT_CATEGORY_KEYWORDS = [
+    ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
+    ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
+    ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
+    ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
+    ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
+    ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
+    ("Impostos", {"imposto", "taxa", "multa"}),
+    ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
+]
+
+CMD_HELP_RE = re.compile(r"^\s*(ajuda|\?|help)\s*$", re.IGNORECASE)
+CMD_ULTIMOS_RE = re.compile(r"^\s*ultimos\s*$", re.IGNORECASE)
+CMD_APAGAR_RE = re.compile(r"^\s*apagar\s+(\d+)\s*$", re.IGNORECASE)
+CMD_CORRIGIR_ULTIMA_RE = re.compile(r"^\s*corrigir\s+ultima\s+(.+)$", re.IGNORECASE)
+CMD_EDITAR_RE = re.compile(r"^\s*editar\s+(\d+)\s+(.+)$", re.IGNORECASE)
+CMD_DESFAZER_RE = re.compile(r"^\s*desfazer\s*$", re.IGNORECASE)
+
+CMD_RESUMO_RE = re.compile(r"^\s*resumo\s+(hoje|dia|semana|mes|m[eê]s)\s*$", re.IGNORECASE)
+CMD_SALDO_MES_RE = re.compile(r"^\s*saldo\s+m[eê]s\s*$", re.IGNORECASE)
+CMD_ANALISE_RE = re.compile(r"^\s*(analise|an[aá]lise|insights)\s*(hoje|semana|mes|m[eê]s)?\s*$", re.IGNORECASE)
+CMD_PROJECAO_RE = re.compile(r"^\s*(projecao|projeção)\s*$", re.IGNORECASE)
+CMD_ALERTAS_RE = re.compile(r"^\s*alertas?\s*$", re.IGNORECASE)
+
+CAT_SET_RE = re.compile(r"^\s*categoria\s+(.+?)\s*=\s*(.+?)\s*$", re.IGNORECASE)
+CAT_DEL_RE = re.compile(r"^\s*remover\s+categoria\s+(.+?)\s*$", re.IGNORECASE)
+CAT_LIST_RE = re.compile(r"^\s*categorias\s*$", re.IGNORECASE)
+
+REC_ADD_RE = re.compile(r"^\s*recorrente\s+(diario|di[aá]rio|semanal|mensal)\s+(.+)$", re.IGNORECASE)
+REC_LIST_RE = re.compile(r"^\s*recorrentes\s*$", re.IGNORECASE)
+REC_DEL_RE = re.compile(r"^\s*remover\s+recorrente\s+(\d+)\s*$", re.IGNORECASE)
+REC_RUN_RE = re.compile(r"^\s*(gerar|rodar)\s+recorrentes\s*$", re.IGNORECASE)
+
+WEEKDAY_MAP = {
+    "seg": 0, "segunda": 0,
+    "ter": 1, "terça": 1, "terca": 1,
+    "qua": 2, "quarta": 2,
+    "qui": 3, "quinta": 3,
+    "sex": 4, "sexta": 4,
+    "sab": 5, "sábado": 5, "sabado": 5,
+    "dom": 6, "domingo": 6,
+}
+
+
+def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: list[str]):
+    if sign == "+":
+        return "RECEITA", "high"
+    if sign == "-":
+        return "GASTO", "high"
+
+    bset = set(before_tokens)
+    aset = set(after_tokens)
+
+    income_set = {_norm_word(x) for x in INCOME_HINTS}
+    expense_set = {_norm_word(x) for x in EXPENSE_HINTS}
+
+    b_income = len(bset & income_set)
+    b_exp = len(bset & expense_set)
+    a_income = len(aset & income_set)
+    a_exp = len(aset & expense_set)
+
+    score_income = (b_income * 3) + a_income
+    score_exp = (b_exp * 3) + a_exp
+
+    has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for n in NEGATIONS for t in before_tokens[:2])
+    if has_neg and score_income > 0 and score_exp == 0:
+        score_income = 0
+
+    if score_income == 0 and score_exp == 0:
+        return "GASTO", "low"
+    if score_income == score_exp:
+        return ("RECEITA" if score_income > 0 else "GASTO"), "low"
+    if score_income > score_exp:
+        return "RECEITA", ("high" if (score_income - score_exp) >= 2 else "low")
+    return "GASTO", ("high" if (score_exp - score_income) >= 2 else "low")
+
+
+def _wa_help_text():
+    return (
+        "✅ Comandos disponíveis:\n\n"
+        "🔗 Conectar:\n"
+        "• conectar seuemail@dominio.com\n\n"
+        "🧾 Lançar:\n"
+        "• recebi 1200 salario\n"
+        "• paguei 32,90 mercado\n"
+        "• + 35,90 venda camiseta\n"
+        "• - 18,00 uber\n\n"
+        "📊 Inteligência Finance AI:\n"
+        "• projeção\n"
+        "• alertas\n"
+        "• analise\n"
+        "• analise semana\n"
+        "• analise mês\n\n"
+        "🧠 Se houver dúvida, eu pergunto: RECEITA ou GASTO.\n"
+        "Responda apenas: receita  (ou)  gasto\n\n"
+        "✏️ Corrigir aqui:\n"
+        "• ultimos\n"
+        "• apagar 123\n"
+        "• editar 123 valor=35,90 categoria=Alimentação data=2026-03-01 descricao=\"algo\" tipo=receita\n"
+        "• corrigir ultima categoria=Transporte\n\n"
+        "↩️ Desfazer (janela de 5 min):\n"
+        "• desfazer\n\n"
+        "📊 Resumos:\n"
+        "• resumo hoje\n"
+        "• resumo semana\n"
+        "• resumo mês\n"
+        "• saldo mês\n\n"
+        "🔁 Recorrentes:\n"
+        "• recorrente mensal 5 1200 aluguel\n"
+        "• recorrente semanal seg 50 academia\n"
+        "• recorrente diário 10 cafe\n"
+        "• recorrentes\n"
+        "• remover recorrente 7\n"
+        "• rodar recorrentes\n\n"
+        "🏷️ Ensinar categorias:\n"
+        "• categorias\n"
+        "• categoria ifood = Alimentação\n"
+        "• remover categoria ifood\n"
+    )
+
+
+def _make_resumo_text(user_id: int, kind: str):
+    start, end, label = _period_range(kind)
+    receitas, gastos, saldo, _ = _sum_period(user_id, start, end)
+    return (
+        f"📊 Resumo ({label}):\n"
+        f"Receitas: R$ {_fmt_brl(receitas)}\n"
+        f"Gastos: R$ {_fmt_brl(gastos)}\n"
+        f"Saldo: R$ {_fmt_brl(saldo)}"
+    )
+
+
+def _make_analise_text(user_id: int, kind: str | None):
+    start, end, label = _period_range(kind or "mes")
+    receitas, gastos, saldo, rows = _sum_period(user_id, start, end)
+
+    cat_map = {}
+    biggest = None
+    for t in rows:
+        v = Decimal(t.valor or 0)
+        if (t.tipo or "").upper() != "GASTO":
+            continue
+        cat_map[t.categoria] = cat_map.get(t.categoria, Decimal("0")) + v
+        if biggest is None or v > Decimal(biggest.valor or 0):
+            biggest = t
+
+    top = sorted(cat_map.items(), key=lambda kv: kv[1], reverse=True)[:5]
+    top_lines = []
+    total_gastos = Decimal(gastos or 0)
+    for cat, val in top:
+        pct = (val / total_gastos * 100) if total_gastos > 0 else Decimal("0")
+        top_lines.append(f"• {cat}: R$ {_fmt_brl(val)} ({pct:.0f}%)")
+
+    today = datetime.utcnow().date()
+    if label == "este mês":
+        days_elapsed = max(1, today.day)
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        daily_avg = (total_gastos / Decimal(days_elapsed)) if total_gastos > 0 else Decimal("0")
+        forecast = daily_avg * Decimal(days_in_month)
+        proj_line = f"Média/dia: R$ {_fmt_brl(daily_avg)} | Projeção mês: R$ {_fmt_brl(forecast)}"
+    else:
+        proj_line = None
+
+    alerts = []
+    if total_gastos > 0:
+        for cat, val in top[:1]:
+            if (val / total_gastos) >= Decimal("0.45"):
+                alerts.append(f"⚠️ {cat} está alto ({(val/total_gastos*100):.0f}% dos gastos).")
+
+    msg = [
+        f"🧠 Análise ({label}):",
+        f"Receitas: R$ {_fmt_brl(receitas)}",
+        f"Gastos: R$ {_fmt_brl(gastos)}",
+        f"Saldo: R$ {_fmt_brl(saldo)}",
+    ]
+    if proj_line:
+        msg.append(proj_line)
+
+    if top_lines:
+        msg.append("\nTop gastos por categoria:")
+        msg.extend(top_lines)
+
+    if biggest and Decimal(biggest.valor or 0) > 0:
+        msg.append(
+            f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})"
+        )
+
+    if alerts:
+        msg.append("\n" + "\n".join(alerts))
+
+    msg.append("\nDica: use 'resumo semana' e 'resumo mês' também.")
+    return "\n".join(msg)
+
+
+def _make_projection_text(user_id: int):
+    p = _calc_projection(user_id)
+    lines = [
+        "📈 Projeção Finance AI",
+        "",
+        f"Saldo atual: R$ {_fmt_brl(p['saldo_atual'])}",
+        f"Receitas recorrentes futuras: R$ {_fmt_brl(p['receitas_recorrentes_futuras'])}",
+        f"Gastos recorrentes futuros: R$ {_fmt_brl(p['gastos_recorrentes_futuros'])}",
+        f"Gasto médio/dia: R$ {_fmt_brl(p['gasto_medio_diario'])}",
+        f"Estimativa do restante do mês: R$ {_fmt_brl(p['estimativa_gastos_restantes'])}",
+        f"Saldo previsto: R$ {_fmt_brl(p['saldo_previsto'])}",
+    ]
+    if p["alerta_negativo"]:
+        lines.append("")
+        lines.append("⚠️ Atenção: a projeção indica saldo negativo até o fim do mês.")
+    return "\n".join(lines)
+
+
+def _make_alerts_text(user_id: int):
+    alerts = _calc_alerts(user_id)
+    if not alerts:
+        return "✅ Nenhum alerta importante no momento."
+
+    lines = ["🚨 Alertas Finance AI", ""]
+    for a in alerts:
+        lines.append(f"• {a['titulo']}")
+        lines.append(f"  {a['mensagem']}")
+    return "\n".join(lines)
+
+
+def _parse_kv_assignments(s: str) -> dict:
+    out = {}
+    pattern = re.compile(r'(\w+)\s*=\s*(".*?"|\'.*?\'|[^\s]+)')
+    for m in pattern.finditer(s or ""):
+        k = m.group(1).strip().lower()
+        v = m.group(2).strip()
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+        out[k] = v
+    return out
+
+
+def _pending_get(wa_from: str):
+    now = datetime.utcnow()
+    WaPending.query.filter(WaPending.wa_from == wa_from, WaPending.expires_at < now).delete()
+    db.session.commit()
+    return (
+        WaPending.query
+        .filter(WaPending.wa_from == wa_from, WaPending.expires_at >= now)
+        .order_by(WaPending.id.desc())
+        .first()
+    )
+
+
+def _pending_set(wa_from: str, user_id: int, kind: str, payload: dict, minutes: int = 10):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+    p = WaPending(
+        wa_from=wa_from,
+        user_id=user_id,
+        kind=kind,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        expires_at=datetime.utcnow() + timedelta(minutes=minutes),
+    )
+    db.session.add(p)
+    db.session.commit()
+
+
+def _pending_clear(wa_from: str, user_id: int):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+
+
+def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
+    if not fields:
+        return False, "Nenhum campo informado."
+
+    if "tipo" in fields:
+        v = _norm_word(fields["tipo"])
+        if v in ("receita", "gasto"):
+            tx.tipo = "RECEITA" if v == "receita" else "GASTO"
+        else:
+            return False, "Tipo inválido. Use tipo=receita ou tipo=gasto"
+
+    if "valor" in fields:
+        try:
+            tx.valor = _parse_brl_value(fields["valor"])
+        except Exception:
+            return False, "Valor inválido. Ex: valor=35,90"
+
+    if "data" in fields:
+        try:
+            tx.data = _parse_date_any(fields["data"])
+        except Exception:
+            return False, "Data inválida. Ex: data=2026-03-01"
+
+    if "categoria" in fields:
+        cat = str(fields["categoria"] or "").strip()
+        if not cat:
+            return False, "Categoria vazia."
+        tx.categoria = cat.title()
+
+    if "descricao" in fields:
+        desc = str(fields["descricao"] or "").strip()
+        tx.descricao = desc or None
+
+    return True, "OK"
+
+
+def _next_monthly_date(from_date: date, day_of_month: int) -> date:
+    y, m = from_date.year, from_date.month
+    last_day = calendar.monthrange(y, m)[1]
+    d = min(day_of_month, last_day)
+    cand = date(y, m, d)
+    if cand >= from_date:
+        return cand
+
+    if m == 12:
+        y, m = y + 1, 1
+    else:
+        m += 1
+    last_day = calendar.monthrange(y, m)[1]
+    d = min(day_of_month, last_day)
+    return date(y, m, d)
+
+
+def _next_weekly_date(from_date: date, weekday: int) -> date:
+    delta = (weekday - from_date.weekday()) % 7
+    cand = from_date + timedelta(days=delta)
+    if cand >= from_date:
+        return cand
+    return cand + timedelta(days=7)
+
+
+def _parse_recorrente_args(rest: str):
+    rest = (rest or "").strip()
+    if not rest:
+        return None
+    return rest.split()
+
+
+def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
+    freq = _norm_word(freq_raw)
+    today = datetime.utcnow().date()
+
+    if freq in ("mensal",):
+        if len(parts) < 3:
+            return None, "Use: recorrente mensal DIA VALOR CATEGORIA [descricao]"
+        try:
+            dom = int(parts[0])
+        except Exception:
+            return None, "Dia inválido. Ex: recorrente mensal 5 1200 aluguel"
+        if dom < 1 or dom > 31:
+            return None, "Dia do mês deve ser 1-31."
+
+        try:
+            valor = _parse_brl_value(parts[1])
+        except Exception:
+            return None, "Valor inválido."
+
+        categoria = parts[2].title()
+        descricao = " ".join(parts[3:]).strip() or None
+        next_run = _next_monthly_date(today, dom)
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="MONTHLY",
+            day_of_month=dom,
+            weekday=None,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=next_run,
+        )
+        return rule, None
+
+    if freq in ("semanal",):
+        if len(parts) < 3:
+            return None, "Use: recorrente semanal SEG VALOR CATEGORIA [descricao]"
+        wd = _norm_word(parts[0])
+        if wd not in WEEKDAY_MAP:
+            return None, "Dia da semana inválido. Use: seg/ter/qua/qui/sex/sab/dom"
+
+        weekday = WEEKDAY_MAP[wd]
+        try:
+            valor = _parse_brl_value(parts[1])
+        except Exception:
+            return None, "Valor inválido."
+
+        categoria = parts[2].title()
+        descricao = " ".join(parts[3:]).strip() or None
+        next_run = _next_weekly_date(today, weekday)
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="WEEKLY",
+            day_of_month=None,
+            weekday=weekday,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=next_run,
+        )
+        return rule, None
+
+    if freq in ("diario", "diário"):
+        if len(parts) < 2:
+            return None, "Use: recorrente diário VALOR CATEGORIA [descricao]"
+        try:
+            valor = _parse_brl_value(parts[0])
+        except Exception:
+            return None, "Valor inválido."
+
+        categoria = parts[1].title()
+        descricao = " ".join(parts[2:]).strip() or None
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="DAILY",
+            day_of_month=None,
+            weekday=None,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=today,
+        )
+        return rule, None
+
+    return None, "Frequência inválida. Use: diário | semanal | mensal"
+
+
+def _run_recorrentes_for_user(user_id: int, today: date | None = None):
+    today = today or datetime.utcnow().date()
+    created = 0
+
+    rules = (
+        RecurringRule.query
+        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)
+        .order_by(RecurringRule.id.asc())
+        .all()
+    )
+
+    for r in rules:
+        while r.next_run <= today:
+            tx = Transaction(
+                user_id=user_id,
+                tipo=r.tipo,
+                data=r.next_run,
+                categoria=r.categoria,
+                descricao=r.descricao,
+                valor=r.valor,
+                origem="REC",
+            )
+            db.session.add(tx)
+            created += 1
+
+            if r.freq == "DAILY":
+                r.next_run = r.next_run + timedelta(days=1)
+            elif r.freq == "WEEKLY":
+                r.next_run = r.next_run + timedelta(days=7)
+            elif r.freq == "MONTHLY":
+                base = r.next_run + timedelta(days=1)
+                r.next_run = _next_monthly_date(base, int(r.day_of_month or 1))
+            else:
+                r.is_active = False
+                break
+
+    db.session.commit()
+    return created
+
+
+def _parse_wa_text(msg_text: str):
+    t = (msg_text or "").strip()
+    if not t:
+        return {"cmd": "NONE"}
+
+    if CMD_HELP_RE.match(t):
+        return {"cmd": "HELP"}
+
+    if CMD_DESFAZER_RE.match(t):
+        return {"cmd": "DESFAZER"}
+
+    if CMD_PROJECAO_RE.match(t):
+        return {"cmd": "PROJECAO"}
+
+    if CMD_ALERTAS_RE.match(t):
+        return {"cmd": "ALERTAS"}
+
+    m = CMD_RESUMO_RE.match(t)
+    if m:
+        return {"cmd": "RESUMO", "kind": m.group(1)}
+
+    if CMD_SALDO_MES_RE.match(t):
+        return {"cmd": "SALDO_MES"}
+
+    m = CMD_ANALISE_RE.match(t)
+    if m:
+        return {"cmd": "ANALISE", "kind": m.group(2)}
+
+    mset = CAT_SET_RE.match(t)
+    if mset:
+        key = mset.group(1).strip()
+        cat = mset.group(2).strip()
+        if not key or not cat:
+            return {"cmd": "CAT_HELP"}
+        return {"cmd": "CAT_SET", "key": key, "categoria": cat}
+
+    mdel = CAT_DEL_RE.match(t)
+    if mdel:
+        key = mdel.group(1).strip()
+        if not key:
+            return {"cmd": "CAT_HELP"}
+        return {"cmd": "CAT_DEL", "key": key}
+
+    if CAT_LIST_RE.match(t):
+        return {"cmd": "CAT_LIST"}
+
+    m = REC_ADD_RE.match(t)
+    if m:
+        return {"cmd": "REC_ADD", "freq": m.group(1), "rest": m.group(2)}
+
+    if REC_LIST_RE.match(t):
+        return {"cmd": "REC_LIST"}
+
+    m = REC_DEL_RE.match(t)
+    if m:
+        return {"cmd": "REC_DEL", "id": int(m.group(1))}
+
+    if REC_RUN_RE.match(t):
+        return {"cmd": "REC_RUN"}
+
+    if CMD_ULTIMOS_RE.match(t):
+        return {"cmd": "ULTIMOS"}
+
+    m = CMD_APAGAR_RE.match(t)
+    if m:
+        return {"cmd": "APAGAR", "id": int(m.group(1))}
+
+    m = CMD_CORRIGIR_ULTIMA_RE.match(t)
+    if m:
+        return {"cmd": "CORRIGIR_ULTIMA", "fields": _parse_kv_assignments(m.group(1))}
+
+    m = CMD_EDITAR_RE.match(t)
+    if m:
+        return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": _parse_kv_assignments(m.group(2))}
+
+    low_simple = _norm_word(t)
+    if low_simple in ("receita", "gasto"):
+        return {"cmd": "CONFIRM_TIPO", "tipo": "RECEITA" if low_simple == "receita" else "GASTO"}
+
+    low = _norm_word(t)
+    low = re.sub(r"\s+", " ", low).strip()
+    for alias in CONNECT_ALIASES:
+        if low.startswith(_norm_word(alias) + " "):
+            email = t.split(" ", 1)[1].strip()
+            return {"cmd": "CONNECT", "email": _normalize_email(email)}
+
+    m = VALUE_RE.search(low)
+    if not m:
+        return {"cmd": "NONE"}
+
+    sign = m.group(1) or ""
+    valor_raw = m.group(2)
+    try:
+        valor = _parse_brl_value(valor_raw)
+    except Exception:
+        return {"cmd": "NONE"}
+
+    before = (low[: m.start()] or "").strip()
+    after = (low[m.end():] or "").strip(" -–—")
+
+    before_tokens = _tokenize(before)
+    after_tokens = _tokenize(after)
+
+    tipo, confidence = _detect_tipo_with_score(sign, before_tokens, after_tokens)
+
+    categoria_fallback = "Outros"
+    descricao = ""
+    if after:
+        parts = after.split(" ", 1)
+        categoria_fallback = (parts[0] or "Outros").strip().title()
+        descricao = parts[1].strip() if len(parts) > 1 else ""
+
+    return {
+        "cmd": "TX",
+        "tipo": tipo,
+        "tipo_confidence": confidence,
+        "valor": valor,
+        "categoria_fallback": categoria_fallback,
+        "descricao": descricao,
+        "data": datetime.utcnow().date(),
+        "raw_text": t,
+    }
+
+
+# -------------------------
+# WhatsApp Cloud API Webhook
+# -------------------------
+@app.get("/webhooks/whatsapp")
+def wa_verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if mode == "subscribe" and token == WA_VERIFY_TOKEN:
+        return challenge or "", 200
+    return "forbidden", 403
+
+
+@app.post("/webhooks/whatsapp")
+def wa_webhook():
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        for entry in payload.get("entry", []) or []:
+            for change in entry.get("changes", []) or []:
+                value = change.get("value", {}) or {}
+                for msg in value.get("messages", []) or []:
+                    if msg.get("type") != "text":
+                        continue
+
+                    msg_id = msg.get("id")
+                    wa_from = _normalize_wa_number(msg.get("from") or "")
+                    body = ((msg.get("text") or {}) or {}).get("body", "") or ""
+
+                    if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
+                        continue
+                    if msg_id:
+                        db.session.add(ProcessedMessage(msg_id=msg_id, wa_from=wa_from))
+                        db.session.commit()
+
+                    parsed = _parse_wa_text(body)
+
+                    if parsed["cmd"] == "HELP":
+                        wa_send_text(wa_from, _wa_help_text())
+                        continue
+
+                    if parsed["cmd"] == "CONNECT":
+                        email = parsed.get("email")
+                        if not email or "@" not in email:
+                            wa_send_text(wa_from, "Email inválido. Ex: conectar david@email.com")
+                            continue
+
+                        u = _get_or_create_user_by_email(email, password=None)
+
+                        link = WaLink.query.filter_by(wa_from=wa_from).first()
+                        already = False
+                        if link:
+                            already = (link.user_id == u.id)
+                            link.user_id = u.id
+                        else:
+                            link = WaLink(wa_from=wa_from, user_id=u.id)
+                            db.session.add(link)
+                        db.session.commit()
+
+                        wa_send_text(
+                            wa_from,
+                            (f"✅ {'Já estava' if already else 'WhatsApp'} conectado ao email: {email}\n\n"
+                             "Digite 'ajuda' para ver os comandos.\n"
+                             "Exemplo: paguei 32,90 mercado"),
+                        )
+                        continue
+
+                    link = WaLink.query.filter_by(wa_from=wa_from).first()
+                    if not link:
+                        wa_send_text(
+                            wa_from,
+                            "🔒 Seu WhatsApp não está conectado.\n\nEnvie:\n"
+                            "conectar SEU_EMAIL_DO_APP\n"
+                            "Ex: conectar david@email.com\n\n"
+                            "Depois digite: ajuda",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "DESFAZER":
+                        limit_dt = datetime.utcnow() - timedelta(minutes=5)
+                        last = (
+                            Transaction.query
+                            .filter(Transaction.user_id == link.user_id, Transaction.origem == "WA")
+                            .order_by(Transaction.id.desc())
+                            .first()
+                        )
+                        if not last:
+                            wa_send_text(wa_from, "Não achei nenhum lançamento recente do WhatsApp para desfazer.")
+                            continue
+                        if last.created_at and last.created_at < limit_dt:
+                            wa_send_text(wa_from, "Janela de segurança passou (5 min). Use 'ultimos' e 'apagar ID'.")
+                            continue
+                        txid = last.id
+                        db.session.delete(last)
+                        db.session.commit()
+                        wa_send_text(wa_from, f"✅ Desfeito: ID {txid}")
+                        continue
+
+                    if parsed["cmd"] == "PROJECAO":
+                        wa_send_text(wa_from, _make_projection_text(link.user_id))
+                        continue
+
+                    if parsed["cmd"] == "ALERTAS":
+                        wa_send_text(wa_from, _make_alerts_text(link.user_id))
+                        continue
+
+                    if parsed["cmd"] == "RESUMO":
+                        wa_send_text(wa_from, _make_resumo_text(link.user_id, parsed.get("kind") or "mes"))
+                        continue
+
+                    if parsed["cmd"] == "SALDO_MES":
+                        wa_send_text(wa_from, _make_resumo_text(link.user_id, "mes"))
+                        continue
+
+                    if parsed["cmd"] == "ANALISE":
+                        wa_send_text(wa_from, _make_analise_text(link.user_id, parsed.get("kind")))
+                        continue
+
+                    if parsed["cmd"] == "CONFIRM_TIPO":
+                        pending = _pending_get(wa_from)
+                        if not pending or pending.user_id != link.user_id:
+                            wa_send_text(wa_from, "Não tenho nenhuma dúvida pendente agora. Digite 'ajuda'.")
+                            continue
+                        if pending.kind != "CONFIRM_TIPO":
+                            wa_send_text(wa_from, "Pendência não reconhecida. Digite 'ajuda'.")
+                            continue
+
+                        payload_tx = json.loads(pending.payload_json)
+                        payload_tx["tipo"] = parsed["tipo"]
+
+                        guessed = _guess_category_from_text(link.user_id, payload_tx.get("raw_text", ""))
+                        categoria = guessed or payload_tx.get("categoria_fallback") or "Outros"
+
+                        ttx = Transaction(
+                            user_id=link.user_id,
+                            tipo=payload_tx["tipo"],
+                            data=_parse_date_any(payload_tx.get("data")),
+                            categoria=categoria,
+                            descricao=(payload_tx.get("descricao") or None),
+                            valor=_parse_brl_value(payload_tx.get("valor")),
+                            origem="WA",
+                        )
+                        db.session.add(ttx)
+                        db.session.commit()
+                        _pending_clear(wa_from, link.user_id)
+
+                        wa_send_text(
+                            wa_from,
+                            "✅ Lançamento salvo (confirmado)!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "CAT_HELP":
+                        wa_send_text(
+                            wa_from,
+                            "Use assim:\n"
+                            "• categoria ifood = Alimentação\n"
+                            "• remover categoria ifood\n"
+                            "• categorias",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "CAT_SET":
+                        key = (parsed.get("key") or "").strip()
+                        cat = (parsed.get("categoria") or "").strip()
+                        if not key or not cat:
+                            wa_send_text(wa_from, "Formato inválido. Ex: categoria ifood = Alimentação")
+                            continue
+
+                        key_norm = _norm_word(key)
+                        if len(key_norm) < 2:
+                            wa_send_text(wa_from, "Chave muito curta. Ex: categoria uber = Transporte")
+                            continue
+
+                        existing = CategoryRule.query.filter_by(user_id=link.user_id, pattern=key_norm).first()
+                        if existing:
+                            existing.categoria = cat.title()
+                            existing.priority = 10
+                        else:
+                            db.session.add(
+                                CategoryRule(
+                                    user_id=link.user_id,
+                                    pattern=key_norm,
+                                    categoria=cat.title(),
+                                    priority=10,
+                                )
+                            )
+                        db.session.commit()
+
+                        wa_send_text(wa_from, f"✅ Regra salva: '{key_norm}' => {cat.title()}")
+                        continue
+
+                    if parsed["cmd"] == "CAT_DEL":
+                        key = _norm_word(parsed.get("key") or "")
+                        if not key:
+                            wa_send_text(wa_from, "Formato inválido. Ex: remover categoria uber")
+                            continue
+                        q = CategoryRule.query.filter_by(user_id=link.user_id, pattern=key)
+                        deleted = q.delete()
+                        db.session.commit()
+                        wa_send_text(wa_from, "✅ Regra removida." if deleted else "ℹ️ Essa regra não existia.")
+                        continue
+
+                    if parsed["cmd"] == "CAT_LIST":
+                        rules = (
+                            CategoryRule.query
+                            .filter_by(user_id=link.user_id)
+                            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
+                            .limit(30)
+                            .all()
+                        )
+                        if not rules:
+                            wa_send_text(
+                                wa_from,
+                                "Você ainda não criou regras.\n\n"
+                                "Exemplos:\n"
+                                "• categoria ifood = Alimentação\n"
+                                "• categoria uber = Transporte\n\n"
+                                "Dica: o bot também tem categorias automáticas padrão.",
+                            )
+                        else:
+                            lines = ["✅ Suas regras (até 30):"]
+                            for r in rules:
+                                lines.append(f"• {r.pattern} => {r.categoria}")
+                            wa_send_text(wa_from, "\n".join(lines))
+                        continue
+
+                    if parsed["cmd"] == "REC_ADD":
+                        parts = _parse_recorrente_args(parsed.get("rest") or "")
+                        if not parts:
+                            wa_send_text(wa_from, "Use: recorrente mensal 5 1200 aluguel")
+                            continue
+
+                        rule, err = _create_recurring_rule(link.user_id, parsed.get("freq") or "", parts)
+                        if err:
+                            wa_send_text(wa_from, "❌ " + err)
+                            continue
+
+                        db.session.add(rule)
+                        db.session.commit()
+                        wa_send_text(
+                            wa_from,
+                            "✅ Recorrente criada!\n"
+                            f"ID: {rule.id}\n"
+                            f"Freq: {rule.freq}\n"
+                            f"Próximo: {rule.next_run.isoformat()}\n"
+                            f"Valor: R$ {_fmt_brl(rule.valor)}\n"
+                            f"Categoria: {rule.categoria}"
+                        )
+                        continue
+
+                    if parsed["cmd"] == "REC_LIST":
+                        rules = (
+                            RecurringRule.query
+                            .filter_by(user_id=link.user_id)
+                            .order_by(RecurringRule.id.desc())
+                            .limit(30)
+                            .all()
+                        )
+                        if not rules:
+                            wa_send_text(wa_from, "Você ainda não tem recorrentes. Ex: recorrente mensal 5 1200 aluguel")
+                        else:
+                            lines = ["🔁 Suas recorrentes (até 30):"]
+                            for r in rules:
+                                extra = ""
+                                if r.freq == "MONTHLY":
+                                    extra = f"dia {r.day_of_month}"
+                                elif r.freq == "WEEKLY":
+                                    inv = {v: k for k, v in WEEKDAY_MAP.items()}
+                                    extra = f"{inv.get(r.weekday, 'dia')}"
+                                lines.append(
+                                    f"• ID {r.id} | {r.freq} {extra} | R$ {_fmt_brl(r.valor)} | {r.categoria} | próximo {r.next_run.isoformat()}"
+                                )
+                            lines.append("\nPara remover: remover recorrente ID")
+                            lines.append("Para gerar agora: rodar recorrentes")
+                            wa_send_text(wa_from, "\n".join(lines))
+                        continue
+
+                    if parsed["cmd"] == "REC_DEL":
+                        rid = parsed["id"]
+                        r = RecurringRule.query.filter_by(id=rid, user_id=link.user_id).first()
+                        if not r:
+                            wa_send_text(wa_from, "Não achei essa recorrente (ou não é sua). Use: recorrentes")
+                            continue
+                        db.session.delete(r)
+                        db.session.commit()
+                        wa_send_text(wa_from, f"✅ Recorrente removida: ID {rid}")
+                        continue
+
+                    if parsed["cmd"] == "REC_RUN":
+                        created = _run_recorrentes_for_user(link.user_id)
+                        wa_send_text(wa_from, f"✅ Recorrentes geradas: {created} lançamento(s).")
+                        continue
+
+                    if parsed["cmd"] == "ULTIMOS":
+                        txs = (
+                            Transaction.query
+                            .filter(Transaction.user_id == link.user_id)
+                            .order_by(Transaction.id.desc())
+                            .limit(5)
+                            .all()
+                        )
+                        if not txs:
+                            wa_send_text(wa_from, "Você ainda não tem lançamentos.")
+                        else:
+                            lines = ["🧾 Últimos 5 lançamentos:"]
+                            for ttx in txs:
+                                lines.append(
+                                    f"• ID {ttx.id} | {ttx.tipo} | R$ {_fmt_brl(ttx.valor)} | {ttx.categoria} | {ttx.data.isoformat()}"
+                                )
+                            lines.append("\nPara editar: editar ID valor=... categoria=... data=... tipo=receita/gasto")
+                            lines.append("Para apagar: apagar ID")
+                            wa_send_text(wa_from, "\n".join(lines))
+                        continue
+
+                    if parsed["cmd"] == "APAGAR":
+                        txid = parsed["id"]
+                        ttx = Transaction.query.filter_by(id=txid, user_id=link.user_id).first()
+                        if not ttx:
+                            wa_send_text(wa_from, "Não achei esse ID (ou não é seu). Use: ultimos")
+                            continue
+                        db.session.delete(ttx)
+                        db.session.commit()
+                        wa_send_text(wa_from, f"✅ Apagado: ID {txid}")
+                        continue
+
+                    if parsed["cmd"] == "EDITAR":
+                        txid = parsed["id"]
+                        fields = parsed.get("fields") or {}
+                        ttx = Transaction.query.filter_by(id=txid, user_id=link.user_id).first()
+                        if not ttx:
+                            wa_send_text(wa_from, "Não achei esse ID (ou não é seu). Use: ultimos")
+                            continue
+
+                        ok, msg2 = _apply_edit_fields(ttx, fields)
+                        if not ok:
+                            wa_send_text(wa_from, f"❌ Não consegui editar: {msg2}")
+                            continue
+
+                        db.session.commit()
+                        wa_send_text(
+                            wa_from,
+                            "✅ Editado!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "CORRIGIR_ULTIMA":
+                        fields = parsed.get("fields") or {}
+                        ttx = (
+                            Transaction.query
+                            .filter(Transaction.user_id == link.user_id)
+                            .order_by(Transaction.id.desc())
+                            .first()
+                        )
+                        if not ttx:
+                            wa_send_text(wa_from, "Você ainda não tem lançamentos.")
+                            continue
+
+                        ok, msg2 = _apply_edit_fields(ttx, fields)
+                        if not ok:
+                            wa_send_text(wa_from, f"❌ Não consegui corrigir: {msg2}")
+                            continue
+
+                        db.session.commit()
+                        wa_send_text(
+                            wa_from,
+                            "✅ Corrigido na última transação!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}",
+                        )
+                        continue
+
+                    if parsed["cmd"] == "TX":
+                        raw_text = parsed.get("raw_text") or ""
+                        guessed = _guess_category_from_text(link.user_id, raw_text)
+                        categoria = guessed or parsed.get("categoria_fallback") or "Outros"
+
+                        if parsed.get("tipo_confidence") == "low":
+                            _pending_set(
+                                wa_from=wa_from,
+                                user_id=link.user_id,
+                                kind="CONFIRM_TIPO",
+                                payload={
+                                    "tipo": parsed["tipo"],
+                                    "valor": str(parsed["valor"]),
+                                    "categoria_fallback": parsed.get("categoria_fallback"),
+                                    "descricao": parsed.get("descricao") or "",
+                                    "data": parsed.get("data").isoformat() if isinstance(parsed.get("data"), date) else None,
+                                    "raw_text": raw_text,
+                                },
+                                minutes=10,
+                            )
+                            wa_send_text(
+                                wa_from,
+                                "🤔 Fiquei em dúvida se isso foi *RECEITA* ou *GASTO*.\n\n"
+                                f"Mensagem: {raw_text}\n"
+                                f"Valor: R$ {_fmt_brl(parsed['valor'])}\n"
+                                f"Categoria sugerida: {categoria}\n\n"
+                                "Responda apenas com:\n"
+                                "• receita\n"
+                                "ou\n"
+                                "• gasto",
+                            )
+                            continue
+
+                        ttx = Transaction(
+                            user_id=link.user_id,
+                            tipo=parsed["tipo"],
+                            data=parsed["data"],
+                            categoria=categoria,
+                            descricao=(parsed.get("descricao") or None),
+                            valor=parsed["valor"],
+                            origem="WA",
+                        )
+                        db.session.add(ttx)
+                        db.session.commit()
+
+                        wa_send_text(
+                            wa_from,
+                            "✅ Lançamento salvo!\n"
+                            f"ID: {ttx.id}\n"
+                            f"Tipo: {ttx.tipo}\n"
+                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Categoria: {ttx.categoria}\n"
+                            f"Data: {ttx.data.isoformat()}\n\n"
+                            "Dica: digite 'ultimos' para ver e editar.",
+                        )
+                        continue
+
+                    wa_send_text(wa_from, "Não entendi. Digite: ajuda")
+
+    except Exception as e:
+        print("WA webhook error:", repr(e))
+
+    return "ok", 200
+
+
+# -------------------------
+# Entry
+# -------------------------
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port)
