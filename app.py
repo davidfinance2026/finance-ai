@@ -62,7 +62,19 @@ WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
 # DB
 # -------------------------
 db = SQLAlchemy(app)
+from sqlalchemy import text
 
+def migrate_database():
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text("""
+                ALTER TABLE recurring_rules
+                ALTER COLUMN next_date DROP NOT NULL;
+            """))
+            conn.commit()
+            print("✅ Migração do banco aplicada.")
+    except Exception as e:
+        print("⚠️ Migração ignorada:", e)
 
 class User(db.Model):
     __tablename__ = "users"
@@ -1958,3 +1970,4 @@ def wa_webhook():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
