@@ -6,7 +6,7 @@
   <title>Finance AI</title>
 
   <!-- PWA -->
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#0b1020" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1533,7 +1533,7 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
         try {
-          const reg = await navigator.serviceWorker.register("/sw.js");
+          const reg = await navigator.serviceWorker.register("/static/sw.js");
           console.log("Service Worker registrado:", reg.scope);
         } catch (err) {
           console.error("Erro ao registrar Service Worker:", err);
