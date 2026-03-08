@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Finance AI</title>
 
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Finance AI" />
+  <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <style>
@@ -233,7 +243,6 @@
       <div class="tab" data-tab="investimentos">Investimentos</div>
     </div>
 
-    <!-- DASHBOARD -->
     <section id="tab-dashboard" class="grid">
       <div class="grid cols2">
         <div class="card">
@@ -381,7 +390,6 @@
       </div>
     </section>
 
-    <!-- LANÇAR -->
     <section id="tab-lancar" class="hidden">
       <div class="card">
         <h2>Novo lançamento</h2>
@@ -429,7 +437,6 @@
       </div>
     </section>
 
-    <!-- ÚLTIMOS -->
     <section id="tab-ultimos" class="hidden">
       <div class="card">
         <div class="row" style="align-items:center">
@@ -447,7 +454,6 @@
       </div>
     </section>
 
-    <!-- INVESTIMENTOS -->
     <section id="tab-investimentos" class="hidden">
       <div class="card">
         <div class="row" style="align-items:center">
@@ -509,7 +515,6 @@
     </section>
   </div>
 
-  <!-- MODAL -->
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
@@ -651,7 +656,6 @@
     </div>
   </div>
 
-  <!-- MENU FLUTUANTE -->
   <div id="fabWrap" class="fab-wrap" aria-label="Ações rápidas">
     <div class="fab-actions" aria-hidden="true">
       <a class="fab-action" href="#" id="fabNovo">
@@ -1072,10 +1076,13 @@
       return { y, m, d };
     }
 
-    function parseMoneyLoose(v) {
-      const raw = String(v ?? "").trim().replace(/\s/g,"");
-      const n = Number(raw.replace(",", "."));
-      return isNaN(n) ? 0 : n;
+    function escapeHtml(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     async function updateDailyChart(mes, ano) {
@@ -1265,15 +1272,6 @@
       const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(",", "."));
       if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       return String(raw ?? "");
-    }
-
-    function escapeHtml(v) {
-      return String(v ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
     }
 
     async function carregarUltimos() {
@@ -1530,6 +1528,18 @@
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
     });
+
+    // PWA: registro do Service Worker
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", async () => {
+        try {
+          const reg = await navigator.serviceWorker.register("/sw.js");
+          console.log("Service Worker registrado:", reg.scope);
+        } catch (err) {
+          console.error("Erro ao registrar Service Worker:", err);
+        }
+      });
+    }
   </script>
 </body>
 </html>
