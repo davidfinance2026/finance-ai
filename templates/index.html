@@ -355,6 +355,37 @@
 
       <div class="grid cols2">
         <div class="card">
+          <h2>Insights do mês</h2>
+
+          <div class="grid" style="gap:10px">
+            <div class="miniCard">
+              <div class="row">
+                <div class="muted" style="font-weight:900">SCORE FINANCEIRO</div>
+                <div class="spacer"></div>
+                <div id="valScore" class="kpi">0/100</div>
+              </div>
+              <div class="hint" id="txtScoreHint">Aguardando análise...</div>
+            </div>
+
+            <div class="miniCard">
+              <div style="font-weight:900;margin-bottom:6px">💡 Insight automático</div>
+              <div id="txtInsightAuto" class="muted">Aguardando análise do mês...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Gastos por categoria</h2>
+          <div class="chartBox" style="margin-top:0">
+            <div class="chartTitle">🥧 Distribuição de gastos</div>
+            <p class="chartHint">Categorias com maior peso no mês selecionado.</p>
+            <canvas id="chartCategorias"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid cols2">
+        <div class="card">
           <h2>Visual</h2>
 
           <div class="chartBox">
@@ -767,6 +798,7 @@
       if (name === "dashboard") {
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
+        refreshInsightsDashboard().catch(()=>{});
       }
       if (name === "ultimos") carregarUltimos().catch(()=>{});
       if (name === "investimentos") carregarInvestimentos().catch(()=>{});
@@ -846,6 +878,7 @@
       setLoggedUI(false);
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
+      refreshInsightsDashboard().catch(()=>{});
       carregarUltimos().catch(()=>{});
       carregarInvestimentos().catch(()=>{});
     });
@@ -863,6 +896,7 @@
           closeModal();
           refreshDashboard().catch(()=>{});
           refreshIA().catch(()=>{});
+          refreshInsightsDashboard().catch(()=>{});
           carregarUltimos().catch(()=>{});
         }, 600);
       } catch (e) {
@@ -891,6 +925,7 @@
           closeModal();
           refreshDashboard().catch(()=>{});
           refreshIA().catch(()=>{});
+          refreshInsightsDashboard().catch(()=>{});
           carregarUltimos().catch(()=>{});
         }, 600);
       } catch (e) {
@@ -915,6 +950,7 @@
     let chartSaldo = null;
     let chartDaily = null;
     let chartPatrimonio = null;
+    let chartCategorias = null;
 
     function ensureCharts() {
       if (!window.Chart) return;
@@ -1047,6 +1083,42 @@
           }
         });
       }
+
+      if ($("chartCategorias") && !chartCategorias) {
+        chartCategorias = new Chart($("chartCategorias"), {
+          type: "doughnut",
+          data: {
+            labels: [],
+            datasets: [{
+              data: [],
+              backgroundColor: [
+                "rgba(75,140,255,.85)",
+                "rgba(46,229,157,.85)",
+                "rgba(255,184,77,.85)",
+                "rgba(255,75,110,.85)",
+                "rgba(140,120,255,.85)",
+                "rgba(120,220,255,.85)"
+              ],
+              borderColor: "rgba(255,255,255,.08)",
+              borderWidth: 1,
+              hoverOffset: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "rgba(234,240,255,.85)" } },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}`
+                }
+              }
+            },
+            cutout: "60%"
+          }
+        });
+      }
     }
 
     function updateChartsTotals(receitas, gastos, saldo) {
@@ -1142,6 +1214,53 @@
       }
     }
 
+    async function refreshInsightsDashboard() {
+      const mes = Number($("dashMes").value);
+      const ano = Number($("dashAno").value);
+
+      try {
+        const res = await api(`/api/insights_dashboard?mes=${mes}&ano=${ano}`, "GET");
+
+        $("valScore").textContent = `${res.score || 0}/100`;
+        $("txtInsightAuto").textContent = res.insight || "Sem insight disponível.";
+
+        const scoreEl = $("valScore");
+        scoreEl.classList.remove("positive", "negative", "warn");
+
+        const scoreNum = Number(res.score || 0);
+        if (scoreNum >= 80) scoreEl.classList.add("positive");
+        else if (scoreNum >= 60) scoreEl.classList.add("warn");
+        else scoreEl.classList.add("negative");
+
+        if (res.status === "saudavel") {
+          $("txtScoreHint").textContent = "Saúde financeira boa.";
+        } else if (res.status === "atencao") {
+          $("txtScoreHint").textContent = "Atenção moderada no mês.";
+        } else if (res.status === "critico") {
+          $("txtScoreHint").textContent = "Seu mês exige mais atenção.";
+        } else {
+          $("txtScoreHint").textContent = "Análise concluída.";
+        }
+
+        ensureCharts();
+        if (chartCategorias) {
+          chartCategorias.data.labels = res.categorias || [];
+          chartCategorias.data.datasets[0].data = res.valores || [];
+          chartCategorias.update();
+        }
+      } catch (e) {
+        $("valScore").textContent = "0/100";
+        $("txtScoreHint").textContent = "Faça login para visualizar.";
+        $("txtInsightAuto").textContent = "Sem dados para análise.";
+
+        if (chartCategorias) {
+          chartCategorias.data.labels = [];
+          chartCategorias.data.datasets[0].data = [];
+          chartCategorias.update();
+        }
+      }
+    }
+
     function initMesAno() {
       const sel = $("dashMes");
       const now = new Date();
@@ -1230,11 +1349,30 @@
       `).join("");
     }
 
-    $("btnAtualizarDash").addEventListener("click", () => refreshDashboard());
-    $("btnAtualizarIA").addEventListener("click", () => refreshIA());
-    $("btnVerAlertas").addEventListener("click", () => refreshIA());
-    $("dashMes").addEventListener("change", () => refreshDashboard().catch(()=>{}));
-    $("dashAno").addEventListener("change", () => refreshDashboard().catch(()=>{}));
+    $("btnAtualizarDash").addEventListener("click", () => {
+      refreshDashboard();
+      refreshInsightsDashboard();
+    });
+
+    $("btnAtualizarIA").addEventListener("click", () => {
+      refreshIA();
+      refreshInsightsDashboard();
+    });
+
+    $("btnVerAlertas").addEventListener("click", () => {
+      refreshIA();
+      refreshInsightsDashboard();
+    });
+
+    $("dashMes").addEventListener("change", () => {
+      refreshDashboard().catch(()=>{});
+      refreshInsightsDashboard().catch(()=>{});
+    });
+
+    $("dashAno").addEventListener("change", () => {
+      refreshDashboard().catch(()=>{});
+      refreshInsightsDashboard().catch(()=>{});
+    });
 
     $("btnSalvarLanc").addEventListener("click", async () => {
       const toast = $("toastLanc"); hideToast(toast);
@@ -1253,6 +1391,7 @@
         $("lanValor").value = "";
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
+        refreshInsightsDashboard().catch(()=>{});
         carregarUltimos().catch(()=>{});
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
@@ -1331,6 +1470,7 @@
         await refreshWaLink();
         await refreshDashboard();
         await refreshIA();
+        await refreshInsightsDashboard();
       } catch (e) {
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
@@ -1392,6 +1532,7 @@
         await refreshWaLink();
         await refreshDashboard();
         await refreshIA();
+        await refreshInsightsDashboard();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
         showToast(toast, "err", "Erro ao editar", e.message);
@@ -1456,6 +1597,7 @@
         showToast(toast, "ok", "Apagado!", "Investimento removido.");
         await carregarInvestimentos();
         await refreshIA();
+        await refreshInsightsDashboard();
       }catch(e){
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
@@ -1479,6 +1621,7 @@
         $("invDescricao").value = "";
         await carregarInvestimentos();
         await refreshIA();
+        await refreshInsightsDashboard();
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
@@ -1527,6 +1670,7 @@
       refreshWaLink();
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
+      refreshInsightsDashboard().catch(()=>{});
     });
 
     // PWA: registro do Service Worker
