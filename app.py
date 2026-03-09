@@ -1464,7 +1464,76 @@ def api_dashboard():
 
     saldo = receitas - gastos
     return jsonify(receitas=float(receitas), gastos=float(gastos), saldo=float(saldo))
+# -----------------------
+# Insights Inteligentes
+# -----------------------
+@app.get("/api/insights_dashboard")
+def api_insights_dashboard():
+    uid = _require_login()
+    if not uid:
+        return jsonify(error="Não logado"), 401
 
+    today = datetime.utcnow().date()
+    start = date(today.year, today.month, 1)
+
+    if today.month == 12:
+        end = date(today.year + 1, 1, 1)
+    else:
+        end = date(today.year, today.month + 1, 1)
+
+    rows = (
+        Transaction.query
+        .filter(Transaction.user_id == uid)
+        .filter(Transaction.data >= start)
+        .filter(Transaction.data < end)
+        .all()
+    )
+
+    receitas = Decimal("0")
+    gastos = Decimal("0")
+    categorias = {}
+
+    for t in rows:
+        v = Decimal(t.valor or 0)
+
+        if (t.tipo or "").upper() == "RECEITA":
+            receitas += v
+        else:
+            gastos += v
+            categorias[t.categoria] = categorias.get(t.categoria, Decimal("0")) + v
+
+    saldo = receitas - gastos
+
+    score = 50
+
+    if receitas > 0:
+        ratio = gastos / receitas
+        if ratio < 0.5:
+            score = 90
+        elif ratio < 0.7:
+            score = 80
+        elif ratio < 0.9:
+            score = 65
+        else:
+            score = 40
+
+    insight = "Seu controle financeiro está equilibrado."
+
+    if gastos > receitas:
+        insight = "⚠️ Seus gastos estão maiores que suas receitas."
+
+    elif categorias:
+        top = max(categorias.items(), key=lambda x: x[1])
+        insight = f"Você gastou mais em {top[0]} este mês."
+
+    top_categorias = sorted(categorias.items(), key=lambda x: x[1], reverse=True)
+
+    return jsonify(
+        score=score,
+        insight=insight,
+        categorias=[c[0] for c in top_categorias],
+        valores=[float(c[1]) for c in top_categorias],
+    )
 
 @app.get("/api/projecao")
 def api_projecao():
@@ -2704,3 +2773,4 @@ def wa_webhook():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
