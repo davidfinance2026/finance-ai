@@ -363,35 +363,9 @@
                 <div class="muted" style="font-weight:900">SCORE FINANCEIRO</div>
                 <div class="spacer"></div>
                 <div id="valScore" class="kpi">0/100</div>
-<div class="hint" id="txtScoreHint">Aguardando análise...</div>
-
-<script>
-async function atualizarScoreFinanceiro(){
-  try{
-    const r = await fetch("/api/score_financeiro");
-    const data = await r.json();
-
-    document.getElementById("valScore").innerText = data.score + "/100";
-
-    let msg = "";
-
-    if(data.status === "saudavel"){
-      msg = "🟢 Situação financeira saudável";
-    }
-    else if(data.status === "atencao"){
-      msg = "🟡 Atenção com os gastos";
-    }
-    else{
-      msg = "🔴 Situação financeira crítica";
-    }
-
-    document.getElementById("txtScoreHint").innerText = msg;
-
-  }catch(e){
-    console.log("erro score",e);
-  }
-}
-</script>
+              </div>
+              <div class="hint" id="txtScoreHint">Aguardando análise...</div>
+            </div>
 
             <div class="miniCard">
               <div style="font-weight:900;margin-bottom:6px">💡 Insight automático</div>
@@ -825,6 +799,7 @@ async function atualizarScoreFinanceiro(){
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
         refreshInsightsDashboard().catch(()=>{});
+        atualizarScoreFinanceiro().catch(()=>{});
       }
       if (name === "ultimos") carregarUltimos().catch(()=>{});
       if (name === "investimentos") carregarInvestimentos().catch(()=>{});
@@ -905,6 +880,7 @@ async function atualizarScoreFinanceiro(){
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
+      atualizarScoreFinanceiro().catch(()=>{});
       carregarUltimos().catch(()=>{});
       carregarInvestimentos().catch(()=>{});
     });
@@ -923,6 +899,7 @@ async function atualizarScoreFinanceiro(){
           refreshDashboard().catch(()=>{});
           refreshIA().catch(()=>{});
           refreshInsightsDashboard().catch(()=>{});
+          atualizarScoreFinanceiro().catch(()=>{});
           carregarUltimos().catch(()=>{});
         }, 600);
       } catch (e) {
@@ -952,6 +929,7 @@ async function atualizarScoreFinanceiro(){
           refreshDashboard().catch(()=>{});
           refreshIA().catch(()=>{});
           refreshInsightsDashboard().catch(()=>{});
+          atualizarScoreFinanceiro().catch(()=>{});
           carregarUltimos().catch(()=>{});
         }, 600);
       } catch (e) {
@@ -1287,6 +1265,36 @@ async function atualizarScoreFinanceiro(){
       }
     }
 
+    async function atualizarScoreFinanceiro() {
+      try {
+        const data = await api("/api/score_financeiro", "GET");
+
+        $("valScore").textContent = `${data.score || 0}/100`;
+
+        const scoreEl = $("valScore");
+        scoreEl.classList.remove("positive", "negative", "warn");
+
+        const scoreNum = Number(data.score || 0);
+        if (scoreNum >= 80) scoreEl.classList.add("positive");
+        else if (scoreNum >= 60) scoreEl.classList.add("warn");
+        else scoreEl.classList.add("negative");
+
+        if (data.status === "saudavel") {
+          $("txtScoreHint").textContent = "🟢 Situação financeira saudável";
+        } else if (data.status === "atencao") {
+          $("txtScoreHint").textContent = "🟡 Atenção com os gastos";
+        } else if (data.status === "critico") {
+          $("txtScoreHint").textContent = "🔴 Situação financeira crítica";
+        } else {
+          $("txtScoreHint").textContent = "Score atualizado.";
+        }
+      } catch (e) {
+        $("valScore").textContent = "0/100";
+        $("txtScoreHint").textContent = "Faça login para visualizar.";
+        console.log("erro score", e);
+      }
+    }
+
     function initMesAno() {
       const sel = $("dashMes");
       const now = new Date();
@@ -1378,26 +1386,31 @@ async function atualizarScoreFinanceiro(){
     $("btnAtualizarDash").addEventListener("click", () => {
       refreshDashboard();
       refreshInsightsDashboard();
+      atualizarScoreFinanceiro();
     });
 
     $("btnAtualizarIA").addEventListener("click", () => {
       refreshIA();
       refreshInsightsDashboard();
+      atualizarScoreFinanceiro();
     });
 
     $("btnVerAlertas").addEventListener("click", () => {
       refreshIA();
       refreshInsightsDashboard();
+      atualizarScoreFinanceiro();
     });
 
     $("dashMes").addEventListener("change", () => {
       refreshDashboard().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
+      atualizarScoreFinanceiro().catch(()=>{});
     });
 
     $("dashAno").addEventListener("change", () => {
       refreshDashboard().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
+      atualizarScoreFinanceiro().catch(()=>{});
     });
 
     $("btnSalvarLanc").addEventListener("click", async () => {
@@ -1418,6 +1431,7 @@ async function atualizarScoreFinanceiro(){
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
         refreshInsightsDashboard().catch(()=>{});
+        atualizarScoreFinanceiro().catch(()=>{});
         carregarUltimos().catch(()=>{});
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
@@ -1497,6 +1511,7 @@ async function atualizarScoreFinanceiro(){
         await refreshDashboard();
         await refreshIA();
         await refreshInsightsDashboard();
+        await atualizarScoreFinanceiro();
       } catch (e) {
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
@@ -1559,6 +1574,7 @@ async function atualizarScoreFinanceiro(){
         await refreshDashboard();
         await refreshIA();
         await refreshInsightsDashboard();
+        await atualizarScoreFinanceiro();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
         showToast(toast, "err", "Erro ao editar", e.message);
@@ -1624,6 +1640,7 @@ async function atualizarScoreFinanceiro(){
         await carregarInvestimentos();
         await refreshIA();
         await refreshInsightsDashboard();
+        await atualizarScoreFinanceiro();
       }catch(e){
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
@@ -1648,6 +1665,7 @@ async function atualizarScoreFinanceiro(){
         await carregarInvestimentos();
         await refreshIA();
         await refreshInsightsDashboard();
+        await atualizarScoreFinanceiro();
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
@@ -1697,10 +1715,9 @@ async function atualizarScoreFinanceiro(){
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
-      atualizarScoreFinanceiro();
+      atualizarScoreFinanceiro().catch(()=>{});
     });
 
-    // PWA: registro do Service Worker
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
         try {
