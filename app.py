@@ -2793,3 +2793,36 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
 
+@app.route("/api/score_financeiro")
+def api_score_financeiro():
+    uid = _require_login()
+    if not uid:
+        return jsonify({"error": "Não logado"}), 401
+
+    q = (
+        Transaction.query
+        .filter(Transaction.user_id == uid)
+        .all()
+    )
+
+    receitas = sum(t.valor for t in q if t.tipo == "RECEITA")
+    gastos = sum(t.valor for t in q if t.tipo == "GASTO")
+
+    saldo = receitas - gastos
+
+    score = 50
+    if saldo > 0:
+        score += 20
+    if receitas > gastos:
+        score += 15
+    if receitas > 0:
+        score += 15
+
+    score = min(score, 100)
+
+    return jsonify({
+        "score": score,
+        "receitas": receitas,
+        "gastos": gastos,
+        "saldo": saldo
+    })
