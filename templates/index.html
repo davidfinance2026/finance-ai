@@ -363,9 +363,35 @@
                 <div class="muted" style="font-weight:900">SCORE FINANCEIRO</div>
                 <div class="spacer"></div>
                 <div id="valScore" class="kpi">0/100</div>
-              </div>
-              <div class="hint" id="txtScoreHint">Aguardando análise...</div>
-            </div>
+<div class="hint" id="txtScoreHint">Aguardando análise...</div>
+
+<script>
+async function atualizarScoreFinanceiro(){
+  try{
+    const r = await fetch("/api/score_financeiro");
+    const data = await r.json();
+
+    document.getElementById("valScore").innerText = data.score + "/100";
+
+    let msg = "";
+
+    if(data.status === "saudavel"){
+      msg = "🟢 Situação financeira saudável";
+    }
+    else if(data.status === "atencao"){
+      msg = "🟡 Atenção com os gastos";
+    }
+    else{
+      msg = "🔴 Situação financeira crítica";
+    }
+
+    document.getElementById("txtScoreHint").innerText = msg;
+
+  }catch(e){
+    console.log("erro score",e);
+  }
+}
+</script>
 
             <div class="miniCard">
               <div style="font-weight:900;margin-bottom:6px">💡 Insight automático</div>
@@ -1671,6 +1697,7 @@
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
+      atualizarScoreFinanceiro();
     });
 
     // PWA: registro do Service Worker
