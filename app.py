@@ -2785,7 +2785,6 @@ def wa_webhook():
 
     return "ok", 200
 
-
 @app.route("/api/score_financeiro")
 def api_score_financeiro():
     uid = _require_login()
@@ -2841,3 +2840,4 @@ def api_score_financeiro():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
