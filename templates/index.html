@@ -24,7 +24,9 @@
       --border:rgba(255,255,255,.10); --shadow:0 14px 50px rgba(0,0,0,.55);
       --radius:18px; --radius2:26px;
     }
+
     *{box-sizing:border-box}
+
     body{
       margin:0;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -34,6 +36,7 @@
         var(--bg);
       color:var(--text);
     }
+
     .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 70px}
     .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
     .brand h1{margin:0;font-size:28px}
@@ -63,6 +66,7 @@
     .spacer{flex:1}
     .muted{color:var(--muted)}
     .grid{display:grid;gap:14px}
+
     @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
     @media(min-width:980px){.grid.cols3{grid-template-columns:1fr 1fr 1fr}}
 
@@ -152,6 +156,7 @@
       box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03);
       border:1px solid var(--border);padding:12px;
     }
+
     .kpi{font-weight:900}
     .kpi.negative{color:#ff7b93}
     .kpi.positive{color:#63f0b4}
@@ -219,6 +224,91 @@
       z-index:998;opacity:0;pointer-events:none;transition:.18s ease;
     }
     .fab-wrap.open + .fab-backdrop{opacity:1;pointer-events:auto}
+
+    .progressWrap{
+      margin-top:10px;
+      width:100%;
+      height:12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.07);
+      border:1px solid var(--border);
+      overflow:hidden;
+    }
+    .progressBar{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      background:linear-gradient(90deg, rgba(46,229,157,.95), rgba(75,140,255,.95));
+      transition:width .35s ease;
+    }
+    .badgeNivel{
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:900;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.05);
+    }
+    .badgeNivel.positive{
+      color:#63f0b4;
+      border-color:rgba(46,229,157,.35);
+    }
+    .badgeNivel.warn{
+      color:#ffc76f;
+      border-color:rgba(255,184,77,.35);
+    }
+    .badgeNivel.negative{
+      color:#ff7b93;
+      border-color:rgba(255,75,110,.35);
+    }
+    .smartText{
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.5;
+    }
+
+    .heroInsight{
+      position:relative;
+      padding:16px;
+      border-radius:22px;
+      background:
+        radial-gradient(700px 240px at 0% 0%, rgba(75,140,255,.18), transparent 65%),
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      overflow:hidden;
+    }
+    .heroInsightTitle{
+      font-size:12px;
+      color:var(--muted);
+      letter-spacing:.4px;
+      text-transform:uppercase;
+      margin-bottom:8px;
+      font-weight:800;
+    }
+    .heroInsightMain{
+      font-size:22px;
+      font-weight:900;
+      line-height:1.2;
+      margin-bottom:8px;
+    }
+    .heroInsightSub{
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.5;
+    }
+
+    @media(max-width:640px){
+      .wrap{padding:16px 12px 80px}
+      .brand h1{font-size:24px}
+      .brand p{font-size:13px}
+      .tabs{width:100%;justify-content:center}
+      .tab{flex:1;text-align:center;padding:10px 8px;font-size:13px}
+      .card{padding:14px}
+      .miniCard{padding:12px}
+      .heroInsightMain{font-size:20px}
+      .fab-wrap{right:12px;bottom:12px}
+      .fab-btn{width:52px;height:52px}
+    }
   </style>
 </head>
 
@@ -244,6 +334,12 @@
     </div>
 
     <section id="tab-dashboard" class="grid">
+      <div class="heroInsight">
+        <div class="heroInsightTitle">Finance AI v4.1</div>
+        <div class="heroInsightMain" id="txtResumoTopo">Seu painel inteligente está pronto para análise.</div>
+        <div class="heroInsightSub" id="txtResumoTopoSub">Atualize o dashboard para ver projeções, score, metas e recomendações.</div>
+      </div>
+
       <div class="grid cols2">
         <div class="card">
           <h2>Dashboard do mês</h2>
@@ -295,7 +391,7 @@
         </div>
 
         <div class="card">
-          <h2>IA Finance AI v3</h2>
+          <h2>IA Finance AI</h2>
 
           <div class="grid" style="gap:10px">
             <div class="miniCard">
@@ -368,8 +464,35 @@
             </div>
 
             <div class="miniCard">
+              <div class="row">
+                <div style="font-weight:900">🏁 META DO MÊS</div>
+                <div class="spacer"></div>
+                <div id="valMetaMes" class="kpi">R$ 0,00</div>
+              </div>
+              <div class="hint" id="txtMetaMes">Meta sugerida de economia.</div>
+              <div class="progressWrap">
+                <div id="barMetaMes" class="progressBar"></div>
+              </div>
+              <div class="hint" id="txtMetaProgresso">Progresso: 0%</div>
+            </div>
+
+            <div class="miniCard">
+              <div class="row">
+                <div style="font-weight:900">🛡️ NÍVEL FINANCEIRO</div>
+                <div class="spacer"></div>
+                <span id="badgeNivelFinanceiro" class="badgeNivel">---</span>
+              </div>
+              <div class="hint" id="txtNivelFinanceiro">Aguardando classificação...</div>
+            </div>
+
+            <div class="miniCard">
               <div style="font-weight:900;margin-bottom:6px">💡 Insight automático</div>
-              <div id="txtInsightAuto" class="muted">Aguardando análise do mês...</div>
+              <div id="txtInsightAuto" class="smartText">Aguardando análise do mês...</div>
+            </div>
+
+            <div class="miniCard">
+              <div style="font-weight:900;margin-bottom:6px">🤖 Recomendação inteligente</div>
+              <div id="txtRecomendacaoIA" class="smartText">Aguardando recomendação...</div>
             </div>
           </div>
         </div>
@@ -745,6 +868,7 @@
       if(!m) return s;
       return `${m[3]}-${m[2]}-${m[1]}`;
     }
+
     function brToISO(br){
       if(!br) return "";
       const s=String(br).trim();
@@ -755,6 +879,7 @@
     }
 
     const WA_NUMBER_FALLBACK = "5537998675231";
+
     function buildWaLinkFallback(email){
       const base = `https://wa.me/${WA_NUMBER_FALLBACK}`;
       const e = String(email || "").trim();
@@ -819,6 +944,7 @@
       overlay.classList.add("show");
       overlay.setAttribute("aria-hidden", "false");
     }
+
     function closeModal() {
       overlay.classList.remove("show");
       overlay.setAttribute("aria-hidden", "true");
@@ -973,7 +1099,8 @@
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -997,7 +1124,8 @@
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
@@ -1046,7 +1174,8 @@
             ]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1075,7 +1204,8 @@
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1127,10 +1257,12 @@
 
     function updateChartsTotals(receitas, gastos, saldo) {
       ensureCharts();
+
       if (chartRG) {
         chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)];
         chartRG.update();
       }
+
       if (chartSaldo) {
         const s = Number(saldo || 0);
         chartSaldo.data.datasets[0].data = [s];
@@ -1159,6 +1291,84 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function definirNivelFinanceiro(score) {
+      const badge = $("badgeNivelFinanceiro");
+      const txt = $("txtNivelFinanceiro");
+
+      badge.classList.remove("positive", "warn", "negative");
+
+      if (score >= 90) {
+        badge.textContent = "INVESTIDOR";
+        badge.classList.add("positive");
+        txt.textContent = "Excelente consistência financeira no período.";
+      } else if (score >= 75) {
+        badge.textContent = "CONTROLADO";
+        badge.classList.add("positive");
+        txt.textContent = "Boa organização, com espaço para evoluir.";
+      } else if (score >= 60) {
+        badge.textContent = "ATENÇÃO";
+        badge.classList.add("warn");
+        txt.textContent = "Seu mês pede mais controle sobre os gastos.";
+      } else {
+        badge.textContent = "CRÍTICO";
+        badge.classList.add("negative");
+        txt.textContent = "Priorize redução de despesas e ajuste de rotina.";
+      }
+    }
+
+    function atualizarMetaMes(receitas, saldo) {
+      const meta = Math.max(0, Number(receitas || 0) * 0.20);
+      const saldoNum = Math.max(0, Number(saldo || 0));
+      const progresso = meta > 0 ? Math.min(100, (saldoNum / meta) * 100) : 0;
+
+      $("valMetaMes").textContent = moneyBR(meta);
+      $("txtMetaMes").textContent = "Meta sugerida: guardar 20% das receitas do mês.";
+      $("txtMetaProgresso").textContent = `Progresso: ${progresso.toFixed(0)}%`;
+      $("barMetaMes").style.width = `${progresso}%`;
+    }
+
+    function atualizarRecomendacaoIA(categorias, valores, receitas, gastos, saldo) {
+      const box = $("txtRecomendacaoIA");
+
+      if (!categorias || !categorias.length || !valores || !valores.length) {
+        box.textContent = "Sem dados suficientes para recomendar ajustes agora.";
+        return;
+      }
+
+      const topCategoria = categorias[0];
+      const topValor = Number(valores[0] || 0);
+      const reduzir10 = topValor * 0.10;
+      const novoSaldo = Number(saldo || 0) + reduzir10;
+
+      if (topValor <= 0) {
+        box.textContent = "Seu mês está equilibrado. Continue monitorando para manter o padrão.";
+        return;
+      }
+
+      box.textContent =
+        `Sua maior pressão está em ${topCategoria}. Se você reduzir cerca de 10% nessa categoria, ` +
+        `pode melhorar seu saldo em ${moneyBR(reduzir10)} e fechar o período com aproximadamente ${moneyBR(novoSaldo)}.`;
+    }
+
+    function atualizarResumoTopo(receitas, gastos, saldo, score) {
+      const main = $("txtResumoTopo");
+      const sub = $("txtResumoTopoSub");
+
+      if (!receitas && !gastos) {
+        main.textContent = "Seu painel inteligente está pronto para análise.";
+        sub.textContent = "Atualize o dashboard para ver projeções, score, metas e recomendações.";
+        return;
+      }
+
+      if (saldo >= 0) {
+        main.textContent = `Você está fechando o período com saldo positivo de ${moneyBR(saldo)}.`;
+      } else {
+        main.textContent = `Atenção: o período está com saldo negativo de ${moneyBR(saldo)}.`;
+      }
+
+      sub.textContent = `Receitas em ${moneyBR(receitas)}, gastos em ${moneyBR(gastos)} e score atual de ${score}/100.`;
     }
 
     async function updateDailyChart(mes, ano) {
@@ -1246,6 +1456,19 @@
           $("txtScoreHint").textContent = "Análise concluída.";
         }
 
+        const saldoAtual = (res.receitas || 0) - (res.gastos || 0);
+
+        definirNivelFinanceiro(scoreNum);
+        atualizarMetaMes(res.receitas || 0, saldoAtual);
+        atualizarRecomendacaoIA(
+          res.categorias || [],
+          res.valores || [],
+          res.receitas || 0,
+          res.gastos || 0,
+          saldoAtual
+        );
+        atualizarResumoTopo(res.receitas || 0, res.gastos || 0, saldoAtual, scoreNum);
+
         ensureCharts();
         if (chartCategorias) {
           chartCategorias.data.labels = res.categorias || [];
@@ -1256,6 +1479,15 @@
         $("valScore").textContent = "0/100";
         $("txtScoreHint").textContent = "Faça login para visualizar.";
         $("txtInsightAuto").textContent = "Sem dados para análise.";
+        $("valMetaMes").textContent = "R$ 0,00";
+        $("txtMetaMes").textContent = "Faça login para visualizar.";
+        $("txtMetaProgresso").textContent = "Progresso: 0%";
+        $("barMetaMes").style.width = "0%";
+        $("badgeNivelFinanceiro").textContent = "---";
+        $("badgeNivelFinanceiro").classList.remove("positive", "warn", "negative");
+        $("txtNivelFinanceiro").textContent = "Aguardando classificação...";
+        $("txtRecomendacaoIA").textContent = "Sem dados suficientes para recomendar ajustes agora.";
+        atualizarResumoTopo(0, 0, 0, 0);
 
         if (chartCategorias) {
           chartCategorias.data.labels = [];
@@ -1288,6 +1520,8 @@
         } else {
           $("txtScoreHint").textContent = "Score atualizado.";
         }
+
+        definirNivelFinanceiro(scoreNum);
       } catch (e) {
         $("valScore").textContent = "0/100";
         $("txtScoreHint").textContent = "Faça login para visualizar.";
@@ -1307,7 +1541,8 @@
     }
 
     async function refreshDashboard() {
-      const toast = $("toastDash"); hideToast(toast);
+      const toast = $("toastDash");
+      hideToast(toast);
       const mes = Number($("dashMes").value);
       const ano = Number($("dashAno").value);
 
@@ -1334,7 +1569,8 @@
     }
 
     async function refreshIA() {
-      const toast = $("toastIA"); hideToast(toast);
+      const toast = $("toastIA");
+      hideToast(toast);
 
       try {
         const proj = await api("/api/projecao", "GET");
@@ -1414,7 +1650,8 @@
     });
 
     $("btnSalvarLanc").addEventListener("click", async () => {
-      const toast = $("toastLanc"); hideToast(toast);
+      const toast = $("toastLanc");
+      hideToast(toast);
       try{
         const payload = {
           tipo: $("lanTipo").value,
@@ -1647,7 +1884,8 @@
     };
 
     $("btnSalvarInv").addEventListener("click", async () => {
-      const toast = $("toastInv"); hideToast(toast);
+      const toast = $("toastInv");
+      hideToast(toast);
 
       try{
         const payload = {
@@ -1692,6 +1930,7 @@
       if(actions) actions.setAttribute("aria-hidden","true");
       const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
     }
+
     function fabToggle(){
       if(!fabWrap) return;
       const open = !fabWrap.classList.contains("open");
