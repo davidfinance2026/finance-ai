@@ -2786,13 +2786,6 @@ def wa_webhook():
     return "ok", 200
 
 
-# -------------------------
-# Entry
-# -------------------------
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port)
-
 @app.route("/api/score_financeiro")
 def api_score_financeiro():
     uid = _require_login()
@@ -2805,24 +2798,46 @@ def api_score_financeiro():
         .all()
     )
 
-    receitas = sum(t.valor for t in q if t.tipo == "RECEITA")
-    gastos = sum(t.valor for t in q if t.tipo == "GASTO")
-
+    receitas = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "RECEITA")
+    gastos = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "GASTO")
     saldo = receitas - gastos
 
     score = 50
-    if saldo > 0:
-        score += 20
-    if receitas > gastos:
-        score += 15
-    if receitas > 0:
-        score += 15
+    status = "atencao"
 
-    score = min(score, 100)
+    if receitas > 0:
+        ratio = gastos / receitas
+        if ratio < Decimal("0.50"):
+            score = 90
+            status = "saudavel"
+        elif ratio < Decimal("0.70"):
+            score = 80
+            status = "saudavel"
+        elif ratio < Decimal("0.90"):
+            score = 65
+            status = "atencao"
+        else:
+            score = 40
+            status = "critico"
+    elif gastos > 0:
+        score = 25
+        status = "critico"
+
+    if saldo > 0 and score < 100:
+        score = min(100, score + 5)
 
     return jsonify({
-        "score": score,
-        "receitas": receitas,
-        "gastos": gastos,
-        "saldo": saldo
+        "score": int(score),
+        "status": status,
+        "receitas": float(receitas),
+        "gastos": float(gastos),
+        "saldo": float(saldo)
     })
+
+
+# -------------------------
+# Entry
+# -------------------------
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port)
