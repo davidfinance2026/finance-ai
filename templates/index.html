@@ -297,9 +297,7 @@
 
     .hint{font-size:12px;color:var(--muted);margin-top:8px}
 
-    .accountMenuWrap{
-      position:relative;
-    }
+    .accountMenuWrap{position:relative}
 
     .iconBtn{
       width:46px;
@@ -429,9 +427,7 @@
 
     <section class="hero">
       <h2 id="helloTitle" class="helloTitle">Olá 👋</h2>
-      <p id="helloSub" class="helloSub">
-        Resumo financeiro indisponível no momento.
-      </p>
+      <p id="helloSub" class="helloSub">Resumo financeiro indisponível no momento.</p>
     </section>
 
     <div class="tabs" role="tablist" aria-label="Navegação">
@@ -916,17 +912,25 @@
 
     const moneyBR = (n) => {
       const v = Number(n || 0);
-      return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+      return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     };
 
-    async function api(path, method="GET", body=null) {
-      const opt = { method, headers: { "Content-Type":"application/json" }, credentials:"include" };
+    async function api(path, method = "GET", body = null) {
+      const opt = {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include"
+      };
       if (body) opt.body = JSON.stringify(body);
+
       const res = await fetch(path, opt);
       let data = null;
       try { data = await res.json(); } catch(e) {}
+
       if (!res.ok) {
-        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
+        const msg = (data && (data.error || data.message))
+          ? (data.error || data.message)
+          : `Erro ${res.status}`;
         throw new Error(msg);
       }
       return data;
@@ -954,7 +958,7 @@
     function brToISO(br){
       if(!br) return "";
       const s = String(br).trim();
-      const m = s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      const m = s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
       if(!m) return s;
       const dd = m[1], mm = m[2], yyyy = m[3];
       return `${yyyy}-${mm}-${dd}`;
@@ -1122,7 +1126,9 @@
     $("btnFechar1").addEventListener("click", closeModal);
     $("btnFechar2").addEventListener("click", closeModal);
     $("btnFechar3").addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeModal();
+    });
 
     function setSeg(seg) {
       segs.forEach(s => s.classList.toggle("active", s.dataset.seg === seg));
@@ -1134,28 +1140,37 @@
       $("modalTitle").textContent = seg === "entrar" ? "Login" : (seg === "criar" ? "Criar conta" : "Resetar senha");
       $("modalSub").textContent = seg === "entrar"
         ? "Entre com seu e-mail e senha."
-        : (seg === "criar" ? "Crie sua conta para acessar seus lançamentos." : "Defina uma nova senha para sua conta.");
+        : (seg === "criar"
+            ? "Crie sua conta para acessar seus lançamentos."
+            : "Defina uma nova senha para sua conta.");
 
       $("authBlock").classList.remove("hidden");
       $("editBlock").classList.add("hidden");
       openModal();
     }
 
+    function openAuthModal(seg="entrar") {
+      setSeg(seg);
+    }
+
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
-    function openAuthModal(seg="entrar") { setSeg(seg); }
 
     $("btnEntrar").addEventListener("click", async () => {
       const t = $("toastAuth1");
       hideToast(t);
+
       try {
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
         const res = await api("/api/login", "POST", { email, senha });
+
         currentUserEmail = (res && res.email) ? res.email : email;
         currentUserName = (res && res.name) ? res.name : "";
+
         setLoggedUI(true, currentUserEmail);
         refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Login realizado", "Você já pode usar o app.");
+
         setTimeout(async () => {
           closeModal();
           await refreshDashboard().catch(()=>{});
@@ -1165,6 +1180,7 @@
           await carregarUltimos().catch(()=>{});
           await refreshHeroSummary().catch(()=>{});
         }, 600);
+
       } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
       }
@@ -1173,6 +1189,7 @@
     $("btnCriarConta").addEventListener("click", async () => {
       const t = $("toastAuth2");
       hideToast(t);
+
       try {
         const nome_apelido = $("regApelido").value.trim();
         const nome_completo = $("regNomeCompleto").value.trim();
@@ -1192,9 +1209,11 @@
 
         currentUserEmail = (res && res.email) ? res.email : email;
         currentUserName = (res && res.name) ? res.name : "";
+
         setLoggedUI(true, currentUserEmail);
         refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
+
         setTimeout(async () => {
           closeModal();
           await refreshDashboard().catch(()=>{});
@@ -1204,6 +1223,7 @@
           await carregarUltimos().catch(()=>{});
           await refreshHeroSummary().catch(()=>{});
         }, 600);
+
       } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
       }
@@ -1212,10 +1232,12 @@
     $("btnResetar").addEventListener("click", async () => {
       const t = $("toastAuth3");
       hideToast(t);
+
       try {
         const email = $("rstEmail").value.trim().toLowerCase();
         const nova_senha = $("rstSenha").value;
         const confirmar = $("rstConf").value;
+
         await api("/api/reset_password", "POST", { email, nova_senha, confirmar });
         showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
       } catch (e) {
@@ -1225,11 +1247,14 @@
 
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
+
       currentUserEmail = "";
       currentUserName = "";
+
       setLoggedUI(false);
       refreshGreeting("");
       $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro.";
+
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
@@ -1242,30 +1267,20 @@
     const btnAccount = $("btnAccount");
     const accountDropdown = $("accountDropdown");
 
-    function toggleAccountMenu(force=null){
+    function toggleAccountMenu(force = null){
       const open = force === null ? !accountDropdown.classList.contains("show") : !!force;
       accountDropdown.classList.toggle("show", open);
     }
 
     btnAccount.addEventListener("click", (e) => {
-  e.stopPropagation();
-  toggleAccountMenu();
-});
+      e.stopPropagation();
+      toggleAccountMenu();
+    });
 
-// abrir modal de login
-$("btnLogin").addEventListener("click", () => {
-
-  toggleAccountMenu(false);
-
-  openAuthModal("entrar");
-
-});
-
-document.addEventListener("click", (e) => {
-  if (!accountDropdown.contains(e.target) && e.target !== btnAccount) {
-    toggleAccountMenu(false);
-  }
-});
+    $("btnLogin").addEventListener("click", () => {
+      toggleAccountMenu(false);
+      openAuthModal("entrar");
+    });
 
     document.addEventListener("click", (e) => {
       if (!accountDropdown.contains(e.target) && e.target !== btnAccount) {
@@ -1296,7 +1311,8 @@ document.addEventListener("click", (e) => {
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1320,7 +1336,8 @@ document.addEventListener("click", (e) => {
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
@@ -1369,7 +1386,8 @@ document.addEventListener("click", (e) => {
             ]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1398,7 +1416,8 @@ document.addEventListener("click", (e) => {
             }]
           },
           options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1522,6 +1541,7 @@ document.addEventListener("click", (e) => {
     async function updatePatrimonioChart() {
       ensureCharts();
       if (!chartPatrimonio) return;
+
       try {
         const res = await api("/api/patrimonio?months=6", "GET");
         chartPatrimonio.data.labels = res.labels || [];
@@ -1624,11 +1644,13 @@ document.addEventListener("click", (e) => {
     async function refreshDashboard() {
       const toast = $("toastDash");
       hideToast(toast);
+
       const mes = Number($("dashMes").value);
       const ano = Number($("dashAno").value);
 
       try{
         const res = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, "GET");
+
         $("valReceitas").textContent = moneyBR(res.receitas);
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
@@ -1639,7 +1661,7 @@ document.addEventListener("click", (e) => {
 
         updateChartsTotals(res.receitas, res.gastos, res.saldo);
         await updateDailyChart(mes, ano);
-      }catch(e){
+      } catch(e){
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
@@ -1738,6 +1760,7 @@ document.addEventListener("click", (e) => {
     $("btnSalvarLanc").addEventListener("click", async () => {
       const toast = $("toastLanc");
       hideToast(toast);
+
       try{
         const payload = {
           tipo: $("lanTipo").value,
@@ -1746,11 +1769,14 @@ document.addEventListener("click", (e) => {
           descricao: $("lanDescricao").value.trim(),
           valor: $("lanValor").value.trim(),
         };
+
         await api("/api/lancamentos", "POST", payload);
         showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
+
         $("lanCategoria").value = "";
         $("lanDescricao").value = "";
         $("lanValor").value = "";
+
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
         refreshInsightsDashboard().catch(()=>{});
@@ -1772,8 +1798,13 @@ document.addEventListener("click", (e) => {
     $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
 
     function normalizeValorToMoneyBR(raw) {
-      const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(",", "."));
-      if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const n = Number(String(raw ?? "").trim().replace(/\s/g, "").replace(",", "."));
+      if (!isNaN(n)) {
+        return n.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      }
       return String(raw ?? "");
     }
 
@@ -1825,11 +1856,13 @@ document.addEventListener("click", (e) => {
     async function apagarLancamento(row) {
       const toast = $("toastUltimos");
       hideToast(toast);
+
       if (!confirm("Quer mesmo apagar este lançamento?")) return;
 
       try {
         await api(`/api/lancamentos/${row}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+
         await carregarUltimos();
         await refreshWaLink();
         await refreshDashboard();
@@ -1892,6 +1925,7 @@ document.addEventListener("click", (e) => {
 
         await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
         showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
+
         await carregarUltimos();
         await refreshWaLink();
         await refreshDashboard();
@@ -1899,6 +1933,7 @@ document.addEventListener("click", (e) => {
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
         await refreshHeroSummary();
+
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
         showToast(toast, "err", "Erro ao editar", e.message);
@@ -1921,6 +1956,7 @@ document.addEventListener("click", (e) => {
       try{
         const res = await api("/api/investimentos?limit=50", "GET");
         const items = res.items || [];
+
         if(items.length === 0){
           list.innerHTML = `<div class="muted">Nenhum investimento ainda.</div>`;
           return;
@@ -1931,6 +1967,7 @@ document.addEventListener("click", (e) => {
           const desc = escapeHtml(it.descricao || "");
           const ativo = escapeHtml(it.ativo || "");
           const tipo = escapeHtml((it.tipo || "APORTE").toUpperCase());
+
           return `
             <div class="miniCard">
               <div class="row" style="gap:12px;align-items:flex-start">
@@ -1957,7 +1994,9 @@ document.addEventListener("click", (e) => {
     window.apagarInvestimento = async (id) => {
       const toast = $("toastInv");
       hideToast(toast);
+
       if (!confirm("Quer mesmo apagar este investimento?")) return;
+
       try{
         await api(`/api/investimentos/${id}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Investimento removido.");
@@ -1983,11 +2022,14 @@ document.addEventListener("click", (e) => {
           valor: $("invValor").value.trim(),
           descricao: $("invDescricao").value.trim(),
         };
+
         await api("/api/investimentos", "POST", payload);
         showToast(toast, "ok", "Salvo!", "Investimento registrado.");
+
         $("invAtivo").value = "";
         $("invValor").value = "";
         $("invDescricao").value = "";
+
         await carregarInvestimentos();
         await refreshIA();
         await refreshInsightsDashboard();
@@ -2017,7 +2059,8 @@ document.addEventListener("click", (e) => {
       if(fabMain) fabMain.setAttribute("aria-expanded","false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden","true");
-      const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
+      const ico = $("fabMainIco");
+      if(ico) ico.textContent = "☰";
     }
 
     function fabToggle(){
@@ -2027,7 +2070,8 @@ document.addEventListener("click", (e) => {
       if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
-      const ico = $("fabMainIco"); if(ico) ico.textContent = open ? "✕" : "☰";
+      const ico = $("fabMainIco");
+      if(ico) ico.textContent = open ? "✕" : "☰";
     }
 
     if(fabMain) fabMain.addEventListener("click", fabToggle);
