@@ -45,6 +45,10 @@
     }
 
     .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 90px}
+    .hidden{display:none !important}
+    .muted{color:var(--muted)}
+    .spacer{flex:1}
+    .divider{height:1px;background:var(--border);margin:14px 0}
 
     .topbar{
       display:flex;
@@ -67,9 +71,11 @@
       transition:.15s transform,.2s background;
       display:inline-flex;
       align-items:center;
+      justify-content:center;
       gap:8px;
       user-select:none;
       text-decoration:none;
+      min-height:42px;
     }
     .btn:hover{transform:translateY(-1px)}
     .btn.primary{
@@ -80,17 +86,11 @@
       border-color:rgba(255,75,110,.45);
       background:linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
-    .btn.small{padding:8px 12px;font-size:13px}
+    .btn.small{padding:8px 12px;font-size:13px;min-height:36px}
 
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .spacer{flex:1}
-    .muted{color:var(--muted)}
-    .hidden{display:none !important}
-    .divider{height:1px;background:var(--border);margin:14px 0}
-
     .grid{display:grid;gap:14px}
     @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
-    @media(min-width:980px){.grid.cols3{grid-template-columns:1fr 1fr 1fr}}
 
     .card{
       border:1px solid var(--border);
@@ -131,7 +131,7 @@
       border-radius:16px;
       border:1px solid var(--border);
       background:rgba(0,0,0,.25);
-      display:none
+      display:none;
     }
     .toast.show{display:block}
     .toast.ok{border-color:rgba(46,229,157,.35)}
@@ -169,15 +169,21 @@
     .tabs{
       display:flex;
       gap:10px;
-      flex-wrap:wrap;
+      flex-wrap:nowrap;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
       padding:8px;
       border-radius:999px;
       border:1px solid var(--border);
       background:rgba(255,255,255,.04);
       margin:16px 0 18px;
-      width:fit-content;
+      width:100%;
     }
+    .tabs::-webkit-scrollbar{display:none}
     .tab{
+      flex:1 1 0;
+      min-width:110px;
+      text-align:center;
       padding:10px 14px;
       border-radius:999px;
       cursor:pointer;
@@ -186,6 +192,7 @@
       user-select:none;
       font-weight:700;
       font-size:14px;
+      white-space:nowrap;
     }
     .tab.active{
       color:var(--text);
@@ -244,12 +251,14 @@
       align-items:flex-end;
       justify-content:center;
       padding:16px;
-      z-index:50
+      z-index:50;
     }
     .overlay.show{display:flex}
 
     .modal{
-      width:min(560px, 100%);
+      width:min(620px, 100%);
+      max-height:92vh;
+      overflow:auto;
       border-radius:26px;
       border:1px solid var(--border);
       background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
@@ -267,7 +276,7 @@
       background:rgba(255,255,255,.05);
       cursor:pointer;
       color:var(--text);
-      font-size:18px
+      font-size:18px;
     }
 
     .segTabs{
@@ -277,7 +286,7 @@
       padding:6px;
       border-radius:999px;
       border:1px solid var(--border);
-      background:rgba(255,255,255,.04)
+      background:rgba(255,255,255,.04);
     }
     .seg{
       flex:1;
@@ -287,18 +296,17 @@
       cursor:pointer;
       color:var(--muted);
       font-weight:800;
-      user-select:none
+      user-select:none;
     }
     .seg.active{
       color:var(--text);
       background:linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
-      border:1px solid rgba(75,140,255,.35)
+      border:1px solid rgba(75,140,255,.35);
     }
 
     .hint{font-size:12px;color:var(--muted);margin-top:8px}
 
     .accountMenuWrap{position:relative}
-
     .iconBtn{
       width:46px;
       height:46px;
@@ -316,7 +324,7 @@
       position:absolute;
       top:56px;
       right:0;
-      min-width:220px;
+      min-width:250px;
       padding:10px;
       border-radius:18px;
       border:1px solid var(--border);
@@ -325,13 +333,16 @@
       display:none;
       z-index:30;
     }
-
     .accountDropdown.show{display:block}
-
     .accountEmail{
       font-size:13px;
       color:var(--muted);
       word-break:break-word;
+      margin-bottom:6px;
+    }
+    .accountName{
+      font-weight:800;
+      font-size:15px;
       margin-bottom:10px;
     }
 
@@ -415,10 +426,14 @@
 
       <div class="accountMenuWrap">
         <button id="btnAccount" class="iconBtn" aria-label="Conta">☰</button>
+
         <div id="accountDropdown" class="accountDropdown">
+          <div id="accountName" class="accountName">Conta</div>
           <div id="accountEmail" class="accountEmail">Não conectado</div>
+
           <div class="row">
             <button id="btnLogin" class="btn primary" style="flex:1">Entrar</button>
+            <button id="btnEditConta" class="btn hidden" style="flex:1">Conta</button>
             <button id="btnLogout" class="btn danger hidden" style="flex:1">Sair</button>
           </div>
         </div>
@@ -758,6 +773,7 @@
           <div class="seg active" data-seg="entrar">Entrar</div>
           <div class="seg" data-seg="criar">Criar conta</div>
           <div class="seg" data-seg="reset">Resetar senha</div>
+          <div class="seg hidden" id="segContaTab" data-seg="conta">Conta</div>
         </div>
 
         <div id="seg-entrar" style="margin-top:12px">
@@ -840,6 +856,25 @@
 
           <div id="toastAuth3" class="toast"></div>
         </div>
+
+        <div id="seg-conta" class="hidden" style="margin-top:12px">
+          <div class="field">
+            <label>Nome exibido</label>
+            <input id="contaNome" placeholder="Ex: David" />
+          </div>
+
+          <div class="field">
+            <label>E-mail</label>
+            <input id="contaEmail" disabled />
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnSalvarConta" class="btn primary" style="flex:1">Salvar conta</button>
+            <button class="btn" id="btnFecharConta">Fechar</button>
+          </div>
+
+          <div id="toastConta" class="toast"></div>
+        </div>
       </div>
 
       <div id="editBlock" class="hidden" style="margin-top:12px">
@@ -912,31 +947,24 @@
 
     const moneyBR = (n) => {
       const v = Number(n || 0);
-      return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      return v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
     };
 
-    async function api(path, method = "GET", body = null) {
-      const opt = {
-        method,
-        headers: { "Content-Type": "application/json" },
-        credentials: "include"
-      };
+    async function api(path, method="GET", body=null) {
+      const opt = { method, headers: { "Content-Type":"application/json" }, credentials:"include" };
       if (body) opt.body = JSON.stringify(body);
-
       const res = await fetch(path, opt);
       let data = null;
       try { data = await res.json(); } catch(e) {}
-
       if (!res.ok) {
-        const msg = (data && (data.error || data.message))
-          ? (data.error || data.message)
-          : `Erro ${res.status}`;
+        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
         throw new Error(msg);
       }
       return data;
     }
 
     function showToast(el, type, title, desc="") {
+      if (!el) return;
       el.className = "toast show " + (type === "ok" ? "ok" : type === "warn" ? "warn" : "err");
       el.innerHTML = `<div class="t">${title}</div>` + (desc ? `<div class="d">${desc}</div>` : "");
     }
@@ -1005,6 +1033,7 @@
 
     let currentUserEmail = "";
     let currentUserName = "";
+    let currentUserId = null;
     let editingRow = null;
 
     async function refreshWaLink(){
@@ -1013,8 +1042,7 @@
 
       if (!currentUserEmail) {
         a.href = buildWaLinkFallback("");
-        const lbl = $("fabWaLabel");
-        if (lbl) lbl.textContent = "WhatsApp";
+        $("fabWaLabel").textContent = "WhatsApp";
         return;
       }
 
@@ -1026,14 +1054,16 @@
         a.href = buildWaLinkFallback(currentUserEmail);
       }
 
-      const lbl = $("fabWaLabel");
-      if (lbl) lbl.textContent = "WhatsApp (conectar)";
+      $("fabWaLabel").textContent = "WhatsApp (conectar)";
     }
 
-    function setLoggedUI(isLogged, email="") {
+    function setLoggedUI(isLogged, email="", name="") {
       $("btnLogin").classList.toggle("hidden", isLogged);
       $("btnLogout").classList.toggle("hidden", !isLogged);
+      $("btnEditConta").classList.toggle("hidden", !isLogged);
+
       $("accountEmail").textContent = isLogged ? email : "Não conectado";
+      $("accountName").textContent = isLogged ? (name || firstNameFromEmail(email)) : "Conta";
       refreshWaLink();
     }
 
@@ -1042,11 +1072,14 @@
         const me = await api("/api/me", "GET");
         currentUserEmail = (me && me.email) ? String(me.email) : "";
         currentUserName = (me && me.name) ? String(me.name) : "";
-        setLoggedUI(!!currentUserEmail, currentUserEmail);
+        currentUserId = (me && me.user_id) ? me.user_id : null;
+
+        setLoggedUI(!!currentUserEmail, currentUserEmail, currentUserName);
         refreshGreeting(currentUserName || currentUserEmail || "");
       } catch (e) {
         currentUserEmail = "";
         currentUserName = "";
+        currentUserId = null;
         setLoggedUI(false);
         refreshGreeting("");
       }
@@ -1119,46 +1152,54 @@
     function closeModal() {
       overlay.classList.remove("show");
       overlay.setAttribute("aria-hidden", "true");
-      ["toastAuth1","toastAuth2","toastAuth3","toastEdit"].forEach(id => hideToast($(id)));
+      ["toastAuth1","toastAuth2","toastAuth3","toastEdit","toastConta"].forEach(id => hideToast($(id)));
     }
 
     $("closeModal").addEventListener("click", closeModal);
     $("btnFechar1").addEventListener("click", closeModal);
     $("btnFechar2").addEventListener("click", closeModal);
     $("btnFechar3").addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) closeModal();
-    });
+    $("btnFecharConta").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
     function setSeg(seg) {
       segs.forEach(s => s.classList.toggle("active", s.dataset.seg === seg));
       $("seg-entrar").classList.toggle("hidden", seg !== "entrar");
       $("seg-criar").classList.toggle("hidden", seg !== "criar");
       $("seg-reset").classList.toggle("hidden", seg !== "reset");
+      $("seg-conta").classList.toggle("hidden", seg !== "conta");
 
-      $("modalIcon").textContent = "🔒";
-      $("modalTitle").textContent = seg === "entrar" ? "Login" : (seg === "criar" ? "Criar conta" : "Resetar senha");
-      $("modalSub").textContent = seg === "entrar"
-        ? "Entre com seu e-mail e senha."
-        : (seg === "criar"
-            ? "Crie sua conta para acessar seus lançamentos."
-            : "Defina uma nova senha para sua conta.");
+      $("modalIcon").textContent = seg === "conta" ? "👤" : "🔒";
+      $("modalTitle").textContent =
+        seg === "entrar" ? "Login" :
+        seg === "criar" ? "Criar conta" :
+        seg === "reset" ? "Resetar senha" :
+        "Minha conta";
+
+      $("modalSub").textContent =
+        seg === "entrar" ? "Entre com seu e-mail e senha." :
+        seg === "criar" ? "Crie sua conta para acessar seus lançamentos." :
+        seg === "reset" ? "Defina uma nova senha para sua conta." :
+        "Edite o nome que aparece na saudação.";
 
       $("authBlock").classList.remove("hidden");
       $("editBlock").classList.add("hidden");
       openModal();
     }
 
-    function openAuthModal(seg="entrar") {
-      setSeg(seg);
-    }
-
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
+    function openAuthModal(seg="entrar") { setSeg(seg); }
+
+    function openContaModal() {
+      $("segContaTab").classList.remove("hidden");
+      $("contaNome").value = currentUserName || "";
+      $("contaEmail").value = currentUserEmail || "";
+      setSeg("conta");
+    }
 
     $("btnEntrar").addEventListener("click", async () => {
       const t = $("toastAuth1");
       hideToast(t);
-
       try {
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
@@ -1166,11 +1207,9 @@
 
         currentUserEmail = (res && res.email) ? res.email : email;
         currentUserName = (res && res.name) ? res.name : "";
+        await syncSession();
 
-        setLoggedUI(true, currentUserEmail);
-        refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Login realizado", "Você já pode usar o app.");
-
         setTimeout(async () => {
           closeModal();
           await refreshDashboard().catch(()=>{});
@@ -1178,9 +1217,9 @@
           await refreshInsightsDashboard().catch(()=>{});
           await atualizarScoreFinanceiro().catch(()=>{});
           await carregarUltimos().catch(()=>{});
+          await carregarInvestimentos().catch(()=>{});
           await refreshHeroSummary().catch(()=>{});
         }, 600);
-
       } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
       }
@@ -1189,7 +1228,6 @@
     $("btnCriarConta").addEventListener("click", async () => {
       const t = $("toastAuth2");
       hideToast(t);
-
       try {
         const nome_apelido = $("regApelido").value.trim();
         const nome_completo = $("regNomeCompleto").value.trim();
@@ -1209,11 +1247,9 @@
 
         currentUserEmail = (res && res.email) ? res.email : email;
         currentUserName = (res && res.name) ? res.name : "";
+        await syncSession();
 
-        setLoggedUI(true, currentUserEmail);
-        refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
-
         setTimeout(async () => {
           closeModal();
           await refreshDashboard().catch(()=>{});
@@ -1221,9 +1257,9 @@
           await refreshInsightsDashboard().catch(()=>{});
           await atualizarScoreFinanceiro().catch(()=>{});
           await carregarUltimos().catch(()=>{});
+          await carregarInvestimentos().catch(()=>{});
           await refreshHeroSummary().catch(()=>{});
         }, 600);
-
       } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
       }
@@ -1232,12 +1268,10 @@
     $("btnResetar").addEventListener("click", async () => {
       const t = $("toastAuth3");
       hideToast(t);
-
       try {
         const email = $("rstEmail").value.trim().toLowerCase();
         const nova_senha = $("rstSenha").value;
         const confirmar = $("rstConf").value;
-
         await api("/api/reset_password", "POST", { email, nova_senha, confirmar });
         showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
       } catch (e) {
@@ -1245,16 +1279,35 @@
       }
     });
 
+    $("btnSalvarConta").addEventListener("click", async () => {
+      const t = $("toastConta");
+      hideToast(t);
+
+      try {
+        const nome = $("contaNome").value.trim();
+        if (!nome) throw new Error("Informe um nome para exibição.");
+
+        const res = await api("/api/profile", "PUT", { name: nome });
+
+        currentUserName = (res && res.name) ? res.name : nome;
+        await syncSession();
+        refreshGreeting(currentUserName || currentUserEmail || "");
+        await refreshHeroSummary().catch(()=>{});
+
+        showToast(t, "ok", "Conta atualizada", "Seu nome de exibição foi salvo.");
+      } catch (e) {
+        showToast(t, "err", "Erro ao salvar conta", e.message);
+      }
+    });
+
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
-
       currentUserEmail = "";
       currentUserName = "";
-
+      currentUserId = null;
       setLoggedUI(false);
       refreshGreeting("");
       $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro.";
-
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
@@ -1267,7 +1320,7 @@
     const btnAccount = $("btnAccount");
     const accountDropdown = $("accountDropdown");
 
-    function toggleAccountMenu(force = null){
+    function toggleAccountMenu(force=null){
       const open = force === null ? !accountDropdown.classList.contains("show") : !!force;
       accountDropdown.classList.toggle("show", open);
     }
@@ -1280,6 +1333,11 @@
     $("btnLogin").addEventListener("click", () => {
       toggleAccountMenu(false);
       openAuthModal("entrar");
+    });
+
+    $("btnEditConta").addEventListener("click", () => {
+      toggleAccountMenu(false);
+      openContaModal();
     });
 
     document.addEventListener("click", (e) => {
@@ -1311,8 +1369,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1336,8 +1393,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
@@ -1386,8 +1442,7 @@
             ]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1416,8 +1471,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1541,7 +1595,6 @@
     async function updatePatrimonioChart() {
       ensureCharts();
       if (!chartPatrimonio) return;
-
       try {
         const res = await api("/api/patrimonio?months=6", "GET");
         chartPatrimonio.data.labels = res.labels || [];
@@ -1638,19 +1691,17 @@
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
       $("lanData").value = isoToBR(now.toISOString().slice(0,10));
-      if ($("invData")) $("invData").value = isoToBR(now.toISOString().slice(0,10));
+      $("invData").value = isoToBR(now.toISOString().slice(0,10));
     }
 
     async function refreshDashboard() {
       const toast = $("toastDash");
       hideToast(toast);
-
       const mes = Number($("dashMes").value);
       const ano = Number($("dashAno").value);
 
       try{
         const res = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, "GET");
-
         $("valReceitas").textContent = moneyBR(res.receitas);
         $("valGastos").textContent = moneyBR(res.gastos);
         $("valSaldo").textContent = moneyBR(res.saldo);
@@ -1661,7 +1712,7 @@
 
         updateChartsTotals(res.receitas, res.gastos, res.saldo);
         await updateDailyChart(mes, ano);
-      } catch(e){
+      }catch(e){
         $("valReceitas").textContent = "R$ 0,00";
         $("valGastos").textContent = "R$ 0,00";
         $("valSaldo").textContent = "R$ 0,00";
@@ -1760,7 +1811,6 @@
     $("btnSalvarLanc").addEventListener("click", async () => {
       const toast = $("toastLanc");
       hideToast(toast);
-
       try{
         const payload = {
           tipo: $("lanTipo").value,
@@ -1769,14 +1819,11 @@
           descricao: $("lanDescricao").value.trim(),
           valor: $("lanValor").value.trim(),
         };
-
         await api("/api/lancamentos", "POST", payload);
         showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
-
         $("lanCategoria").value = "";
         $("lanDescricao").value = "";
         $("lanValor").value = "";
-
         refreshDashboard().catch(()=>{});
         refreshIA().catch(()=>{});
         refreshInsightsDashboard().catch(()=>{});
@@ -1798,13 +1845,8 @@
     $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
 
     function normalizeValorToMoneyBR(raw) {
-      const n = Number(String(raw ?? "").trim().replace(/\s/g, "").replace(",", "."));
-      if (!isNaN(n)) {
-        return n.toLocaleString("pt-BR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        });
-      }
+      const n = Number(String(raw ?? "").trim().replace(/\s/g,"").replace(",", "."));
+      if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       return String(raw ?? "");
     }
 
@@ -1856,13 +1898,11 @@
     async function apagarLancamento(row) {
       const toast = $("toastUltimos");
       hideToast(toast);
-
       if (!confirm("Quer mesmo apagar este lançamento?")) return;
 
       try {
         await api(`/api/lancamentos/${row}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Lançamento removido.");
-
         await carregarUltimos();
         await refreshWaLink();
         await refreshDashboard();
@@ -1925,7 +1965,6 @@
 
         await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
         showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
-
         await carregarUltimos();
         await refreshWaLink();
         await refreshDashboard();
@@ -1933,7 +1972,6 @@
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
         await refreshHeroSummary();
-
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
         showToast(toast, "err", "Erro ao editar", e.message);
@@ -1956,7 +1994,6 @@
       try{
         const res = await api("/api/investimentos?limit=50", "GET");
         const items = res.items || [];
-
         if(items.length === 0){
           list.innerHTML = `<div class="muted">Nenhum investimento ainda.</div>`;
           return;
@@ -1967,7 +2004,6 @@
           const desc = escapeHtml(it.descricao || "");
           const ativo = escapeHtml(it.ativo || "");
           const tipo = escapeHtml((it.tipo || "APORTE").toUpperCase());
-
           return `
             <div class="miniCard">
               <div class="row" style="gap:12px;align-items:flex-start">
@@ -1994,9 +2030,7 @@
     window.apagarInvestimento = async (id) => {
       const toast = $("toastInv");
       hideToast(toast);
-
       if (!confirm("Quer mesmo apagar este investimento?")) return;
-
       try{
         await api(`/api/investimentos/${id}`, "DELETE");
         showToast(toast, "ok", "Apagado!", "Investimento removido.");
@@ -2022,14 +2056,11 @@
           valor: $("invValor").value.trim(),
           descricao: $("invDescricao").value.trim(),
         };
-
         await api("/api/investimentos", "POST", payload);
         showToast(toast, "ok", "Salvo!", "Investimento registrado.");
-
         $("invAtivo").value = "";
         $("invValor").value = "";
         $("invDescricao").value = "";
-
         await carregarInvestimentos();
         await refreshIA();
         await refreshInsightsDashboard();
@@ -2056,28 +2087,24 @@
     function fabClose(){
       if(!fabWrap) return;
       fabWrap.classList.remove("open");
-      if(fabMain) fabMain.setAttribute("aria-expanded","false");
-      const actions = fabWrap.querySelector(".fab-actions");
-      if(actions) actions.setAttribute("aria-hidden","true");
-      const ico = $("fabMainIco");
-      if(ico) ico.textContent = "☰";
+      fabMain.setAttribute("aria-expanded","false");
+      fabWrap.querySelector(".fab-actions").setAttribute("aria-hidden","true");
+      $("fabMainIco").textContent = "☰";
     }
 
     function fabToggle(){
       if(!fabWrap) return;
       const open = !fabWrap.classList.contains("open");
       fabWrap.classList.toggle("open", open);
-      if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
-      const actions = fabWrap.querySelector(".fab-actions");
-      if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
-      const ico = $("fabMainIco");
-      if(ico) ico.textContent = open ? "✕" : "☰";
+      fabMain.setAttribute("aria-expanded", open ? "true" : "false");
+      fabWrap.querySelector(".fab-actions").setAttribute("aria-hidden", open ? "false" : "true");
+      $("fabMainIco").textContent = open ? "✕" : "☰";
     }
 
-    if(fabMain) fabMain.addEventListener("click", fabToggle);
-    if(fabBackdrop) fabBackdrop.addEventListener("click", fabClose);
-    if(fabNovo) fabNovo.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("lancar"); });
-    if(fabDash) fabDash.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("dashboard"); });
+    fabMain.addEventListener("click", fabToggle);
+    fabBackdrop.addEventListener("click", fabClose);
+    fabNovo.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("lancar"); });
+    fabDash.addEventListener("click", (e)=>{ e.preventDefault(); fabClose(); setTab("dashboard"); });
     tabEls.forEach(t => t.addEventListener("click", fabClose));
 
     initMesAno();
