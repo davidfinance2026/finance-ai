@@ -26,7 +26,7 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
 app.config["JSON_AS_ASCII"] = False
 
-# Cookies de sessão (Railway/HTTPS)
+# Cookies de sessão
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_SECURE", "1") == "1"
@@ -49,19 +49,19 @@ DB_ENABLED = bool(_raw_db_url)
 # Senha mínima
 MIN_PASSWORD_LEN = int(os.getenv("MIN_PASSWORD_LEN", "6"))
 
-# WhatsApp Cloud API (Meta)
+# WhatsApp Cloud API
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "").strip()
 WA_ACCESS_TOKEN = os.getenv("WA_ACCESS_TOKEN", "").strip()
 WA_PHONE_NUMBER_ID = os.getenv("WA_PHONE_NUMBER_ID", "").strip()
 GRAPH_VERSION = os.getenv("GRAPH_VERSION", "v20.0").strip()
 
-# Botão de pânico (token opcional)
+# Botão de pânico
 PANIC_TOKEN = os.getenv("PANIC_TOKEN", "").strip()
 
 # WhatsApp público
 WA_PUBLIC_NUMBER = os.getenv("WA_PUBLIC_NUMBER", "5537998675231").strip()
 
-# OpenAI (áudio / imagem / PDF)
+# OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini").strip()
 OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", OPENAI_CHAT_MODEL).strip()
@@ -181,7 +181,7 @@ def _create_tables_if_needed():
 
 
 def _bootstrap_schema():
-    """Migração leve/idempotente (sem Alembic)."""
+    """Migração leve/idempotente."""
     try:
         insp = inspect(db.engine)
         dialect = db.engine.dialect.name
@@ -200,9 +200,7 @@ def _bootstrap_schema():
 
         def add_col(t: str, col_name: str, col_ddl: str):
             if dialect == "postgresql":
-                db.session.execute(text(
-                    f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {col_name} {col_ddl}"
-                ))
+                db.session.execute(text(f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {col_name} {col_ddl}"))
                 db.session.commit()
                 return
 
@@ -229,46 +227,25 @@ def _bootstrap_schema():
             add_col("recurring_rules", "categoria", "VARCHAR(80)")
             add_col("recurring_rules", "descricao", "TEXT")
 
-            if dialect == "postgresql":
-                if has_col("recurring_rules", "next_date"):
-                    try:
-                        db.session.execute(text("""
-                            ALTER TABLE recurring_rules
-                            ALTER COLUMN next_date DROP NOT NULL
-                        """))
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
+            try:
+                db.session.execute(text("""
+                    UPDATE recurring_rules
+                    SET start_date = COALESCE(start_date, CURRENT_DATE)
+                    WHERE start_date IS NULL
+                """))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
-                    try:
-                        db.session.execute(text("""
-                            UPDATE recurring_rules
-                            SET next_run = COALESCE(next_run, next_date)
-                            WHERE next_run IS NULL AND next_date IS NOT NULL
-                        """))
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-
-                try:
-                    db.session.execute(text("""
-                        UPDATE recurring_rules
-                        SET start_date = COALESCE(start_date, CURRENT_DATE)
-                        WHERE start_date IS NULL
-                    """))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-
-                try:
-                    db.session.execute(text("""
-                        UPDATE recurring_rules
-                        SET next_run = COALESCE(next_run, CURRENT_DATE)
-                        WHERE next_run IS NULL
-                    """))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
+            try:
+                db.session.execute(text("""
+                    UPDATE recurring_rules
+                    SET next_run = COALESCE(next_run, CURRENT_DATE)
+                    WHERE next_run IS NULL
+                """))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
     except Exception as e:
         print("DB bootstrap_schema failed:", repr(e))
@@ -308,6 +285,7 @@ def _require_login():
 def _parse_brl_value(v) -> Decimal:
     if v is None:
         raise ValueError("valor vazio")
+
     s = str(v).strip()
     if not s:
         raise ValueError("valor vazio")
@@ -329,6 +307,7 @@ def _parse_brl_value(v) -> Decimal:
 def _parse_date_any(v) -> date:
     if not v:
         return datetime.utcnow().date()
+
     s = str(v).strip()
     try:
         if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
@@ -339,6 +318,7 @@ def _parse_date_any(v) -> date:
             return datetime.strptime(s, "%d-%m-%Y").date()
     except Exception:
         pass
+
     return datetime.utcnow().date()
 
 
@@ -449,8 +429,11 @@ def _download_whatsapp_media(media_id: str, fallback_name: str = "arquivo"):
     dl_url = meta.get("url")
     mime_type = meta.get("mime_type") or "application/octet-stream"
     ext_map = {
-        "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a",
-        "image/jpeg": ".jpg", "image/png": ".png",
+        "audio/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
         "application/pdf": ".pdf",
     }
     ext = ext_map.get(mime_type, "")
@@ -498,13 +481,16 @@ def _extract_json_from_text(raw: str) -> dict:
     raw = (raw or "").strip()
     if not raw:
         return {}
+
     try:
         return json.loads(raw)
     except Exception:
         pass
+
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if not m:
         return {}
+
     try:
         return json.loads(m.group(0))
     except Exception:
@@ -514,6 +500,7 @@ def _extract_json_from_text(raw: str) -> dict:
 def _normalize_ai_result(obj: dict) -> dict | None:
     if not obj:
         return None
+
     try:
         valor = _parse_brl_value(obj.get("valor"))
     except Exception:
@@ -549,7 +536,8 @@ def _call_openai_finance_json(user_prompt: str, image_base64: str | None = None,
         "Retorne SOMENTE JSON válido com as chaves: tipo, valor, categoria, descricao, data, confidence, justificativa. "
         "tipo deve ser RECEITA ou GASTO. valor numérico em formato brasileiro ou ponto decimal. "
         "confidence deve ser high, medium ou low. "
-        "Se houver pix enviado/pagamento/compra, normalmente é GASTO. Se houver pix recebido/recebi/depósito recebido, normalmente é RECEITA."
+        "Se houver pix enviado/pagamento/compra, normalmente é GASTO. "
+        "Se houver pix recebido/recebi/depósito recebido, normalmente é RECEITA."
     )
 
     content = [{"type": "text", "text": user_prompt}]
@@ -579,6 +567,7 @@ def _analyze_text_transaction(text_value: str, source_name: str = "texto") -> di
     txt = (text_value or "").strip()
     if not txt:
         return None
+
     prompt = (
         f"Analise o conteúdo abaixo vindo de {source_name} e extraia um lançamento financeiro.\n\n"
         f"Conteúdo:\n{txt}"
@@ -589,6 +578,7 @@ def _analyze_text_transaction(text_value: str, source_name: str = "texto") -> di
 def _analyze_image_transaction(file_path: str, mime_type: str) -> dict | None:
     with open(file_path, "rb") as f:
         img64 = base64.b64encode(f.read()).decode("utf-8")
+
     prompt = (
         "Analise esta imagem de comprovante, recibo, nota ou print bancário. "
         "Extraia um único lançamento financeiro mais provável."
@@ -611,133 +601,6 @@ def _save_ai_transaction(user_id: int, tx_data: dict, origem: str = "WA") -> Tra
     return tx
 
 
-def _pending_confirmation_choice(text_msg: str) -> str | None:
-    norm = _norm_word(text_msg)
-    if norm in ("1", "sim", "s", "confirmar", "ok"):
-        return "confirm"
-    if norm in ("2", "nao", "não", "n", "cancelar", "cancela"):
-        return "cancel"
-    return None
-
-
-def _handle_pending_ai_confirmation(wa_from: str, user_id: int, text_msg: str) -> bool:
-    choice = _pending_confirmation_choice(text_msg)
-    if not choice:
-        return False
-    pending = _pending_get(wa_from)
-    if not pending or pending.user_id != user_id or pending.kind != "CONFIRM_AI_TX":
-        return False
-
-    if choice == "cancel":
-        _pending_clear(wa_from, user_id)
-        wa_send_text(wa_from, "❌ Lançamento cancelado. Pode enviar outro comprovante, PDF, foto ou áudio.")
-        return True
-
-    payload = json.loads(pending.payload_json or "{}")
-    tx_data = payload.get("tx") or {}
-    tx = _save_ai_transaction(user_id, tx_data, origem="WA")
-    _pending_clear(wa_from, user_id)
-    wa_send_text(wa_from,
-        "✅ Lançamento salvo!\n"
-        f"ID: {tx.id}\n"
-        f"Tipo: {tx.tipo}\n"
-        f"Valor: R$ {_fmt_brl(tx.valor)}\n"
-        f"Categoria: {tx.categoria}\n"
-        f"Data: {tx.data.isoformat()}"
-    )
-    return True
-
-
-def _send_ai_confirmation_request(wa_from: str, user_id: int, tx_data: dict, source_label: str):
-    _pending_set(wa_from, user_id, "CONFIRM_AI_TX", {"tx": tx_data, "source": source_label}, minutes=15)
-    wa_send_text(wa_from,
-        "🤖 Identifiquei este lançamento, mas quero sua confirmação:\n\n"
-        f"Tipo: {tx_data['tipo']}\n"
-        f"Valor: R$ {_fmt_brl(tx_data['valor'])}\n"
-        f"Categoria: {tx_data['categoria']}\n"
-        f"Descrição: {tx_data.get('descricao') or '-'}\n"
-        f"Data: {tx_data['data']}\n\n"
-        "Responda com:\n"
-        "1 = confirmar\n"
-        "2 = cancelar"
-    )
-
-
-def _handle_whatsapp_media_message(link: WaLink, wa_from: str, msg: dict) -> bool:
-    msg_type = msg.get("type")
-    if msg_type not in ("audio", "image", "document"):
-        return False
-
-    if not _openai_available():
-        wa_send_text(wa_from, "⚠️ O reconhecimento por IA ainda não está ativo no servidor. Configure OPENAI_API_KEY no Railway.")
-        return True
-
-    media_obj = (msg.get(msg_type) or {})
-    media_id = media_obj.get("id")
-    tmp_path = None
-
-    try:
-        tmp_path, mime_type, _ = _download_whatsapp_media(media_id, msg_type)
-
-        tx_data = None
-        source_label = msg_type
-
-        if msg_type == "audio":
-            transcript = _transcribe_audio_file(tmp_path)
-            if not transcript:
-                wa_send_text(wa_from, "Não consegui transcrever esse áudio. Tente novamente com um áudio mais curto e claro.")
-                return True
-            tx_data = _analyze_text_transaction(transcript, "áudio transcrito")
-            source_label = f"áudio: {transcript}"
-
-        elif msg_type == "image":
-            tx_data = _analyze_image_transaction(tmp_path, mime_type)
-            source_label = "imagem/comprovante"
-
-        elif msg_type == "document":
-            if mime_type == "application/pdf":
-                pdf_text = _extract_pdf_text(tmp_path)
-                if pdf_text:
-                    tx_data = _analyze_text_transaction(pdf_text, "PDF de comprovante")
-                else:
-                    wa_send_text(wa_from, "Li o PDF, mas não consegui extrair texto suficiente para lançar. Tente enviar print ou foto do comprovante.")
-                    return True
-                source_label = "PDF"
-            else:
-                wa_send_text(wa_from, "Por enquanto consigo interpretar PDF, imagem e áudio. Esse documento ainda não é suportado.")
-                return True
-
-        if not tx_data:
-            wa_send_text(wa_from, "Não consegui identificar um lançamento confiável nesse arquivo. Pode enviar outro comprovante ou escrever em texto.")
-            return True
-
-        if tx_data.get("confidence") == "high":
-            tx = _save_ai_transaction(link.user_id, tx_data, origem="WA")
-            wa_send_text(wa_from,
-                "✅ Lançamento salvo pela IA!\n"
-                f"ID: {tx.id}\n"
-                f"Tipo: {tx.tipo}\n"
-                f"Valor: R$ {_fmt_brl(tx.valor)}\n"
-                f"Categoria: {tx.categoria}\n"
-                f"Data: {tx.data.isoformat()}"
-            )
-        else:
-            _send_ai_confirmation_request(wa_from, link.user_id, tx_data, source_label)
-
-        return True
-
-    except Exception as e:
-        print("WA media handle error:", repr(e))
-        wa_send_text(wa_from, "Não consegui processar essa mídia agora. Tente novamente em alguns instantes.")
-        return True
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
-
-
 def _fmt_brl(v: Decimal | float | int | None) -> str:
     try:
         d = Decimal(v or 0)
@@ -753,14 +616,73 @@ def _month_bounds(year: int, month: int):
     return start, end
 
 
+def _norm_word(w: str) -> str:
+    w = (w or "").strip().lower()
+    w = (
+        w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
+         .replace("é", "e").replace("ê", "e")
+         .replace("í", "i")
+         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+         .replace("ú", "u")
+         .replace("ç", "c")
+    )
+    return w
+
+
+def _tokenize(textv: str) -> list[str]:
+    textv = _norm_word(textv)
+    parts = re.split(r"[^a-z0-9]+", textv)
+    return [p for p in parts if p]
+
+
+def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
+    tokens = set(_tokenize(full_text))
+
+    try:
+        rules = (
+            CategoryRule.query
+            .filter(CategoryRule.user_id == user_id)
+            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
+            .all()
+        )
+        for r in rules:
+            key = _norm_word(r.pattern)
+            if not key:
+                continue
+            if key in tokens or any(key in t for t in tokens):
+                return (r.categoria or "").strip().title() or None
+    except Exception:
+        pass
+
+    default_category_keywords = [
+        ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
+        ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
+        ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
+        ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
+        ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
+        ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
+        ("Impostos", {"imposto", "taxa", "multa"}),
+        ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
+    ]
+
+    for cat, keys in default_category_keywords:
+        nkeys = {_norm_word(k) for k in keys}
+        if tokens & nkeys:
+            return cat
+
+    return None
+
+
 def _period_range(kind: str):
     today = datetime.utcnow().date()
     k = _norm_word(kind)
+
     if k in ("hoje", "dia"):
         start = today
         end = today + timedelta(days=1)
         label = "hoje"
         return start, end, label
+
     if k == "semana":
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=7)
@@ -768,10 +690,7 @@ def _period_range(kind: str):
         return start, end, label
 
     start = date(today.year, today.month, 1)
-    if today.month == 12:
-        end = date(today.year + 1, 1, 1)
-    else:
-        end = date(today.year, today.month + 1, 1)
+    end = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
     label = "este mês"
     return start, end, label
 
@@ -784,6 +703,7 @@ def _sum_period(user_id: int, start: date, end: date):
         .filter(Transaction.data < end)
         .all()
     )
+
     receitas = Decimal("0")
     gastos = Decimal("0")
     for t in q:
@@ -792,6 +712,7 @@ def _sum_period(user_id: int, start: date, end: date):
             receitas += v
         else:
             gastos += v
+
     return receitas, gastos, (receitas - gastos), q
 
 
@@ -827,7 +748,7 @@ def _calc_projection(user_id: int, ref_date: date | None = None):
 
     recurring_rules = (
         RecurringRule.query
-        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)
+        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active.is_(True))
         .all()
     )
 
@@ -986,61 +907,525 @@ def _calc_patrimonio_series(user_id: int, months: int = 6):
     return labels, values
 
 
-def _norm_word(w: str) -> str:
-    w = (w or "").strip().lower()
-    w = (
-        w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
-         .replace("é", "e").replace("ê", "e")
-         .replace("í", "i")
-         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
-         .replace("ú", "u")
-         .replace("ç", "c")
+def _sum_investments_position(user_id: int):
+    invs = Investment.query.filter_by(user_id=user_id).all()
+    aportes = Decimal("0")
+    resgates = Decimal("0")
+    for it in invs:
+        v = Decimal(it.valor or 0)
+        if (it.tipo or "").upper() == "APORTE":
+            aportes += v
+        else:
+            resgates += v
+    patrimonio_investido = aportes - resgates
+    return aportes, resgates, patrimonio_investido, invs
+
+
+def _build_ai_finance_context(user_id: int) -> str:
+    today = datetime.utcnow().date()
+    month_start, month_end = _month_bounds(today.year, today.month)
+    receitas_mes, gastos_mes, saldo_mes, rows_mes = _sum_period(user_id, month_start, month_end)
+    proj = _calc_projection(user_id, today)
+    alerts = _calc_alerts(user_id, today)
+    aportes, resgates, patrimonio_investido, invs = _sum_investments_position(user_id)
+
+    top_cats = {}
+    for t in rows_mes:
+        if (t.tipo or "").upper() != "GASTO":
+            continue
+        v = Decimal(t.valor or 0)
+        top_cats[t.categoria] = top_cats.get(t.categoria, Decimal("0")) + v
+    top_lines = []
+    for cat, val in sorted(top_cats.items(), key=lambda kv: kv[1], reverse=True)[:5]:
+        top_lines.append(f"- {cat}: R$ {_fmt_brl(val)}")
+
+    last_txs = (
+        Transaction.query
+        .filter(Transaction.user_id == user_id)
+        .order_by(Transaction.data.desc(), Transaction.id.desc())
+        .limit(8)
+        .all()
     )
-    return w
+    tx_lines = []
+    for t in last_txs:
+        tx_lines.append(f"- {t.data.isoformat()} | {t.tipo} | {t.categoria} | R$ {_fmt_brl(t.valor)} | {t.descricao or '-'}")
+
+    last_invs = (
+        Investment.query
+        .filter(Investment.user_id == user_id)
+        .order_by(Investment.data.desc(), Investment.id.desc())
+        .limit(5)
+        .all()
+    )
+    inv_lines = []
+    for it in last_invs:
+        inv_lines.append(f"- {it.data.isoformat()} | {it.tipo} | {it.ativo} | R$ {_fmt_brl(it.valor)} | {it.descricao or '-'}")
+
+    alert_lines = [f"- {a['titulo']}: {a['mensagem']}" for a in alerts[:5]]
+
+    return (
+        f"Data de referência: {today.isoformat()}\n"
+        f"Resumo do mês atual ({today.month:02d}/{today.year}):\n"
+        f"- Receitas: R$ {_fmt_brl(receitas_mes)}\n"
+        f"- Gastos: R$ {_fmt_brl(gastos_mes)}\n"
+        f"- Saldo: R$ {_fmt_brl(saldo_mes)}\n"
+        f"- Gasto médio por dia: R$ {_fmt_brl(proj['gasto_medio_diario'])}\n"
+        f"- Estimativa restante do mês: R$ {_fmt_brl(proj['estimativa_gastos_restantes'])}\n"
+        f"- Saldo previsto do mês: R$ {_fmt_brl(proj['saldo_previsto'])}\n"
+        f"- Receitas recorrentes futuras: R$ {_fmt_brl(proj['receitas_recorrentes_futuras'])}\n"
+        f"- Gastos recorrentes futuros: R$ {_fmt_brl(proj['gastos_recorrentes_futuros'])}\n"
+        f"- Dias restantes no mês: {proj['dias_restantes']}\n\n"
+        f"Investimentos:\n"
+        f"- Total aportado: R$ {_fmt_brl(aportes)}\n"
+        f"- Total resgatado: R$ {_fmt_brl(resgates)}\n"
+        f"- Patrimônio investido líquido: R$ {_fmt_brl(patrimonio_investido)}\n"
+        f"- Quantidade de lançamentos de investimento: {len(invs)}\n\n"
+        f"Top categorias de gasto no mês:\n" + ("\n".join(top_lines) if top_lines else "- sem dados") + "\n\n"
+        f"Alertas atuais:\n" + ("\n".join(alert_lines) if alert_lines else "- nenhum alerta importante") + "\n\n"
+        f"Últimos lançamentos financeiros:\n" + ("\n".join(tx_lines) if tx_lines else "- sem lançamentos") + "\n\n"
+        f"Últimos investimentos:\n" + ("\n".join(inv_lines) if inv_lines else "- sem investimentos")
+    )
 
 
-def _tokenize(textv: str) -> list[str]:
-    textv = _norm_word(textv)
-    parts = re.split(r"[^a-z0-9]+", textv)
-    return [p for p in parts if p]
+def _looks_like_finance_question(text_msg: str) -> bool:
+    txt = _norm_word(text_msg)
+    if not txt:
+        return False
+    keywords = {
+        "gastei", "gasto", "gastos", "receita", "receitas", "saldo", "sobrou", "faltando",
+        "projecao", "projeção", "alerta", "alertas", "investi", "investido",
+        "investimentos", "patrimonio", "patrimônio", "aporte", "resgate", "mercado",
+        "categoria", "categorias", "dinheiro", "financeiro", "financas", "finanças",
+        "mes", "mês", "semana", "hoje", "quanto", "posso", "tenho"
+    }
+    return any(k in txt for k in keywords)
 
 
-def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
-    tokens = set(_tokenize(full_text))
+def _ask_openai_finance_assistant(user_id: int, question: str) -> str:
+    if not _openai_available():
+        return "⚠️ A IA ainda não está ativa no servidor. Configure OPENAI_API_KEY no Railway."
+
+    context = _build_ai_finance_context(user_id)
+    system = (
+        "Você é o Finance AI, um assistente financeiro pessoal via WhatsApp. "
+        "Responda sempre em português do Brasil, com linguagem clara, objetiva e amigável. "
+        "Use SOMENTE o contexto financeiro fornecido. "
+        "Se a pergunta fugir de finanças pessoais do usuário, diga que você ajuda apenas com dados financeiros do app. "
+        "Não invente valores. Se algo não estiver no contexto, diga explicitamente que não encontrou dados suficientes. "
+        "Quando fizer sentido, cite números exatos do contexto e dê uma dica prática curta no final. "
+        "Mantenha a resposta curta, adequada para WhatsApp, no máximo 12 linhas."
+    )
+    user_prompt = (
+        f"Contexto financeiro do usuário:\n{context}\n\n"
+        f"Pergunta do usuário:\n{question.strip()}"
+    )
+
+    payload = {
+        "model": OPENAI_CHAT_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 350,
+    }
+
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers=_openai_headers(),
+        json=payload,
+        timeout=120,
+    )
+    r.raise_for_status()
+    content = ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    content = str(content).strip()
+    return content or "Não consegui montar uma resposta agora. Tente novamente em instantes."
+
+
+def _reply_finance_question(user_id: int, text_msg: str) -> str:
+    try:
+        return _ask_openai_finance_assistant(user_id, text_msg)
+    except Exception as e:
+        print("finance assistant error:", repr(e))
+        return "Não consegui responder com a IA agora. Tente novamente em alguns instantes."
+
+
+def _pending_confirmation_choice(text_msg: str) -> str | None:
+    norm = _norm_word(text_msg)
+    if norm in ("1", "sim", "s", "confirmar", "ok"):
+        return "confirm"
+    if norm in ("2", "nao", "não", "n", "cancelar", "cancela"):
+        return "cancel"
+    return None
+
+
+def _pending_get(wa_from: str):
+    now = datetime.utcnow()
+    WaPending.query.filter(WaPending.wa_from == wa_from, WaPending.expires_at < now).delete()
+    db.session.commit()
+    return (
+        WaPending.query
+        .filter(WaPending.wa_from == wa_from, WaPending.expires_at >= now)
+        .order_by(WaPending.id.desc())
+        .first()
+    )
+
+
+def _pending_set(wa_from: str, user_id: int, kind: str, payload: dict, minutes: int = 10):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+    p = WaPending(
+        wa_from=wa_from,
+        user_id=user_id,
+        kind=kind,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+        expires_at=datetime.utcnow() + timedelta(minutes=minutes),
+    )
+    db.session.add(p)
+    db.session.commit()
+
+
+def _pending_clear(wa_from: str, user_id: int):
+    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
+    db.session.commit()
+
+
+def _handle_pending_ai_confirmation(wa_from: str, user_id: int, text_msg: str) -> bool:
+    choice = _pending_confirmation_choice(text_msg)
+    if not choice:
+        return False
+    pending = _pending_get(wa_from)
+    if not pending or pending.user_id != user_id or pending.kind != "CONFIRM_AI_TX":
+        return False
+
+    if choice == "cancel":
+        _pending_clear(wa_from, user_id)
+        wa_send_text(wa_from, "❌ Lançamento cancelado. Pode enviar outro comprovante, PDF, foto ou áudio.")
+        return True
+
+    payload = json.loads(pending.payload_json or "{}")
+    tx_data = payload.get("tx") or {}
+    tx = _save_ai_transaction(user_id, tx_data, origem="WA")
+    _pending_clear(wa_from, user_id)
+    wa_send_text(
+        wa_from,
+        "✅ Lançamento salvo!\n"
+        f"ID: {tx.id}\n"
+        f"Tipo: {tx.tipo}\n"
+        f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+        f"Categoria: {tx.categoria}\n"
+        f"Data: {tx.data.isoformat()}"
+    )
+    return True
+
+
+def _send_ai_confirmation_request(wa_from: str, user_id: int, tx_data: dict, source_label: str):
+    _pending_set(wa_from, user_id, "CONFIRM_AI_TX", {"tx": tx_data, "source": source_label}, minutes=15)
+    wa_send_text(
+        wa_from,
+        "🤖 Identifiquei este lançamento, mas quero sua confirmação:\n\n"
+        f"Tipo: {tx_data['tipo']}\n"
+        f"Valor: R$ {_fmt_brl(tx_data['valor'])}\n"
+        f"Categoria: {tx_data['categoria']}\n"
+        f"Descrição: {tx_data.get('descricao') or '-'}\n"
+        f"Data: {tx_data['data']}\n\n"
+        "Responda com:\n"
+        "1 = confirmar\n"
+        "2 = cancelar"
+    )
+
+
+def _handle_whatsapp_media_message(link: WaLink, wa_from: str, msg: dict) -> bool:
+    msg_type = msg.get("type")
+    if msg_type not in ("audio", "image", "document"):
+        return False
+
+    if not _openai_available():
+        wa_send_text(wa_from, "⚠️ O reconhecimento por IA ainda não está ativo no servidor. Configure OPENAI_API_KEY no Railway.")
+        return True
+
+    media_obj = (msg.get(msg_type) or {})
+    media_id = media_obj.get("id")
+    tmp_path = None
 
     try:
-        rules = (
-            CategoryRule.query
-            .filter(CategoryRule.user_id == user_id)
-            .order_by(CategoryRule.priority.desc(), CategoryRule.id.desc())
-            .all()
+        tmp_path, mime_type, _ = _download_whatsapp_media(media_id, msg_type)
+
+        tx_data = None
+        source_label = msg_type
+
+        if msg_type == "audio":
+            transcript = _transcribe_audio_file(tmp_path)
+            if not transcript:
+                wa_send_text(wa_from, "Não consegui transcrever esse áudio. Tente novamente com um áudio mais curto e claro.")
+                return True
+            tx_data = _analyze_text_transaction(transcript, "áudio transcrito")
+            source_label = f"áudio: {transcript}"
+
+        elif msg_type == "image":
+            tx_data = _analyze_image_transaction(tmp_path, mime_type)
+            source_label = "imagem/comprovante"
+
+        elif msg_type == "document":
+            if mime_type == "application/pdf":
+                pdf_text = _extract_pdf_text(tmp_path)
+                if pdf_text:
+                    tx_data = _analyze_text_transaction(pdf_text, "PDF de comprovante")
+                else:
+                    wa_send_text(wa_from, "Li o PDF, mas não consegui extrair texto suficiente para lançar. Tente enviar print ou foto do comprovante.")
+                    return True
+                source_label = "PDF"
+            else:
+                wa_send_text(wa_from, "Por enquanto consigo interpretar PDF, imagem e áudio. Esse documento ainda não é suportado.")
+                return True
+
+        if not tx_data:
+            wa_send_text(wa_from, "Não consegui identificar um lançamento confiável nesse arquivo. Pode enviar outro comprovante ou escrever em texto.")
+            return True
+
+        if tx_data.get("confidence") == "high":
+            tx = _save_ai_transaction(link.user_id, tx_data, origem="WA")
+            wa_send_text(
+                wa_from,
+                "✅ Lançamento salvo pela IA!\n"
+                f"ID: {tx.id}\n"
+                f"Tipo: {tx.tipo}\n"
+                f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+                f"Categoria: {tx.categoria}\n"
+                f"Data: {tx.data.isoformat()}"
+            )
+        else:
+            _send_ai_confirmation_request(wa_from, link.user_id, tx_data, source_label)
+
+        return True
+
+    except Exception as e:
+        print("WA media handle error:", repr(e))
+        wa_send_text(wa_from, "Não consegui processar essa mídia agora. Tente novamente em alguns instantes.")
+        return True
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+
+def _parse_kv_assignments(s: str) -> dict:
+    out = {}
+    pattern = re.compile(r'(\w+)\s*=\s*(".*?"|\'.*?\'|[^\s]+)')
+    for m in pattern.finditer(s or ""):
+        k = m.group(1).strip().lower()
+        v = m.group(2).strip()
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+        out[k] = v
+    return out
+
+
+def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
+    if not fields:
+        return False, "Nenhum campo informado."
+
+    if "tipo" in fields:
+        v = _norm_word(fields["tipo"])
+        if v in ("receita", "gasto"):
+            tx.tipo = "RECEITA" if v == "receita" else "GASTO"
+        else:
+            return False, "Tipo inválido. Use tipo=receita ou tipo=gasto"
+
+    if "valor" in fields:
+        try:
+            tx.valor = _parse_brl_value(fields["valor"])
+        except Exception:
+            return False, "Valor inválido. Ex: valor=35,90"
+
+    if "data" in fields:
+        try:
+            tx.data = _parse_date_any(fields["data"])
+        except Exception:
+            return False, "Data inválida. Ex: data=2026-03-01"
+
+    if "categoria" in fields:
+        cat = str(fields["categoria"] or "").strip()
+        if not cat:
+            return False, "Categoria vazia."
+        tx.categoria = cat.title()
+
+    if "descricao" in fields:
+        desc = str(fields["descricao"] or "").strip()
+        tx.descricao = desc or None
+
+    return True, "OK"
+
+
+def _next_monthly_date(from_date: date, day_of_month: int) -> date:
+    y, m = from_date.year, from_date.month
+    last_day = calendar.monthrange(y, m)[1]
+    d = min(day_of_month, last_day)
+    cand = date(y, m, d)
+    if cand >= from_date:
+        return cand
+
+    if m == 12:
+        y, m = y + 1, 1
+    else:
+        m += 1
+
+    last_day = calendar.monthrange(y, m)[1]
+    d = min(day_of_month, last_day)
+    return date(y, m, d)
+
+
+def _next_weekly_date(from_date: date, weekday: int) -> date:
+    delta = (weekday - from_date.weekday()) % 7
+    cand = from_date + timedelta(days=delta)
+    if cand >= from_date:
+        return cand
+    return cand + timedelta(days=7)
+
+
+def _parse_recorrente_args(rest: str):
+    rest = (rest or "").strip()
+    if not rest:
+        return None
+    return rest.split()
+
+
+def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
+    freq = _norm_word(freq_raw)
+    today = datetime.utcnow().date()
+
+    if freq in ("mensal",):
+        if len(parts) < 3:
+            return None, "Use: recorrente mensal DIA VALOR CATEGORIA [descricao]"
+        try:
+            dom = int(parts[0])
+        except Exception:
+            return None, "Dia inválido. Ex: recorrente mensal 5 1200 aluguel"
+        if dom < 1 or dom > 31:
+            return None, "Dia do mês deve ser 1-31."
+
+        try:
+            valor = _parse_brl_value(parts[1])
+        except Exception:
+            return None, "Valor inválido."
+
+        categoria = parts[2].title()
+        descricao = " ".join(parts[3:]).strip() or None
+        next_run = _next_monthly_date(today, dom)
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="MONTHLY",
+            day_of_month=dom,
+            weekday=None,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=next_run,
         )
-        for r in rules:
-            key = _norm_word(r.pattern)
-            if not key:
-                continue
-            if key in tokens or any(key in t for t in tokens):
-                return (r.categoria or "").strip().title() or None
-    except Exception:
-        pass
+        return rule, None
 
-    default_category_keywords = [
-        ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
-        ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
-        ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
-        ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
-        ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
-        ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
-        ("Impostos", {"imposto", "taxa", "multa"}),
-        ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
-    ]
+    if freq in ("semanal",):
+        if len(parts) < 3:
+            return None, "Use: recorrente semanal SEG VALOR CATEGORIA [descricao]"
+        wd = _norm_word(parts[0])
+        if wd not in WEEKDAY_MAP:
+            return None, "Dia da semana inválido. Use: seg/ter/qua/qui/sex/sab/dom"
 
-    for cat, keys in default_category_keywords:
-        nkeys = {_norm_word(k) for k in keys}
-        if tokens & nkeys:
-            return cat
+        weekday = WEEKDAY_MAP[wd]
+        try:
+            valor = _parse_brl_value(parts[1])
+        except Exception:
+            return None, "Valor inválido."
 
-    return None
+        categoria = parts[2].title()
+        descricao = " ".join(parts[3:]).strip() or None
+        next_run = _next_weekly_date(today, weekday)
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="WEEKLY",
+            day_of_month=None,
+            weekday=weekday,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=next_run,
+        )
+        return rule, None
+
+    if freq in ("diario", "diário"):
+        if len(parts) < 2:
+            return None, "Use: recorrente diário VALOR CATEGORIA [descricao]"
+        try:
+            valor = _parse_brl_value(parts[0])
+        except Exception:
+            return None, "Valor inválido."
+
+        categoria = parts[1].title()
+        descricao = " ".join(parts[2:]).strip() or None
+
+        rule = RecurringRule(
+            user_id=user_id,
+            freq="DAILY",
+            day_of_month=None,
+            weekday=None,
+            tipo="GASTO",
+            valor=valor,
+            categoria=categoria,
+            descricao=descricao,
+            start_date=today,
+            next_run=today,
+        )
+        return rule, None
+
+    return None, "Frequência inválida. Use: diário | semanal | mensal"
+
+
+def _run_recorrentes_for_user(user_id: int, today: date | None = None):
+    today = today or datetime.utcnow().date()
+    created = 0
+
+    rules = (
+        RecurringRule.query
+        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active.is_(True))
+        .order_by(RecurringRule.id.asc())
+        .all()
+    )
+
+    for r in rules:
+        while r.next_run <= today:
+            tx = Transaction(
+                user_id=user_id,
+                tipo=r.tipo,
+                data=r.next_run,
+                categoria=r.categoria,
+                descricao=r.descricao,
+                valor=r.valor,
+                origem="REC",
+            )
+            db.session.add(tx)
+            created += 1
+
+            if r.freq == "DAILY":
+                r.next_run = r.next_run + timedelta(days=1)
+            elif r.freq == "WEEKLY":
+                r.next_run = r.next_run + timedelta(days=7)
+            elif r.freq == "MONTHLY":
+                base = r.next_run + timedelta(days=1)
+                r.next_run = _next_monthly_date(base, int(r.day_of_month or 1))
+            else:
+                r.is_active = False
+                break
+
+    db.session.commit()
+    return created
 
 # -------------------------
 # Static / Frontend
@@ -1105,7 +1490,6 @@ def wa_shortcut():
 
     return ("", 302, {"Location": url})
 
-
 # -------------------------
 # Panic Reset
 # -------------------------
@@ -1152,7 +1536,6 @@ def api_panic_reset():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "panic_reset_failed", "detail": str(e)}), 500
-
 
 # -------------------------
 # Auth API
@@ -1260,12 +1643,7 @@ def api_me():
         if u:
             name = u.name
 
-    return jsonify(
-        email=email,
-        user_id=uid,
-        name=name
-    )
-
+    return jsonify(email=email, user_id=uid, name=name)
 
 # -------------------------
 # Transactions API
@@ -1289,19 +1667,17 @@ def api_list_lancamentos():
 
     items = []
     for t in rows:
-        items.append(
-            {
-                "row": t.id,
-                "id": t.id,
-                "data": t.data.isoformat() if t.data else None,
-                "tipo": t.tipo,
-                "categoria": t.categoria,
-                "descricao": t.descricao or "",
-                "valor": float(t.valor) if t.valor is not None else 0.0,
-                "origem": t.origem,
-                "criado_em": t.created_at.isoformat() if t.created_at else "",
-            }
-        )
+        items.append({
+            "row": t.id,
+            "id": t.id,
+            "data": t.data.isoformat() if t.data else None,
+            "tipo": t.tipo,
+            "categoria": t.categoria,
+            "descricao": t.descricao or "",
+            "valor": float(t.valor) if t.valor is not None else 0.0,
+            "origem": t.origem,
+            "criado_em": t.created_at.isoformat() if t.created_at else "",
+        })
 
     return jsonify(items=items)
 
@@ -1389,7 +1765,6 @@ def api_delete_lancamento(row: int):
     db.session.commit()
     return jsonify(ok=True)
 
-
 # -----------------------
 # Investimentos
 # -----------------------
@@ -1402,6 +1777,7 @@ def api_investimentos_list():
     limit = int(request.args.get("limit", "50"))
     q = Investment.query.filter_by(user_id=user_id).order_by(Investment.data.desc(), Investment.id.desc())
     items = q.limit(min(limit, 200)).all()
+
     out = []
     for it in items:
         out.append({
@@ -1461,9 +1837,8 @@ def api_investimentos_delete(item_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
-
 # -------------------------
-# Dashboard + IA v3
+# Dashboard + IA
 # -------------------------
 @app.get("/api/dashboard")
 def api_dashboard():
@@ -1501,9 +1876,6 @@ def api_dashboard():
     return jsonify(receitas=float(receitas), gastos=float(gastos), saldo=float(saldo))
 
 
-# -----------------------
-# Insights Inteligentes
-# -----------------------
 @app.get("/api/insights_dashboard")
 def api_insights_dashboard():
     uid = _require_login()
@@ -1631,6 +2003,50 @@ def api_patrimonio():
     return jsonify(labels=labels, values=values)
 
 
+@app.route("/api/score_financeiro")
+def api_score_financeiro():
+    uid = _require_login()
+    if not uid:
+        return jsonify({"error": "Não logado"}), 401
+
+    q = Transaction.query.filter(Transaction.user_id == uid).all()
+
+    receitas = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "RECEITA")
+    gastos = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "GASTO")
+    saldo = receitas - gastos
+
+    score = 50
+    status = "atencao"
+
+    if receitas > 0:
+        ratio = gastos / receitas
+        if ratio < Decimal("0.50"):
+            score = 90
+            status = "saudavel"
+        elif ratio < Decimal("0.70"):
+            score = 80
+            status = "saudavel"
+        elif ratio < Decimal("0.90"):
+            score = 65
+            status = "atencao"
+        else:
+            score = 40
+            status = "critico"
+    elif gastos > 0:
+        score = 25
+        status = "critico"
+
+    if saldo > 0 and score < 100:
+        score = min(100, score + 5)
+
+    return jsonify({
+        "score": int(score),
+        "status": status,
+        "receitas": float(receitas),
+        "gastos": float(gastos),
+        "saldo": float(saldo)
+    })
+
 # -------------------------
 # WhatsApp - inteligência
 # -------------------------
@@ -1649,17 +2065,6 @@ EXPENSE_HINTS = {
     "paguei", "pago", "pagar", "comprei", "compra", "gastei", "gasto", "despesa",
     "saida", "saída", "debito", "débito", "boleto", "conta", "fatura", "cartao", "cartão",
 }
-
-DEFAULT_CATEGORY_KEYWORDS = [
-    ("Alimentação", {"ifood", "i-food", "restaurante", "lanchonete", "pizza", "burguer", "hamburguer", "lanche", "mercado", "padaria", "cafe", "café"}),
-    ("Transporte", {"uber", "99", "taxi", "táxi", "onibus", "ônibus", "metro", "metrô", "gasolina", "etanol", "combustivel", "combustível", "estacionamento"}),
-    ("Moradia", {"aluguel", "condominio", "condomínio", "iptu", "prestacao", "prestação", "financiamento", "luz", "energia", "agua", "água", "internet"}),
-    ("Saúde", {"farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "consulta", "exame", "dentista"}),
-    ("Educação", {"curso", "faculdade", "escola", "mensalidade", "livro"}),
-    ("Lazer", {"cinema", "show", "bar", "viagem", "hotel"}),
-    ("Impostos", {"imposto", "taxa", "multa"}),
-    ("Transferências", {"pix", "ted", "doc", "transferencia", "transferência"}),
-]
 
 CMD_HELP_RE = re.compile(r"^\s*(ajuda|\?|help)\s*$", re.IGNORECASE)
 CMD_ULTIMOS_RE = re.compile(r"^\s*ultimos\s*$", re.IGNORECASE)
@@ -1807,20 +2212,19 @@ def _make_analise_text(user_id: int, kind: str | None):
         top_lines.append(f"• {cat}: R$ {_fmt_brl(val)} ({pct:.0f}%)")
 
     today = datetime.utcnow().date()
+    proj_line = None
     if label == "este mês":
         days_elapsed = max(1, today.day)
         days_in_month = calendar.monthrange(today.year, today.month)[1]
         daily_avg = (total_gastos / Decimal(days_elapsed)) if total_gastos > 0 else Decimal("0")
         forecast = daily_avg * Decimal(days_in_month)
         proj_line = f"Média/dia: R$ {_fmt_brl(daily_avg)} | Projeção mês: R$ {_fmt_brl(forecast)}"
-    else:
-        proj_line = None
 
     alerts = []
     if total_gastos > 0:
         for cat, val in top[:1]:
             if (val / total_gastos) >= Decimal("0.45"):
-                alerts.append(f"⚠️ {cat} está alto ({(val/total_gastos*100):.0f}% dos gastos).")
+                alerts.append(f"⚠️ {cat} está alto ({(val / total_gastos * 100):.0f}% dos gastos).")
 
     msg = [
         f"🧠 Análise ({label}):",
@@ -1836,9 +2240,7 @@ def _make_analise_text(user_id: int, kind: str | None):
         msg.extend(top_lines)
 
     if biggest and Decimal(biggest.valor or 0) > 0:
-        msg.append(
-            f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})"
-        )
+        msg.append(f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})")
 
     if alerts:
         msg.append("\n" + "\n".join(alerts))
@@ -1875,400 +2277,6 @@ def _make_alerts_text(user_id: int):
         lines.append(f"• {a['titulo']}")
         lines.append(f"  {a['mensagem']}")
     return "\n".join(lines)
-
-
-def _sum_investments_position(user_id: int):
-    invs = Investment.query.filter_by(user_id=user_id).all()
-    aportes = Decimal("0")
-    resgates = Decimal("0")
-    for it in invs:
-        v = Decimal(it.valor or 0)
-        if (it.tipo or "").upper() == "APORTE":
-            aportes += v
-        else:
-            resgates += v
-    patrimonio_investido = aportes - resgates
-    return aportes, resgates, patrimonio_investido, invs
-
-
-def _build_ai_finance_context(user_id: int) -> str:
-    today = datetime.utcnow().date()
-    month_start, month_end = _month_bounds(today.year, today.month)
-    receitas_mes, gastos_mes, saldo_mes, rows_mes = _sum_period(user_id, month_start, month_end)
-    proj = _calc_projection(user_id, today)
-    alerts = _calc_alerts(user_id, today)
-    aportes, resgates, patrimonio_investido, invs = _sum_investments_position(user_id)
-
-    top_cats = {}
-    for t in rows_mes:
-        if (t.tipo or "").upper() != "GASTO":
-            continue
-        v = Decimal(t.valor or 0)
-        top_cats[t.categoria] = top_cats.get(t.categoria, Decimal("0")) + v
-    top_lines = []
-    for cat, val in sorted(top_cats.items(), key=lambda kv: kv[1], reverse=True)[:5]:
-        top_lines.append(f"- {cat}: R$ {_fmt_brl(val)}")
-
-    last_txs = (
-        Transaction.query
-        .filter(Transaction.user_id == user_id)
-        .order_by(Transaction.data.desc(), Transaction.id.desc())
-        .limit(8)
-        .all()
-    )
-    tx_lines = []
-    for t in last_txs:
-        tx_lines.append(
-            f"- {t.data.isoformat()} | {t.tipo} | {t.categoria} | R$ {_fmt_brl(t.valor)} | {t.descricao or '-'}"
-        )
-
-    last_invs = (
-        Investment.query
-        .filter(Investment.user_id == user_id)
-        .order_by(Investment.data.desc(), Investment.id.desc())
-        .limit(5)
-        .all()
-    )
-    inv_lines = []
-    for it in last_invs:
-        inv_lines.append(
-            f"- {it.data.isoformat()} | {it.tipo} | {it.ativo} | R$ {_fmt_brl(it.valor)} | {it.descricao or '-'}"
-        )
-
-    alert_lines = [f"- {a['titulo']}: {a['mensagem']}" for a in alerts[:5]]
-
-    return (
-        f"Data de referência: {today.isoformat()}\n"
-        f"Resumo do mês atual ({today.month:02d}/{today.year}):\n"
-        f"- Receitas: R$ {_fmt_brl(receitas_mes)}\n"
-        f"- Gastos: R$ {_fmt_brl(gastos_mes)}\n"
-        f"- Saldo: R$ {_fmt_brl(saldo_mes)}\n"
-        f"- Gasto médio por dia: R$ {_fmt_brl(proj['gasto_medio_diario'])}\n"
-        f"- Estimativa restante do mês: R$ {_fmt_brl(proj['estimativa_gastos_restantes'])}\n"
-        f"- Saldo previsto do mês: R$ {_fmt_brl(proj['saldo_previsto'])}\n"
-        f"- Receitas recorrentes futuras: R$ {_fmt_brl(proj['receitas_recorrentes_futuras'])}\n"
-        f"- Gastos recorrentes futuros: R$ {_fmt_brl(proj['gastos_recorrentes_futuros'])}\n"
-        f"- Dias restantes no mês: {proj['dias_restantes']}\n\n"
-        f"Investimentos:\n"
-        f"- Total aportado: R$ {_fmt_brl(aportes)}\n"
-        f"- Total resgatado: R$ {_fmt_brl(resgates)}\n"
-        f"- Patrimônio investido líquido: R$ {_fmt_brl(patrimonio_investido)}\n"
-        f"- Quantidade de lançamentos de investimento: {len(invs)}\n\n"
-        f"Top categorias de gasto no mês:\n" + ("\n".join(top_lines) if top_lines else "- sem dados") + "\n\n"
-        f"Alertas atuais:\n" + ("\n".join(alert_lines) if alert_lines else "- nenhum alerta importante") + "\n\n"
-        f"Últimos lançamentos financeiros:\n" + ("\n".join(tx_lines) if tx_lines else "- sem lançamentos") + "\n\n"
-        f"Últimos investimentos:\n" + ("\n".join(inv_lines) if inv_lines else "- sem investimentos")
-    )
-
-
-def _looks_like_finance_question(text_msg: str) -> bool:
-    txt = _norm_word(text_msg)
-    if not txt:
-        return False
-    keywords = {
-        "gastei", "gasto", "gastos", "receita", "receitas", "saldo", "sobrou", "faltando",
-        "projecao", "projeção", "alerta", "alertas", "investi", "investido",
-        "investimentos", "patrimonio", "patrimônio", "aporte", "resgate", "mercado",
-        "categoria", "categorias", "dinheiro", "financeiro", "financas", "finanças",
-        "mes", "mês", "semana", "hoje", "quanto", "posso", "tenho"
-    }
-    return any(k in txt for k in keywords)
-
-
-def _ask_openai_finance_assistant(user_id: int, question: str) -> str:
-    if not _openai_available():
-        return "⚠️ A IA ainda não está ativa no servidor. Configure OPENAI_API_KEY no Railway."
-
-    context = _build_ai_finance_context(user_id)
-    system = (
-        "Você é o Finance AI, um assistente financeiro pessoal via WhatsApp. "
-        "Responda sempre em português do Brasil, com linguagem clara, objetiva e amigável. "
-        "Use SOMENTE o contexto financeiro fornecido. "
-        "Se a pergunta fugir de finanças pessoais do usuário, diga que você ajuda apenas com dados financeiros do app. "
-        "Não invente valores. Se algo não estiver no contexto, diga explicitamente que não encontrou dados suficientes. "
-        "Quando fizer sentido, cite números exatos do contexto e dê uma dica prática curta no final. "
-        "Mantenha a resposta curta, adequada para WhatsApp, no máximo 12 linhas."
-    )
-    user_prompt = (
-        f"Contexto financeiro do usuário:\n{context}\n\n"
-        f"Pergunta do usuário:\n{question.strip()}"
-    )
-
-    payload = {
-        "model": OPENAI_CHAT_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 350,
-    }
-
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=_openai_headers(),
-        json=payload,
-        timeout=120,
-    )
-    r.raise_for_status()
-    content = ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-    content = str(content).strip()
-    return content or "Não consegui montar uma resposta agora. Tente novamente em instantes."
-
-
-def _reply_finance_question(user_id: int, text_msg: str) -> str:
-    try:
-        return _ask_openai_finance_assistant(user_id, text_msg)
-    except Exception as e:
-        print("finance assistant error:", repr(e))
-        return "Não consegui responder com a IA agora. Tente novamente em alguns instantes."
-
-
-def _parse_kv_assignments(s: str) -> dict:
-    out = {}
-    pattern = re.compile(r'(\w+)\s*=\s*(".*?"|\'.*?\'|[^\s]+)')
-    for m in pattern.finditer(s or ""):
-        k = m.group(1).strip().lower()
-        v = m.group(2).strip()
-        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-            v = v[1:-1]
-        out[k] = v
-    return out
-
-
-def _pending_get(wa_from: str):
-    now = datetime.utcnow()
-    WaPending.query.filter(WaPending.wa_from == wa_from, WaPending.expires_at < now).delete()
-    db.session.commit()
-    return (
-        WaPending.query
-        .filter(WaPending.wa_from == wa_from, WaPending.expires_at >= now)
-        .order_by(WaPending.id.desc())
-        .first()
-    )
-
-
-def _pending_set(wa_from: str, user_id: int, kind: str, payload: dict, minutes: int = 10):
-    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
-    db.session.commit()
-    p = WaPending(
-        wa_from=wa_from,
-        user_id=user_id,
-        kind=kind,
-        payload_json=json.dumps(payload, ensure_ascii=False),
-        expires_at=datetime.utcnow() + timedelta(minutes=minutes),
-    )
-    db.session.add(p)
-    db.session.commit()
-
-
-def _pending_clear(wa_from: str, user_id: int):
-    WaPending.query.filter_by(wa_from=wa_from, user_id=user_id).delete()
-    db.session.commit()
-
-
-def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
-    if not fields:
-        return False, "Nenhum campo informado."
-
-    if "tipo" in fields:
-        v = _norm_word(fields["tipo"])
-        if v in ("receita", "gasto"):
-            tx.tipo = "RECEITA" if v == "receita" else "GASTO"
-        else:
-            return False, "Tipo inválido. Use tipo=receita ou tipo=gasto"
-
-    if "valor" in fields:
-        try:
-            tx.valor = _parse_brl_value(fields["valor"])
-        except Exception:
-            return False, "Valor inválido. Ex: valor=35,90"
-
-    if "data" in fields:
-        try:
-            tx.data = _parse_date_any(fields["data"])
-        except Exception:
-            return False, "Data inválida. Ex: data=2026-03-01"
-
-    if "categoria" in fields:
-        cat = str(fields["categoria"] or "").strip()
-        if not cat:
-            return False, "Categoria vazia."
-        tx.categoria = cat.title()
-
-    if "descricao" in fields:
-        desc = str(fields["descricao"] or "").strip()
-        tx.descricao = desc or None
-
-    return True, "OK"
-
-
-def _next_monthly_date(from_date: date, day_of_month: int) -> date:
-    y, m = from_date.year, from_date.month
-    last_day = calendar.monthrange(y, m)[1]
-    d = min(day_of_month, last_day)
-    cand = date(y, m, d)
-    if cand >= from_date:
-        return cand
-
-    if m == 12:
-        y, m = y + 1, 1
-    else:
-        m += 1
-    last_day = calendar.monthrange(y, m)[1]
-    d = min(day_of_month, last_day)
-    return date(y, m, d)
-
-
-def _next_weekly_date(from_date: date, weekday: int) -> date:
-    delta = (weekday - from_date.weekday()) % 7
-    cand = from_date + timedelta(days=delta)
-    if cand >= from_date:
-        return cand
-    return cand + timedelta(days=7)
-
-
-def _parse_recorrente_args(rest: str):
-    rest = (rest or "").strip()
-    if not rest:
-        return None
-    return rest.split()
-
-
-def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
-    freq = _norm_word(freq_raw)
-    today = datetime.utcnow().date()
-
-    if freq in ("mensal",):
-        if len(parts) < 3:
-            return None, "Use: recorrente mensal DIA VALOR CATEGORIA [descricao]"
-        try:
-            dom = int(parts[0])
-        except Exception:
-            return None, "Dia inválido. Ex: recorrente mensal 5 1200 aluguel"
-        if dom < 1 or dom > 31:
-            return None, "Dia do mês deve ser 1-31."
-
-        try:
-            valor = _parse_brl_value(parts[1])
-        except Exception:
-            return None, "Valor inválido."
-
-        categoria = parts[2].title()
-        descricao = " ".join(parts[3:]).strip() or None
-        next_run = _next_monthly_date(today, dom)
-
-        rule = RecurringRule(
-            user_id=user_id,
-            freq="MONTHLY",
-            day_of_month=dom,
-            weekday=None,
-            tipo="GASTO",
-            valor=valor,
-            categoria=categoria,
-            descricao=descricao,
-            start_date=today,
-            next_run=next_run,
-        )
-        return rule, None
-
-    if freq in ("semanal",):
-        if len(parts) < 3:
-            return None, "Use: recorrente semanal SEG VALOR CATEGORIA [descricao]"
-        wd = _norm_word(parts[0])
-        if wd not in WEEKDAY_MAP:
-            return None, "Dia da semana inválido. Use: seg/ter/qua/qui/sex/sab/dom"
-
-        weekday = WEEKDAY_MAP[wd]
-        try:
-            valor = _parse_brl_value(parts[1])
-        except Exception:
-            return None, "Valor inválido."
-
-        categoria = parts[2].title()
-        descricao = " ".join(parts[3:]).strip() or None
-        next_run = _next_weekly_date(today, weekday)
-
-        rule = RecurringRule(
-            user_id=user_id,
-            freq="WEEKLY",
-            day_of_month=None,
-            weekday=weekday,
-            tipo="GASTO",
-            valor=valor,
-            categoria=categoria,
-            descricao=descricao,
-            start_date=today,
-            next_run=next_run,
-        )
-        return rule, None
-
-    if freq in ("diario", "diário"):
-        if len(parts) < 2:
-            return None, "Use: recorrente diário VALOR CATEGORIA [descricao]"
-        try:
-            valor = _parse_brl_value(parts[0])
-        except Exception:
-            return None, "Valor inválido."
-
-        categoria = parts[1].title()
-        descricao = " ".join(parts[2:]).strip() or None
-
-        rule = RecurringRule(
-            user_id=user_id,
-            freq="DAILY",
-            day_of_month=None,
-            weekday=None,
-            tipo="GASTO",
-            valor=valor,
-            categoria=categoria,
-            descricao=descricao,
-            start_date=today,
-            next_run=today,
-        )
-        return rule, None
-
-    return None, "Frequência inválida. Use: diário | semanal | mensal"
-
-
-def _run_recorrentes_for_user(user_id: int, today: date | None = None):
-    today = today or datetime.utcnow().date()
-    created = 0
-
-    rules = (
-        RecurringRule.query
-        .filter(RecurringRule.user_id == user_id, RecurringRule.is_active == True)
-        .order_by(RecurringRule.id.asc())
-        .all()
-    )
-
-    for r in rules:
-        while r.next_run <= today:
-            tx = Transaction(
-                user_id=user_id,
-                tipo=r.tipo,
-                data=r.next_run,
-                categoria=r.categoria,
-                descricao=r.descricao,
-                valor=r.valor,
-                origem="REC",
-            )
-            db.session.add(tx)
-            created += 1
-
-            if r.freq == "DAILY":
-                r.next_run = r.next_run + timedelta(days=1)
-            elif r.freq == "WEEKLY":
-                r.next_run = r.next_run + timedelta(days=7)
-            elif r.freq == "MONTHLY":
-                base = r.next_run + timedelta(days=1)
-                r.next_run = _next_monthly_date(base, int(r.day_of_month or 1))
-            else:
-                r.is_active = False
-                break
-
-    db.session.commit()
-    return created
 
 
 def _parse_wa_text(msg_text: str):
@@ -2368,7 +2376,7 @@ def _parse_wa_text(msg_text: str):
     except Exception:
         return {"cmd": "NONE"}
 
-    before = (low[: m.start()] or "").strip()
+    before = (low[:m.start()] or "").strip()
     after = (low[m.end():] or "").strip(" -–—")
 
     before_tokens = _tokenize(before)
@@ -2394,9 +2402,8 @@ def _parse_wa_text(msg_text: str):
         "raw_text": t,
     }
 
-
 # -------------------------
-# WhatsApp Cloud API Webhook
+# WhatsApp Webhook
 # -------------------------
 @app.get("/webhooks/whatsapp")
 def wa_verify():
@@ -2460,7 +2467,7 @@ def wa_webhook():
                             wa_from,
                             (f"✅ {'Já estava' if already else 'WhatsApp'} conectado ao email: {email}\n\n"
                              "Digite 'ajuda' para ver os comandos.\n"
-                             "Exemplo: paguei 32,90 mercado"),
+                             "Exemplo: paguei 32,90 mercado")
                         )
                         continue
 
@@ -2471,7 +2478,7 @@ def wa_webhook():
                             "🔒 Seu WhatsApp não está conectado.\n\nEnvie:\n"
                             "conectar SEU_EMAIL_DO_APP\n"
                             "Ex: conectar david@email.com\n\n"
-                            "Depois digite: ajuda",
+                            "Depois digite: ajuda"
                         )
                         continue
 
@@ -2505,6 +2512,7 @@ def wa_webhook():
                     if parsed["cmd"] == "RESUMO":
                         wa_send_text(wa_from, _make_resumo_text(link.user_id, parsed.get("kind") or "mes"))
                         continue
+
                     if parsed["cmd"] == "SALDO_MES":
                         wa_send_text(wa_from, _make_resumo_text(link.user_id, "mes"))
                         continue
@@ -2556,7 +2564,7 @@ def wa_webhook():
                             f"Tipo: {ttx.tipo}\n"
                             f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
-                            f"Data: {ttx.data.isoformat()}",
+                            f"Data: {ttx.data.isoformat()}"
                         )
                         continue
 
@@ -2566,7 +2574,7 @@ def wa_webhook():
                             "Use assim:\n"
                             "• categoria ifood = Alimentação\n"
                             "• remover categoria ifood\n"
-                            "• categorias",
+                            "• categorias"
                         )
                         continue
 
@@ -2613,12 +2621,13 @@ def wa_webhook():
                             .all()
                         )
                         if not rules:
-                            wa_send_text(wa_from,
+                            wa_send_text(
+                                wa_from,
                                 "Você ainda não criou regras.\n\n"
                                 "Exemplos:\n"
                                 "• categoria ifood = Alimentação\n"
                                 "• categoria uber = Transporte\n\n"
-                                "Dica: o bot também tem categorias automáticas padrão.",
+                                "Dica: o bot também tem categorias automáticas padrão."
                             )
                         else:
                             lines = ["✅ Suas regras (até 30):"]
@@ -2640,7 +2649,8 @@ def wa_webhook():
 
                         db.session.add(rule)
                         db.session.commit()
-                        wa_send_text(wa_from,
+                        wa_send_text(
+                            wa_from,
                             "✅ Recorrente criada!\n"
                             f"ID: {rule.id}\n"
                             f"Freq: {rule.freq}\n"
@@ -2651,7 +2661,7 @@ def wa_webhook():
                         continue
 
                     if parsed["cmd"] == "REC_LIST":
-                        rules = (RecurringRule.query.filter_by(user_id=link.user_id).order_by(RecurringRule.id.desc()).limit(30).all())
+                        rules = RecurringRule.query.filter_by(user_id=link.user_id).order_by(RecurringRule.id.desc()).limit(30).all()
                         if not rules:
                             wa_send_text(wa_from, "Você ainda não tem recorrentes. Ex: recorrente mensal 5 1200 aluguel")
                         else:
@@ -2686,7 +2696,7 @@ def wa_webhook():
                         continue
 
                     if parsed["cmd"] == "ULTIMOS":
-                        txs = (Transaction.query.filter(Transaction.user_id == link.user_id).order_by(Transaction.id.desc()).limit(5).all())
+                        txs = Transaction.query.filter(Transaction.user_id == link.user_id).order_by(Transaction.id.desc()).limit(5).all()
                         if not txs:
                             wa_send_text(wa_from, "Você ainda não tem lançamentos.")
                         else:
@@ -2723,13 +2733,14 @@ def wa_webhook():
                             continue
 
                         db.session.commit()
-                        wa_send_text(wa_from,
+                        wa_send_text(
+                            wa_from,
                             "✅ Editado!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
                             f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
-                            f"Data: {ttx.data.isoformat()}",
+                            f"Data: {ttx.data.isoformat()}"
                         )
                         continue
 
@@ -2746,13 +2757,14 @@ def wa_webhook():
                             continue
 
                         db.session.commit()
-                        wa_send_text(wa_from,
+                        wa_send_text(
+                            wa_from,
                             "✅ Corrigido na última transação!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
                             f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
-                            f"Data: {ttx.data.isoformat()}",
+                            f"Data: {ttx.data.isoformat()}"
                         )
                         continue
 
@@ -2785,7 +2797,7 @@ def wa_webhook():
                                 "Responda apenas com:\n"
                                 "• receita\n"
                                 "ou\n"
-                                "• gasto",
+                                "• gasto"
                             )
                             continue
 
@@ -2809,7 +2821,7 @@ def wa_webhook():
                             f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
                             f"Data: {ttx.data.isoformat()}\n\n"
-                            "Dica: digite 'ultimos' para ver e editar.",
+                            "Dica: digite 'ultimos' para ver e editar."
                         )
                         continue
 
@@ -2823,56 +2835,6 @@ def wa_webhook():
         print("WA webhook error:", repr(e))
 
     return "ok", 200
-
-
-@app.route("/api/score_financeiro")
-def api_score_financeiro():
-    uid = _require_login()
-    if not uid:
-        return jsonify({"error": "Não logado"}), 401
-
-    q = (
-        Transaction.query
-        .filter(Transaction.user_id == uid)
-        .all()
-    )
-
-    receitas = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "RECEITA")
-    gastos = sum(Decimal(t.valor or 0) for t in q if (t.tipo or "").upper() == "GASTO")
-    saldo = receitas - gastos
-
-    score = 50
-    status = "atencao"
-
-    if receitas > 0:
-        ratio = gastos / receitas
-        if ratio < Decimal("0.50"):
-            score = 90
-            status = "saudavel"
-        elif ratio < Decimal("0.70"):
-            score = 80
-            status = "saudavel"
-        elif ratio < Decimal("0.90"):
-            score = 65
-            status = "atencao"
-        else:
-            score = 40
-            status = "critico"
-    elif gastos > 0:
-        score = 25
-        status = "critico"
-
-    if saldo > 0 and score < 100:
-        score = min(100, score + 5)
-
-    return jsonify({
-        "score": int(score),
-        "status": status,
-        "receitas": float(receitas),
-        "gastos": float(gastos),
-        "saldo": float(saldo)
-    })
-
 
 # -------------------------
 # Entry
