@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Finance AI</title>
 
-  <!-- PWA -->
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#0b1020" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -37,10 +36,45 @@
       color:var(--text);
     }
 
-    .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 70px}
-    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
-    .brand h1{margin:0;font-size:28px}
+    .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 80px}
+    .topbar{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:16px;
+    }
+
+    .brand h1{margin:0;font-size:30px}
     .brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
+
+    .helloBlock{
+      margin-top:14px;
+      padding:14px 16px;
+      border:1px solid var(--border);
+      border-radius:22px;
+      background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      box-shadow:var(--shadow);
+    }
+    .helloMini{
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.4px;
+      font-weight:800;
+      margin-bottom:6px;
+    }
+    .helloTitle{
+      font-size:26px;
+      font-weight:900;
+      line-height:1.2;
+      margin-bottom:4px;
+    }
+    .helloSub{
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.5;
+    }
 
     .btn{
       border:1px solid var(--border);
@@ -61,12 +95,10 @@
     }
     .btn.small{padding:8px 12px;font-size:13px}
 
-    .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .spacer{flex:1}
     .muted{color:var(--muted)}
     .grid{display:grid;gap:14px}
-
     @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
     @media(min-width:980px){.grid.cols3{grid-template-columns:1fr 1fr 1fr}}
 
@@ -94,7 +126,13 @@
       padding:16px;
       overflow:hidden;
     }
-    .card h2{margin:0 0 8px;font-size:14px;letter-spacing:.4px;color:var(--muted);text-transform:uppercase}
+    .card h2{
+      margin:0 0 8px;
+      font-size:14px;
+      letter-spacing:.4px;
+      color:var(--muted);
+      text-transform:uppercase;
+    }
 
     .field{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     label{font-size:12px;color:var(--muted);letter-spacing:.2px}
@@ -297,10 +335,58 @@
       line-height:1.5;
     }
 
+    .profileMenuWrap{
+      position:relative;
+      z-index:120;
+    }
+    .profileBtn{
+      width:46px;
+      height:46px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(75,140,255,.25), rgba(255,255,255,.05));
+      color:var(--text);
+      cursor:pointer;
+      display:grid;
+      place-items:center;
+      font-size:18px;
+      box-shadow:var(--shadow);
+    }
+    .profileMenu{
+      position:absolute;
+      top:56px;
+      right:0;
+      width:min(280px, calc(100vw - 32px));
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:12px;
+      display:none;
+    }
+    .profileMenu.show{display:block}
+    .profileMenuMail{
+      color:var(--text);
+      font-size:14px;
+      font-weight:700;
+      word-break:break-word;
+      margin-bottom:4px;
+    }
+    .profileMenuHint{
+      color:var(--muted);
+      font-size:12px;
+      margin-bottom:12px;
+    }
+    .profileMenu .btn{
+      width:100%;
+      justify-content:center;
+    }
+
     @media(max-width:640px){
-      .wrap{padding:16px 12px 80px}
+      .wrap{padding:16px 12px 84px}
       .brand h1{font-size:24px}
       .brand p{font-size:13px}
+      .helloTitle{font-size:22px}
       .tabs{width:100%;justify-content:center}
       .tab{flex:1;text-align:center;padding:10px 8px;font-size:13px}
       .card{padding:14px}
@@ -319,11 +405,22 @@
         <h1>Finance AI</h1>
         <p>Controle financeiro • simples e rápido</p>
       </div>
-      <div class="row">
-        <span id="userPill" class="pill hidden"></span>
-        <button id="btnLogin" class="btn primary">🔒 Login</button>
-        <button id="btnLogout" class="btn danger hidden">Sair</button>
+
+      <div class="profileMenuWrap">
+        <button id="profileBtn" class="profileBtn" title="Conta">☰</button>
+        <div id="profileMenu" class="profileMenu">
+          <div id="profileMail" class="profileMenuMail">Não conectado</div>
+          <div class="profileMenuHint">Menu da sua conta</div>
+          <button id="btnLogin" class="btn primary">Entrar</button>
+          <button id="btnLogout" class="btn danger hidden" style="margin-top:8px;">Sair</button>
+        </div>
       </div>
+    </div>
+
+    <div class="helloBlock">
+      <div class="helloMini">Finance AI</div>
+      <div id="helloTitle" class="helloTitle">Olá 👋</div>
+      <div id="helloSub" class="helloSub">Seu resumo financeiro está pronto para análise.</div>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Navegação">
@@ -335,14 +432,14 @@
 
     <section id="tab-dashboard" class="grid">
       <div class="heroInsight">
-        <div class="heroInsightTitle">Finance AI v4.1</div>
+        <div class="heroInsightTitle">Resumo financeiro</div>
         <div class="heroInsightMain" id="txtResumoTopo">Seu painel inteligente está pronto para análise.</div>
         <div class="heroInsightSub" id="txtResumoTopoSub">Atualize o dashboard para ver projeções, score, metas e recomendações.</div>
       </div>
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Dashboard do mês</h2>
+          <h2>Resumo do mês</h2>
 
           <div class="split">
             <div class="field">
@@ -391,7 +488,7 @@
         </div>
 
         <div class="card">
-          <h2>IA Finance AI</h2>
+          <h2>Projeções e inteligência</h2>
 
           <div class="grid" style="gap:10px">
             <div class="miniCard">
@@ -433,14 +530,14 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Alertas inteligentes</h2>
+          <h2>Pontos de atenção</h2>
           <div id="listaAlertas">
             <div class="muted">Nenhum alerta carregado.</div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Patrimônio</h2>
+          <h2>Evolução patrimonial</h2>
           <div class="chartBox" style="margin-top:0">
             <div class="chartTitle">💎 Evolução patrimonial</div>
             <p class="chartHint">Baseado em saldo líquido + aportes e resgates.</p>
@@ -451,7 +548,7 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Insights do mês</h2>
+          <h2>Análise inteligente</h2>
 
           <div class="grid" style="gap:10px">
             <div class="miniCard">
@@ -498,7 +595,7 @@
         </div>
 
         <div class="card">
-          <h2>Gastos por categoria</h2>
+          <h2>Composição dos gastos</h2>
           <div class="chartBox" style="margin-top:0">
             <div class="chartTitle">🥧 Distribuição de gastos</div>
             <p class="chartHint">Categorias com maior peso no mês selecionado.</p>
@@ -509,7 +606,7 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Visual</h2>
+          <h2>Indicadores visuais</h2>
 
           <div class="chartBox">
             <div class="chartTitle">📊 Receitas x Gastos</div>
@@ -525,7 +622,7 @@
         </div>
 
         <div class="card">
-          <h2>Visual diário</h2>
+          <h2>Movimentação diária</h2>
 
           <div class="chartBox" style="margin-top:0">
             <div class="chartTitle">🗓️ Evolução diária</div>
@@ -859,14 +956,19 @@
       el.className = "toast show " + (type === "ok" ? "ok" : type === "warn" ? "warn" : "err");
       el.innerHTML = `<div class="t">${title}</div>` + (desc ? `<div class="d">${desc}</div>` : "");
     }
-    function hideToast(el) { if (!el) return; el.className = "toast"; el.innerHTML = ""; }
+
+    function hideToast(el) {
+      if (!el) return;
+      el.className = "toast";
+      el.innerHTML = "";
+    }
 
     function isoToBR(iso){
       if(!iso) return "";
       const s=String(iso).slice(0,10);
       const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if(!m) return s;
-      return `${m[3]}-${m[2]}-${m[1]}`;
+      return `${m[3]}/${m[2]}/${m[1]}`;
     }
 
     function brToISO(br){
@@ -876,6 +978,37 @@
       if(!m) return s;
       const dd=m[1], mm=m[2], yyyy=m[3];
       return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function escapeHtml(v) {
+      return String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function firstNameFromEmail(email) {
+      const e = String(email || "").trim();
+      if (!e.includes("@")) return "você";
+      const raw = e.split("@")[0];
+      const cleaned = raw.split(/[._\-0-9]+/).filter(Boolean)[0] || raw;
+      if (!cleaned) return "você";
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+
+    function greetingByHour() {
+      const hour = new Date().getHours();
+      if (hour < 12) return "Bom dia";
+      if (hour < 18) return "Boa tarde";
+      return "Boa noite";
+    }
+
+    function refreshGreeting(email="") {
+      const name = firstNameFromEmail(email);
+      $("helloTitle").textContent = `${greetingByHour()}, ${name} 👋`;
+      $("helloSub").textContent = "Aqui está seu resumo financeiro.";
     }
 
     const WA_NUMBER_FALLBACK = "5537998675231";
@@ -909,7 +1042,7 @@
       }
 
       const lbl = $("fabWaLabel");
-      if (lbl) lbl.textContent = "WhatsApp (conectar)";
+      if (lbl) lbl.textContent = "WhatsApp";
     }
 
     const tabEls = Array.from(document.querySelectorAll(".tab"));
@@ -977,12 +1110,33 @@
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
+    const profileBtn = $("profileBtn");
+    const profileMenu = $("profileMenu");
+
+    function toggleProfileMenu() {
+      profileMenu.classList.toggle("show");
+    }
+
+    function closeProfileMenu() {
+      profileMenu.classList.remove("show");
+    }
+
+    profileBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleProfileMenu();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!profileMenu.contains(e.target) && !profileBtn.contains(e.target)) {
+        closeProfileMenu();
+      }
+    });
+
     function setLoggedUI(isLogged, email="") {
-      const pill = $("userPill");
       $("btnLogin").classList.toggle("hidden", isLogged);
       $("btnLogout").classList.toggle("hidden", !isLogged);
-      pill.classList.toggle("hidden", !isLogged);
-      pill.textContent = isLogged ? email : "";
+      $("profileMail").textContent = isLogged ? email : "Não conectado";
+      refreshGreeting(isLogged ? email : "");
       refreshWaLink();
     }
 
@@ -997,12 +1151,16 @@
       }
     }
 
-    $("btnLogin").addEventListener("click", () => openAuthModal("entrar"));
+    $("btnLogin").addEventListener("click", () => {
+      closeProfileMenu();
+      openAuthModal("entrar");
+    });
 
     $("btnLogout").addEventListener("click", async () => {
       try { await api("/api/logout", "POST"); } catch(e) {}
       currentUserEmail = "";
       setLoggedUI(false);
+      closeProfileMenu();
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
@@ -1012,7 +1170,8 @@
     });
 
     $("btnEntrar").addEventListener("click", async () => {
-      const t = $("toastAuth1"); hideToast(t);
+      const t = $("toastAuth1");
+      hideToast(t);
       try {
         const email = $("loginEmail").value.trim().toLowerCase();
         const senha = $("loginSenha").value;
@@ -1034,7 +1193,8 @@
     });
 
     $("btnCriarConta").addEventListener("click", async () => {
-      const t = $("toastAuth2"); hideToast(t);
+      const t = $("toastAuth2");
+      hideToast(t);
       try {
         const nome_apelido = $("regApelido").value.trim();
         const nome_completo = $("regNomeCompleto").value.trim();
@@ -1064,7 +1224,8 @@
     });
 
     $("btnResetar").addEventListener("click", async () => {
-      const t = $("toastAuth3"); hideToast(t);
+      const t = $("toastAuth3");
+      hideToast(t);
       try {
         const email = $("rstEmail").value.trim().toLowerCase();
         const nova_senha = $("rstSenha").value;
@@ -1282,15 +1443,6 @@
       const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
       if (!y || !m || !d) return null;
       return { y, m, d };
-    }
-
-    function escapeHtml(v) {
-      return String(v ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
     }
 
     function definirNivelFinanceiro(score) {
@@ -1536,8 +1688,8 @@
       sel.innerHTML = meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join("");
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
-      $("lanData").value = isoToBR(now.toISOString().slice(0,10));
-      if ($("invData")) $("invData").value = isoToBR(now.toISOString().slice(0,10));
+      $("lanData").value = now.toLocaleDateString("pt-BR");
+      if ($("invData")) $("invData").value = now.toLocaleDateString("pt-BR");
     }
 
     async function refreshDashboard() {
@@ -1770,7 +1922,7 @@
 
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
-      $("edtData").value = isoToBR(it.data) || isoToBR(new Date().toISOString().slice(0,10));
+      $("edtData").value = isoToBR(it.data) || new Date().toLocaleDateString("pt-BR");
       $("edtCategoria").value = it.categoria || "";
       $("edtDescricao").value = it.descricao || "";
       $("edtValor").value = normalizeValorToMoneyBR(it.valor);
@@ -1928,7 +2080,8 @@
       if(fabMain) fabMain.setAttribute("aria-expanded","false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden","true");
-      const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
+      const ico = $("fabMainIco");
+      if(ico) ico.textContent = "☰";
     }
 
     function fabToggle(){
@@ -1938,7 +2091,8 @@
       if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
-      const ico = $("fabMainIco"); if(ico) ico.textContent = open ? "✕" : "☰";
+      const ico = $("fabMainIco");
+      if(ico) ico.textContent = open ? "✕" : "☰";
     }
 
     if(fabMain) fabMain.addEventListener("click", fabToggle);
@@ -1949,6 +2103,8 @@
 
     initMesAno();
     ensureCharts();
+    refreshGreeting("");
+
     syncSession().finally(() => {
       refreshWaLink();
       refreshDashboard().catch(()=>{});
