@@ -44,51 +44,18 @@
       color:var(--text);
     }
 
-    .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 80px}
+    .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 90px}
 
     .topbar{
       display:flex;
       align-items:flex-start;
       justify-content:space-between;
       gap:12px;
-      margin-bottom:16px;
+      margin-bottom:14px;
     }
 
-    .brand h1{margin:0;font-size:30px}
+    .brand h1{margin:0;font-size:26px}
     .brand p{margin:6px 0 0;color:var(--muted);font-size:14px}
-
-    .helloBlock{
-      margin-top:14px;
-      padding:18px 18px;
-      border:1px solid var(--border);
-      border-radius:22px;
-      background:
-        radial-gradient(700px 240px at 0% 0%, rgba(75,140,255,.16), transparent 65%),
-        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      box-shadow:var(--shadow);
-    }
-
-    .helloTitle{
-      font-size:26px;
-      font-weight:900;
-      line-height:1.15;
-      margin-bottom:8px;
-    }
-
-    .helloMini{
-      color:var(--text);
-      font-size:13px;
-      font-weight:800;
-      text-transform:uppercase;
-      letter-spacing:.5px;
-      margin-bottom:8px;
-    }
-
-    .helloSub{
-      color:var(--muted);
-      font-size:15px;
-      line-height:1.6;
-    }
 
     .btn{
       border:1px solid var(--border);
@@ -102,57 +69,28 @@
       align-items:center;
       gap:8px;
       user-select:none;
+      text-decoration:none;
     }
-
     .btn:hover{transform:translateY(-1px)}
-
     .btn.primary{
       border-color:rgba(75,140,255,.45);
       background:linear-gradient(180deg, rgba(75,140,255,.35), rgba(45,107,255,.18));
     }
-
     .btn.danger{
       border-color:rgba(255,75,110,.45);
       background:linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
-
     .btn.small{padding:8px 12px;font-size:13px}
 
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .spacer{flex:1}
     .muted{color:var(--muted)}
+    .hidden{display:none !important}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+
     .grid{display:grid;gap:14px}
     @media(min-width:840px){.grid.cols2{grid-template-columns:1fr 1fr}}
     @media(min-width:980px){.grid.cols3{grid-template-columns:1fr 1fr 1fr}}
-
-    .tabs{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      padding:8px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      margin:14px 0 16px;
-      width:fit-content;
-    }
-
-    .tab{
-      padding:10px 14px;
-      border-radius:999px;
-      cursor:pointer;
-      color:var(--muted);
-      border:1px solid transparent;
-      user-select:none;
-      font-weight:700;
-      font-size:14px;
-    }
-
-    .tab.active{
-      color:var(--text);
-      border-color:rgba(75,140,255,.35);
-      background:linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
-    }
 
     .card{
       border:1px solid var(--border);
@@ -173,7 +111,6 @@
 
     .field{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     label{font-size:12px;color:var(--muted);letter-spacing:.2px}
-
     input,select,textarea{
       width:100%;
       border-radius:14px;
@@ -183,8 +120,8 @@
       color:var(--text);
       outline:none;
     }
-
     textarea{min-height:92px;resize:vertical}
+
     .split{display:grid;gap:10px}
     @media(min-width:640px){.split{grid-template-columns:1fr 1fr}}
 
@@ -196,7 +133,6 @@
       background:rgba(0,0,0,.25);
       display:none
     }
-
     .toast.show{display:block}
     .toast.ok{border-color:rgba(46,229,157,.35)}
     .toast.err{border-color:rgba(255,75,110,.35)}
@@ -204,74 +140,58 @@
     .toast .t{font-weight:800}
     .toast .d{color:var(--muted);font-size:13px;margin-top:4px}
 
-    .hidden{display:none !important}
-    .divider{height:1px;background:var(--border);margin:14px 0}
-
-    .overlay{
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,.55);
-      display:none;
-      align-items:flex-end;
-      justify-content:center;
-      padding:16px;
-      z-index:50
-    }
-
-    .overlay.show{display:flex}
-
-    .modal{
-      width:min(560px, 100%);
-      border-radius:26px;
+    .hero{
+      position:relative;
       border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
+      background:
+        radial-gradient(1000px 400px at 0% 0%, rgba(75,140,255,.18), transparent 50%),
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border-radius:28px;
       box-shadow:var(--shadow);
-      padding:16px;
+      padding:18px;
+      margin-bottom:16px;
     }
 
-    .modalHead{display:flex;align-items:center;gap:12px}
-    .modalHead h3{margin:0;font-size:20px}
-
-    .x{
-      margin-left:auto;
-      width:42px;
-      height:42px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.05);
-      cursor:pointer;
-      color:var(--text);
-      font-size:18px
+    .helloTitle{
+      margin:0;
+      font-size:28px;
+      line-height:1.15;
+      font-weight:900;
     }
 
-    .segTabs{
-      margin-top:12px;
+    .helloSub{
+      margin:10px 0 0;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.6;
+    }
+
+    .tabs{
       display:flex;
-      gap:8px;
-      padding:6px;
+      gap:10px;
+      flex-wrap:wrap;
+      padding:8px;
       border-radius:999px;
       border:1px solid var(--border);
-      background:rgba(255,255,255,.04)
+      background:rgba(255,255,255,.04);
+      margin:16px 0 18px;
+      width:fit-content;
     }
-
-    .seg{
-      flex:1;
-      text-align:center;
-      padding:10px 12px;
+    .tab{
+      padding:10px 14px;
       border-radius:999px;
       cursor:pointer;
       color:var(--muted);
-      font-weight:800;
-      user-select:none
+      border:1px solid transparent;
+      user-select:none;
+      font-weight:700;
+      font-size:14px;
     }
-
-    .seg.active{
+    .tab.active{
       color:var(--text);
+      border-color:rgba(75,140,255,.35);
       background:linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
-      border:1px solid rgba(75,140,255,.35)
     }
-
-    .hint{font-size:12px;color:var(--muted);margin-top:8px}
 
     .miniCard{
       box-shadow:none;
@@ -293,7 +213,6 @@
       padding:12px;
       margin-top:12px;
     }
-
     .chartTitle{
       display:flex;
       align-items:center;
@@ -301,7 +220,6 @@
       font-weight:900;
       margin:0 0 8px;
     }
-
     .chartHint{color:var(--muted);font-size:12px;margin:0 0 10px}
     canvas{width:100% !important;height:260px !important;}
     @media(min-width:840px){canvas{height:280px !important;}}
@@ -313,11 +231,111 @@
       padding:12px;
       margin-top:10px;
     }
-
     .alert-item.high{border-color:rgba(255,75,110,.35)}
     .alert-item.medium{border-color:rgba(255,184,77,.35)}
     .alert-title{font-weight:900;margin-bottom:6px}
     .alert-msg{color:var(--muted);font-size:13px;line-height:1.5}
+
+    .overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      padding:16px;
+      z-index:50
+    }
+    .overlay.show{display:flex}
+
+    .modal{
+      width:min(560px, 100%);
+      border-radius:26px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
+      box-shadow:var(--shadow);
+      padding:16px;
+    }
+
+    .modalHead{display:flex;align-items:center;gap:12px}
+    .modalHead h3{margin:0;font-size:20px}
+    .x{
+      margin-left:auto;
+      width:42px;height:42px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.05);
+      cursor:pointer;
+      color:var(--text);
+      font-size:18px
+    }
+
+    .segTabs{
+      margin-top:12px;
+      display:flex;
+      gap:8px;
+      padding:6px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04)
+    }
+    .seg{
+      flex:1;
+      text-align:center;
+      padding:10px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      color:var(--muted);
+      font-weight:800;
+      user-select:none
+    }
+    .seg.active{
+      color:var(--text);
+      background:linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
+      border:1px solid rgba(75,140,255,.35)
+    }
+
+    .hint{font-size:12px;color:var(--muted);margin-top:8px}
+
+    .accountMenuWrap{
+      position:relative;
+    }
+
+    .iconBtn{
+      width:46px;
+      height:46px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+      font-size:18px;
+    }
+
+    .accountDropdown{
+      position:absolute;
+      top:56px;
+      right:0;
+      min-width:220px;
+      padding:10px;
+      border-radius:18px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
+      box-shadow:var(--shadow);
+      display:none;
+      z-index:30;
+    }
+
+    .accountDropdown.show{display:block}
+
+    .accountEmail{
+      font-size:13px;
+      color:var(--muted);
+      word-break:break-word;
+      margin-bottom:10px;
+    }
 
     .fab-wrap{
       position:fixed;
@@ -329,7 +347,6 @@
       align-items:flex-end;
       gap:10px;
     }
-
     .fab-actions{
       display:flex;
       flex-direction:column;
@@ -340,10 +357,8 @@
       pointer-events:none;
       transition:.18s ease;
     }
-
     .fab-wrap.open .fab-actions{opacity:1;transform:translateY(0);pointer-events:auto}
     .fab-action{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
-
     .fab-label{
       font-weight:900;
       font-size:13px;
@@ -354,7 +369,6 @@
       box-shadow:0 10px 30px rgba(0,0,0,.25);
       backdrop-filter:blur(8px);
     }
-
     .fab-btn{
       width:54px;
       height:54px;
@@ -369,7 +383,6 @@
       user-select:none;
       transition:.15s transform;
     }
-
     .fab-btn:active{transform:translateY(1px)}
     .fab-btn.small{width:48px;height:48px;background:rgba(255,255,255,.06)}
     .fab-btn.wa{
@@ -378,10 +391,8 @@
       color:#05131a;
       font-weight:900;
     }
-
     .fab-ico{font-size:20px;line-height:1}
     .fab-plus{font-size:22px;line-height:1}
-
     .fab-backdrop{
       position:fixed;
       inset:0;
@@ -392,122 +403,7 @@
       pointer-events:none;
       transition:.18s ease;
     }
-
     .fab-wrap.open + .fab-backdrop{opacity:1;pointer-events:auto}
-
-    .progressWrap{
-      margin-top:10px;
-      width:100%;
-      height:12px;
-      border-radius:999px;
-      background:rgba(255,255,255,.07);
-      border:1px solid var(--border);
-      overflow:hidden;
-    }
-
-    .progressBar{
-      height:100%;
-      width:0%;
-      border-radius:999px;
-      background:linear-gradient(90deg, rgba(46,229,157,.95), rgba(75,140,255,.95));
-      transition:width .35s ease;
-    }
-
-    .badgeNivel{
-      padding:6px 10px;
-      border-radius:999px;
-      font-size:12px;
-      font-weight:900;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.05);
-    }
-
-    .badgeNivel.positive{
-      color:#63f0b4;
-      border-color:rgba(46,229,157,.35);
-    }
-
-    .badgeNivel.warn{
-      color:#ffc76f;
-      border-color:rgba(255,184,77,.35);
-    }
-
-    .badgeNivel.negative{
-      color:#ff7b93;
-      border-color:rgba(255,75,110,.35);
-    }
-
-    .smartText{
-      color:var(--muted);
-      font-size:14px;
-      line-height:1.5;
-    }
-
-    .profileMenuWrap{
-      position:relative;
-      z-index:120;
-    }
-
-    .profileBtn{
-      width:46px;
-      height:46px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(75,140,255,.25), rgba(255,255,255,.05));
-      color:var(--text);
-      cursor:pointer;
-      display:grid;
-      place-items:center;
-      font-size:18px;
-      box-shadow:var(--shadow);
-    }
-
-    .profileMenu{
-      position:absolute;
-      top:56px;
-      right:0;
-      width:min(280px, calc(100vw - 32px));
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
-      border-radius:20px;
-      box-shadow:var(--shadow);
-      padding:12px;
-      display:none;
-    }
-
-    .profileMenu.show{display:block}
-
-    .profileMenuMail{
-      color:var(--text);
-      font-size:14px;
-      font-weight:700;
-      word-break:break-word;
-      margin-bottom:4px;
-    }
-
-    .profileMenuHint{
-      color:var(--muted);
-      font-size:12px;
-      margin-bottom:12px;
-    }
-
-    .profileMenu .btn{
-      width:100%;
-      justify-content:center;
-    }
-
-    @media(max-width:640px){
-      .wrap{padding:16px 12px 84px}
-      .brand h1{font-size:24px}
-      .brand p{font-size:13px}
-      .helloTitle{font-size:22px}
-      .tabs{width:100%;justify-content:center}
-      .tab{flex:1;text-align:center;padding:10px 8px;font-size:13px}
-      .card{padding:14px}
-      .miniCard{padding:12px}
-      .fab-wrap{right:12px;bottom:12px}
-      .fab-btn{width:52px;height:52px}
-    }
   </style>
 </head>
 
@@ -516,25 +412,27 @@
     <div class="topbar">
       <div class="brand">
         <h1>Finance AI</h1>
-        <p>Controle financeiro • simples e rápido</p>
+        <p>Seu assistente financeiro inteligente</p>
       </div>
 
-      <div class="profileMenuWrap">
-        <button id="profileBtn" class="profileBtn" title="Conta">☰</button>
-        <div id="profileMenu" class="profileMenu">
-          <div id="profileMail" class="profileMenuMail">Não conectado</div>
-          <div class="profileMenuHint">Menu da sua conta</div>
-          <button id="btnLogin" class="btn primary">Entrar</button>
-          <button id="btnLogout" class="btn danger hidden" style="margin-top:8px;">Sair</button>
+      <div class="accountMenuWrap">
+        <button id="btnAccount" class="iconBtn" aria-label="Conta">☰</button>
+        <div id="accountDropdown" class="accountDropdown">
+          <div id="accountEmail" class="accountEmail">Não conectado</div>
+          <div class="row">
+            <button id="btnLogin" class="btn primary" style="flex:1">Entrar</button>
+            <button id="btnLogout" class="btn danger hidden" style="flex:1">Sair</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="helloBlock">
-      <div id="helloTitle" class="helloTitle">Olá 👋</div>
-      <div class="helloMini">Resumo financeiro</div>
-      <div id="helloSub" class="helloSub">Seu painel inteligente está pronto para análise.</div>
-    </div>
+    <section class="hero">
+      <h2 id="helloTitle" class="helloTitle">Olá 👋</h2>
+      <p id="helloSub" class="helloSub">
+        Resumo financeiro indisponível no momento.
+      </p>
+    </section>
 
     <div class="tabs" role="tablist" aria-label="Navegação">
       <div class="tab" data-tab="lancar">Lançar</div>
@@ -546,7 +444,7 @@
     <section id="tab-dashboard" class="grid">
       <div class="grid cols2">
         <div class="card">
-          <h2>Resumo do mês</h2>
+          <h2>Painel financeiro</h2>
 
           <div class="split">
             <div class="field">
@@ -588,7 +486,7 @@
           </div>
 
           <div class="row" style="margin-top:14px">
-            <button id="btnAtualizarDash" class="btn primary">Atualizar Dashboard</button>
+            <button id="btnAtualizarDash" class="btn primary">Atualizar painel</button>
             <div class="spacer"></div>
             <span class="hint">Faça login para ver seus dados.</span>
           </div>
@@ -597,7 +495,7 @@
         </div>
 
         <div class="card">
-          <h2>Projeções e inteligência</h2>
+          <h2>Projeção inteligente</h2>
 
           <div class="grid" style="gap:10px">
             <div class="miniCard">
@@ -639,14 +537,14 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Pontos de atenção</h2>
+          <h2>Alertas inteligentes</h2>
           <div id="listaAlertas">
             <div class="muted">Nenhum alerta carregado.</div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Evolução patrimonial</h2>
+          <h2>Patrimônio</h2>
           <div class="chartBox" style="margin-top:0">
             <div class="chartTitle">💎 Evolução patrimonial</div>
             <p class="chartHint">Baseado em saldo líquido + aportes e resgates.</p>
@@ -657,7 +555,7 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Análise inteligente</h2>
+          <h2>Insights do período</h2>
 
           <div class="grid" style="gap:10px">
             <div class="miniCard">
@@ -670,41 +568,14 @@
             </div>
 
             <div class="miniCard">
-              <div class="row">
-                <div style="font-weight:900">🏁 META DO MÊS</div>
-                <div class="spacer"></div>
-                <div id="valMetaMes" class="kpi">R$ 0,00</div>
-              </div>
-              <div class="hint" id="txtMetaMes">Meta sugerida de economia.</div>
-              <div class="progressWrap">
-                <div id="barMetaMes" class="progressBar"></div>
-              </div>
-              <div class="hint" id="txtMetaProgresso">Progresso: 0%</div>
-            </div>
-
-            <div class="miniCard">
-              <div class="row">
-                <div style="font-weight:900">🛡️ NÍVEL FINANCEIRO</div>
-                <div class="spacer"></div>
-                <span id="badgeNivelFinanceiro" class="badgeNivel">---</span>
-              </div>
-              <div class="hint" id="txtNivelFinanceiro">Aguardando classificação...</div>
-            </div>
-
-            <div class="miniCard">
               <div style="font-weight:900;margin-bottom:6px">💡 Insight automático</div>
-              <div id="txtInsightAuto" class="smartText">Aguardando análise do mês...</div>
-            </div>
-
-            <div class="miniCard">
-              <div style="font-weight:900;margin-bottom:6px">🤖 Recomendação inteligente</div>
-              <div id="txtRecomendacaoIA" class="smartText">Aguardando recomendação...</div>
+              <div id="txtInsightAuto" class="muted">Aguardando análise do período...</div>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Composição dos gastos</h2>
+          <h2>Gastos por categoria</h2>
           <div class="chartBox" style="margin-top:0">
             <div class="chartTitle">🥧 Distribuição de gastos</div>
             <p class="chartHint">Categorias com maior peso no mês selecionado.</p>
@@ -715,7 +586,7 @@
 
       <div class="grid cols2">
         <div class="card">
-          <h2>Indicadores visuais</h2>
+          <h2>Visão visual</h2>
 
           <div class="chartBox">
             <div class="chartTitle">📊 Receitas x Gastos</div>
@@ -724,18 +595,18 @@
           </div>
 
           <div class="chartBox">
-            <div class="chartTitle">📈 Saldo do mês</div>
-            <p class="chartHint">Verde (positivo) ou vermelho (negativo).</p>
+            <div class="chartTitle">📈 Saldo do período</div>
+            <p class="chartHint">Positivo ou negativo conforme o resultado.</p>
             <canvas id="chartSaldo"></canvas>
           </div>
         </div>
 
         <div class="card">
-          <h2>Movimentação diária</h2>
+          <h2>Evolução diária</h2>
 
           <div class="chartBox" style="margin-top:0">
-            <div class="chartTitle">🗓️ Evolução diária</div>
-            <p class="chartHint">Receitas e Gastos por dia + <b>Saldo acumulado</b>.</p>
+            <div class="chartTitle">🗓️ Movimento por dia</div>
+            <p class="chartHint">Receitas, gastos e saldo acumulado.</p>
             <canvas id="chartDaily"></canvas>
           </div>
 
@@ -806,7 +677,7 @@
         </div>
 
         <div class="hint" style="margin-top:8px">
-          Mostra os últimos lançamentos do seu usuário. Você pode <b>editar</b> ou <b>apagar</b>.
+          Mostra os últimos lançamentos do seu usuário. Você pode editar ou apagar.
         </div>
 
         <div id="toastUltimos" class="toast"></div>
@@ -823,7 +694,7 @@
         </div>
 
         <div class="hint" style="margin-top:8px">
-          Registre aportes e resgates. Esses dados ficam no Postgres por usuário.
+          Registre aportes e resgates por usuário.
         </div>
 
         <div class="divider"></div>
@@ -1074,19 +945,41 @@
 
     function isoToBR(iso){
       if(!iso) return "";
-      const s=String(iso).slice(0,10);
-      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const s = String(iso).slice(0,10);
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if(!m) return s;
-      return `${m[3]}/${m[2]}/${m[1]}`;
+      return `${m[3]}-${m[2]}-${m[1]}`;
     }
 
     function brToISO(br){
       if(!br) return "";
-      const s=String(br).trim();
-      const m=s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      const s = String(br).trim();
+      const m = s.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/) || s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
       if(!m) return s;
-      const dd=m[1], mm=m[2], yyyy=m[3];
+      const dd = m[1], mm = m[2], yyyy = m[3];
       return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function firstNameFromEmail(email=""){
+      const raw = String(email || "").trim();
+      if(!raw) return "você";
+      const base = raw.split("@")[0] || "";
+      const clean = base.split(/[._\-0-9]+/)[0] || base;
+      if(!clean) return "você";
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+
+    function greetingByHour(){
+      const h = new Date().getHours();
+      if (h < 12) return "Bom dia";
+      if (h < 18) return "Boa tarde";
+      return "Boa noite";
+    }
+
+    function refreshGreeting(nameOrEmail="") {
+      const raw = String(nameOrEmail || "").trim();
+      const name = raw.includes("@") ? firstNameFromEmail(raw) : (raw || "você");
+      $("helloTitle").textContent = `${greetingByHour()}, ${name} 👋`;
     }
 
     function escapeHtml(v) {
@@ -1098,46 +991,7 @@
         .replace(/'/g, "&#39;");
     }
 
-    function firstNameFromEmail(email) {
-      const e = String(email || "").trim();
-      if (!e.includes("@")) return "você";
-      const raw = e.split("@")[0];
-      const cleaned = raw.split(/[._\-0-9]+/).filter(Boolean)[0] || raw;
-      if (!cleaned) return "você";
-      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    }
-
-    function greetingByHour() {
-      const hour = new Date().getHours();
-      if (hour < 12) return "Bom dia";
-      if (hour < 18) return "Boa tarde";
-      return "Boa noite";
-    }
-
-    function refreshGreeting(nameOrEmail="") {
-      const raw = String(nameOrEmail || "").trim();
-      const name = raw.includes("@") ? firstNameFromEmail(raw) : (raw || "você");
-      $("helloTitle").textContent = `${greetingByHour()}, ${name} 👋`;
-    }
-
-    function atualizarResumoTopo(receitas, gastos, saldo, score) {
-      const sub = $("helloSub");
-      if (!sub) return;
-
-      if (!receitas && !gastos) {
-        sub.textContent = "Seu painel inteligente está pronto para análise.";
-        return;
-      }
-
-      if (saldo >= 0) {
-        sub.innerHTML = `Você está fechando o período com saldo positivo de <b>${moneyBR(saldo)}</b>.<br>Receitas em <b>${moneyBR(receitas)}</b>, gastos em <b>${moneyBR(gastos)}</b> e score atual de <b>${score}/100</b>.`;
-      } else {
-        sub.innerHTML = `Atenção: o período está com saldo negativo de <b>${moneyBR(saldo)}</b>.<br>Receitas em <b>${moneyBR(receitas)}</b>, gastos em <b>${moneyBR(gastos)}</b> e score atual de <b>${score}/100</b>.`;
-      }
-    }
-
     const WA_NUMBER_FALLBACK = "5537998675231";
-
     function buildWaLinkFallback(email){
       const base = `https://wa.me/${WA_NUMBER_FALLBACK}`;
       const e = String(email || "").trim();
@@ -1147,7 +1001,8 @@
 
     let currentUserEmail = "";
     let currentUserName = "";
-    
+    let editingRow = null;
+
     async function refreshWaLink(){
       const a = $("fabWhats");
       if(!a) return;
@@ -1168,7 +1023,59 @@
       }
 
       const lbl = $("fabWaLabel");
-      if (lbl) lbl.textContent = "WhatsApp";
+      if (lbl) lbl.textContent = "WhatsApp (conectar)";
+    }
+
+    function setLoggedUI(isLogged, email="") {
+      $("btnLogin").classList.toggle("hidden", isLogged);
+      $("btnLogout").classList.toggle("hidden", !isLogged);
+      $("accountEmail").textContent = isLogged ? email : "Não conectado";
+      refreshWaLink();
+    }
+
+    async function syncSession() {
+      try {
+        const me = await api("/api/me", "GET");
+        currentUserEmail = (me && me.email) ? String(me.email) : "";
+        currentUserName = (me && me.name) ? String(me.name) : "";
+        setLoggedUI(!!currentUserEmail, currentUserEmail);
+        refreshGreeting(currentUserName || currentUserEmail || "");
+      } catch (e) {
+        currentUserEmail = "";
+        currentUserName = "";
+        setLoggedUI(false);
+        refreshGreeting("");
+      }
+    }
+
+    async function refreshHeroSummary() {
+      if (!currentUserEmail) {
+        $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro.";
+        return;
+      }
+
+      const mes = Number($("dashMes").value);
+      const ano = Number($("dashAno").value);
+
+      try {
+        const dash = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, "GET");
+        const score = await api("/api/score_financeiro", "GET");
+
+        const saldo = Number(dash.saldo || 0);
+        const receitas = moneyBR(dash.receitas || 0);
+        const gastos = moneyBR(dash.gastos || 0);
+        const saldoFmt = moneyBR(saldo);
+        const scoreFmt = `${score.score || 0}/100`;
+
+        const fraseSaldo = saldo >= 0
+          ? `Você está fechando o período com saldo positivo de ${saldoFmt}.`
+          : `Você está fechando o período com saldo negativo de ${saldoFmt}.`;
+
+        $("helloSub").textContent =
+          `${fraseSaldo} Receitas em ${receitas}, gastos em ${gastos} e score atual de ${scoreFmt}.`;
+      } catch (e) {
+        $("helloSub").textContent = "Não foi possível carregar seu resumo financeiro agora.";
+      }
     }
 
     const tabEls = Array.from(document.querySelectorAll(".tab"));
@@ -1184,6 +1091,7 @@
         refreshIA().catch(()=>{});
         refreshInsightsDashboard().catch(()=>{});
         atualizarScoreFinanceiro().catch(()=>{});
+        refreshHeroSummary().catch(()=>{});
       }
       if (name === "ultimos") carregarUltimos().catch(()=>{});
       if (name === "investimentos") carregarInvestimentos().catch(()=>{});
@@ -1236,66 +1144,6 @@
     segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
     function openAuthModal(seg="entrar") { setSeg(seg); }
 
-    const profileBtn = $("profileBtn");
-    const profileMenu = $("profileMenu");
-
-    function toggleProfileMenu() {
-      profileMenu.classList.toggle("show");
-    }
-
-    function closeProfileMenu() {
-      profileMenu.classList.remove("show");
-    }
-
-    profileBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleProfileMenu();
-    });
-
-    document.addEventListener("click", (e) => {
-      if (!profileMenu.contains(e.target) && !profileBtn.contains(e.target)) {
-        closeProfileMenu();
-      }
-    });
-
-    function setLoggedUI(isLogged, email="") {
-      $("btnLogin").classList.toggle("hidden", isLogged);
-      $("btnLogout").classList.toggle("hidden", !isLogged);
-      $("profileMail").textContent = isLogged ? email : "Não conectado";
-      refreshGreeting(isLogged ? email : "");
-      refreshWaLink();
-    }
-
-    async function syncSession() {
-      try {
-        const me = await api("/api/me", "GET");
-        currentUserEmail = (me && me.email) ? String(me.email) : "";
-        setLoggedUI(!!currentUserEmail, currentUserEmail);
-      } catch (e) {
-        currentUserEmail = "";
-        setLoggedUI(false);
-      }
-    }
-
-    $("btnLogin").addEventListener("click", () => {
-      closeProfileMenu();
-      openAuthModal("entrar");
-    });
-
-    $("btnLogout").addEventListener("click", async () => {
-      try { await api("/api/logout", "POST"); } catch(e) {}
-      currentUserEmail = "";
-      setLoggedUI(false);
-      closeProfileMenu();
-      atualizarResumoTopo(0,0,0,0);
-      refreshDashboard().catch(()=>{});
-      refreshIA().catch(()=>{});
-      refreshInsightsDashboard().catch(()=>{});
-      atualizarScoreFinanceiro().catch(()=>{});
-      carregarUltimos().catch(()=>{});
-      carregarInvestimentos().catch(()=>{});
-    });
-
     $("btnEntrar").addEventListener("click", async () => {
       const t = $("toastAuth1");
       hideToast(t);
@@ -1304,15 +1152,18 @@
         const senha = $("loginSenha").value;
         const res = await api("/api/login", "POST", { email, senha });
         currentUserEmail = (res && res.email) ? res.email : email;
+        currentUserName = (res && res.name) ? res.name : "";
         setLoggedUI(true, currentUserEmail);
+        refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Login realizado", "Você já pode usar o app.");
-        setTimeout(() => {
+        setTimeout(async () => {
           closeModal();
-          refreshDashboard().catch(()=>{});
-          refreshIA().catch(()=>{});
-          refreshInsightsDashboard().catch(()=>{});
-          atualizarScoreFinanceiro().catch(()=>{});
-          carregarUltimos().catch(()=>{});
+          await refreshDashboard().catch(()=>{});
+          await refreshIA().catch(()=>{});
+          await refreshInsightsDashboard().catch(()=>{});
+          await atualizarScoreFinanceiro().catch(()=>{});
+          await carregarUltimos().catch(()=>{});
+          await refreshHeroSummary().catch(()=>{});
         }, 600);
       } catch (e) {
         showToast(t, "err", "Falha no login", e.message);
@@ -1331,19 +1182,27 @@
         const confirmar_senha = $("regConf").value;
 
         const res = await api("/api/register", "POST", {
-          nome_apelido, nome_completo, telefone, email, senha, confirmar_senha
+          nome_apelido,
+          nome_completo,
+          telefone,
+          email,
+          senha,
+          confirmar_senha
         });
 
         currentUserEmail = (res && res.email) ? res.email : email;
+        currentUserName = (res && res.name) ? res.name : "";
         setLoggedUI(true, currentUserEmail);
+        refreshGreeting(currentUserName || currentUserEmail || "");
         showToast(t, "ok", "Conta criada", "Cadastro feito! Você já está logado.");
-        setTimeout(() => {
+        setTimeout(async () => {
           closeModal();
-          refreshDashboard().catch(()=>{});
-          refreshIA().catch(()=>{});
-          refreshInsightsDashboard().catch(()=>{});
-          atualizarScoreFinanceiro().catch(()=>{});
-          carregarUltimos().catch(()=>{});
+          await refreshDashboard().catch(()=>{});
+          await refreshIA().catch(()=>{});
+          await refreshInsightsDashboard().catch(()=>{});
+          await atualizarScoreFinanceiro().catch(()=>{});
+          await carregarUltimos().catch(()=>{});
+          await refreshHeroSummary().catch(()=>{});
         }, 600);
       } catch (e) {
         showToast(t, "err", "Erro ao cadastrar", e.message);
@@ -1361,6 +1220,41 @@
         showToast(t, "ok", "Senha alterada", "Agora você já pode entrar com a nova senha.");
       } catch (e) {
         showToast(t, "err", "Falha no reset", e.message);
+      }
+    });
+
+    $("btnLogout").addEventListener("click", async () => {
+      try { await api("/api/logout", "POST"); } catch(e) {}
+      currentUserEmail = "";
+      currentUserName = "";
+      setLoggedUI(false);
+      refreshGreeting("");
+      $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro.";
+      refreshDashboard().catch(()=>{});
+      refreshIA().catch(()=>{});
+      refreshInsightsDashboard().catch(()=>{});
+      atualizarScoreFinanceiro().catch(()=>{});
+      carregarUltimos().catch(()=>{});
+      carregarInvestimentos().catch(()=>{});
+      toggleAccountMenu(false);
+    });
+
+    const btnAccount = $("btnAccount");
+    const accountDropdown = $("accountDropdown");
+
+    function toggleAccountMenu(force=null){
+      const open = force === null ? !accountDropdown.classList.contains("show") : !!force;
+      accountDropdown.classList.toggle("show", open);
+    }
+
+    btnAccount.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleAccountMenu();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!accountDropdown.contains(e.target) && e.target !== btnAccount) {
+        toggleAccountMenu(false);
       }
     });
 
@@ -1387,8 +1281,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1404,7 +1297,7 @@
           data: {
             labels: ["Saldo"],
             datasets: [{
-              label: "Saldo do mês",
+              label: "Saldo do período",
               data: [0],
               backgroundColor: ["rgba(75,140,255,.75)"],
               borderColor: ["rgba(75,140,255,.25)"],
@@ -1412,8 +1305,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
@@ -1462,8 +1354,7 @@
             ]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1492,8 +1383,7 @@
             }]
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
               legend: { labels: { color: "rgba(234,240,255,.85)" } },
               tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -1570,65 +1460,6 @@
       const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
       if (!y || !m || !d) return null;
       return { y, m, d };
-    }
-
-    function definirNivelFinanceiro(score) {
-      const badge = $("badgeNivelFinanceiro");
-      const txt = $("txtNivelFinanceiro");
-
-      badge.classList.remove("positive", "warn", "negative");
-
-      if (score >= 90) {
-        badge.textContent = "INVESTIDOR";
-        badge.classList.add("positive");
-        txt.textContent = "Excelente consistência financeira no período.";
-      } else if (score >= 75) {
-        badge.textContent = "CONTROLADO";
-        badge.classList.add("positive");
-        txt.textContent = "Boa organização, com espaço para evoluir.";
-      } else if (score >= 60) {
-        badge.textContent = "ATENÇÃO";
-        badge.classList.add("warn");
-        txt.textContent = "Seu mês pede mais controle sobre os gastos.";
-      } else {
-        badge.textContent = "CRÍTICO";
-        badge.classList.add("negative");
-        txt.textContent = "Priorize redução de despesas e ajuste de rotina.";
-      }
-    }
-
-    function atualizarMetaMes(receitas, saldo) {
-      const meta = Math.max(0, Number(receitas || 0) * 0.20);
-      const saldoNum = Math.max(0, Number(saldo || 0));
-      const progresso = meta > 0 ? Math.min(100, (saldoNum / meta) * 100) : 0;
-
-      $("valMetaMes").textContent = moneyBR(meta);
-      $("txtMetaMes").textContent = "Meta sugerida: guardar 20% das receitas do mês.";
-      $("txtMetaProgresso").textContent = `Progresso: ${progresso.toFixed(0)}%`;
-      $("barMetaMes").style.width = `${progresso}%`;
-    }
-
-    function atualizarRecomendacaoIA(categorias, valores, receitas, gastos, saldo) {
-      const box = $("txtRecomendacaoIA");
-
-      if (!categorias || !categorias.length || !valores || !valores.length) {
-        box.textContent = "Sem dados suficientes para recomendar ajustes agora.";
-        return;
-      }
-
-      const topCategoria = categorias[0];
-      const topValor = Number(valores[0] || 0);
-      const reduzir10 = topValor * 0.10;
-      const novoSaldo = Number(saldo || 0) + reduzir10;
-
-      if (topValor <= 0) {
-        box.textContent = "Seu mês está equilibrado. Continue monitorando para manter o padrão.";
-        return;
-      }
-
-      box.textContent =
-        `Sua maior pressão está em ${topCategoria}. Se você reduzir cerca de 10% nessa categoria, ` +
-        `pode melhorar seu saldo em ${moneyBR(reduzir10)} e fechar o período com aproximadamente ${moneyBR(novoSaldo)}.`;
     }
 
     async function updateDailyChart(mes, ano) {
@@ -1709,25 +1540,12 @@
         if (res.status === "saudavel") {
           $("txtScoreHint").textContent = "Saúde financeira boa.";
         } else if (res.status === "atencao") {
-          $("txtScoreHint").textContent = "Atenção moderada no mês.";
+          $("txtScoreHint").textContent = "Atenção moderada no período.";
         } else if (res.status === "critico") {
-          $("txtScoreHint").textContent = "Seu mês exige mais atenção.";
+          $("txtScoreHint").textContent = "Seu período exige mais atenção.";
         } else {
           $("txtScoreHint").textContent = "Análise concluída.";
         }
-
-        const saldoAtual = (res.receitas || 0) - (res.gastos || 0);
-
-        definirNivelFinanceiro(scoreNum);
-        atualizarMetaMes(res.receitas || 0, saldoAtual);
-        atualizarRecomendacaoIA(
-          res.categorias || [],
-          res.valores || [],
-          res.receitas || 0,
-          res.gastos || 0,
-          saldoAtual
-        );
-        atualizarResumoTopo(res.receitas || 0, res.gastos || 0, saldoAtual, scoreNum);
 
         ensureCharts();
         if (chartCategorias) {
@@ -1739,15 +1557,6 @@
         $("valScore").textContent = "0/100";
         $("txtScoreHint").textContent = "Faça login para visualizar.";
         $("txtInsightAuto").textContent = "Sem dados para análise.";
-        $("valMetaMes").textContent = "R$ 0,00";
-        $("txtMetaMes").textContent = "Faça login para visualizar.";
-        $("txtMetaProgresso").textContent = "Progresso: 0%";
-        $("barMetaMes").style.width = "0%";
-        $("badgeNivelFinanceiro").textContent = "---";
-        $("badgeNivelFinanceiro").classList.remove("positive", "warn", "negative");
-        $("txtNivelFinanceiro").textContent = "Aguardando classificação...";
-        $("txtRecomendacaoIA").textContent = "Sem dados suficientes para recomendar ajustes agora.";
-        atualizarResumoTopo(0, 0, 0, 0);
 
         if (chartCategorias) {
           chartCategorias.data.labels = [];
@@ -1780,8 +1589,6 @@
         } else {
           $("txtScoreHint").textContent = "Score atualizado.";
         }
-
-        definirNivelFinanceiro(scoreNum);
       } catch (e) {
         $("valScore").textContent = "0/100";
         $("txtScoreHint").textContent = "Faça login para visualizar.";
@@ -1795,8 +1602,8 @@
       sel.innerHTML = meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join("");
       sel.value = String(now.getMonth()+1);
       $("dashAno").value = String(now.getFullYear());
-      $("lanData").value = now.toLocaleDateString("pt-BR");
-      if ($("invData")) $("invData").value = now.toLocaleDateString("pt-BR");
+      $("lanData").value = isoToBR(now.toISOString().slice(0,10));
+      if ($("invData")) $("invData").value = isoToBR(now.toISOString().slice(0,10));
     }
 
     async function refreshDashboard() {
@@ -1823,7 +1630,7 @@
         $("valSaldo").textContent = "R$ 0,00";
         updateChartsTotals(0, 0, 0);
         await updateDailyChart(mes, ano);
-        showToast(toast, "err", "Faça login para ver o dashboard", e.message);
+        showToast(toast, "err", "Faça login para ver o painel", e.message);
       }
     }
 
@@ -1856,7 +1663,7 @@
         $("valSaldoPrevisto").textContent = "R$ 0,00";
         $("valGastoMedioDia").textContent = "R$ 0,00";
         $("valEstimativaRestante").textContent = "R$ 0,00";
-        $("txtProjecaoResumo").textContent = "Faça login para usar a IA.";
+        $("txtProjecaoResumo").textContent = "Faça login para usar a projeção.";
         renderAlertas([]);
         await updatePatrimonioChart();
         showToast(toast, "err", "IA indisponível", e.message);
@@ -1878,34 +1685,39 @@
       `).join("");
     }
 
-    $("btnAtualizarDash").addEventListener("click", () => {
-      refreshDashboard();
-      refreshInsightsDashboard();
-      atualizarScoreFinanceiro();
+    $("btnAtualizarDash").addEventListener("click", async () => {
+      await refreshDashboard();
+      await refreshInsightsDashboard();
+      await atualizarScoreFinanceiro();
+      await refreshHeroSummary();
     });
 
-    $("btnAtualizarIA").addEventListener("click", () => {
-      refreshIA();
-      refreshInsightsDashboard();
-      atualizarScoreFinanceiro();
+    $("btnAtualizarIA").addEventListener("click", async () => {
+      await refreshIA();
+      await refreshInsightsDashboard();
+      await atualizarScoreFinanceiro();
+      await refreshHeroSummary();
     });
 
-    $("btnVerAlertas").addEventListener("click", () => {
-      refreshIA();
-      refreshInsightsDashboard();
-      atualizarScoreFinanceiro();
+    $("btnVerAlertas").addEventListener("click", async () => {
+      await refreshIA();
+      await refreshInsightsDashboard();
+      await atualizarScoreFinanceiro();
+      await refreshHeroSummary();
     });
 
     $("dashMes").addEventListener("change", () => {
       refreshDashboard().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
       atualizarScoreFinanceiro().catch(()=>{});
+      refreshHeroSummary().catch(()=>{});
     });
 
     $("dashAno").addEventListener("change", () => {
       refreshDashboard().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
       atualizarScoreFinanceiro().catch(()=>{});
+      refreshHeroSummary().catch(()=>{});
     });
 
     $("btnSalvarLanc").addEventListener("click", async () => {
@@ -1929,6 +1741,7 @@
         refreshInsightsDashboard().catch(()=>{});
         atualizarScoreFinanceiro().catch(()=>{});
         carregarUltimos().catch(()=>{});
+        refreshHeroSummary().catch(()=>{});
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
@@ -2008,12 +1821,11 @@
         await refreshIA();
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
+        await refreshHeroSummary();
       } catch (e) {
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
     }
-
-    let editingRow = null;
 
     function openEditModal() {
       $("authBlock").classList.add("hidden");
@@ -2029,7 +1841,7 @@
 
       editingRow = it.row;
       $("edtTipo").value = (it.tipo || "GASTO").toUpperCase();
-      $("edtData").value = isoToBR(it.data) || new Date().toLocaleDateString("pt-BR");
+      $("edtData").value = isoToBR(it.data) || isoToBR(new Date().toISOString().slice(0,10));
       $("edtCategoria").value = it.categoria || "";
       $("edtDescricao").value = it.descricao || "";
       $("edtValor").value = normalizeValorToMoneyBR(it.valor);
@@ -2071,6 +1883,7 @@
         await refreshIA();
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
+        await refreshHeroSummary();
         setTimeout(() => { closeModal(); }, 450);
       } catch (e) {
         showToast(toast, "err", "Erro ao editar", e.message);
@@ -2137,6 +1950,7 @@
         await refreshIA();
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
+        await refreshHeroSummary();
       }catch(e){
         showToast(toast, "err", "Não foi possível apagar", e.message);
       }
@@ -2163,6 +1977,7 @@
         await refreshIA();
         await refreshInsightsDashboard();
         await atualizarScoreFinanceiro();
+        await refreshHeroSummary();
       }catch(e){
         showToast(toast, "err", "Erro ao salvar", e.message);
       }
@@ -2187,8 +2002,7 @@
       if(fabMain) fabMain.setAttribute("aria-expanded","false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden","true");
-      const ico = $("fabMainIco");
-      if(ico) ico.textContent = "☰";
+      const ico = $("fabMainIco"); if(ico) ico.textContent = "☰";
     }
 
     function fabToggle(){
@@ -2198,8 +2012,7 @@
       if(fabMain) fabMain.setAttribute("aria-expanded", open ? "true" : "false");
       const actions = fabWrap.querySelector(".fab-actions");
       if(actions) actions.setAttribute("aria-hidden", open ? "false" : "true");
-      const ico = $("fabMainIco");
-      if(ico) ico.textContent = open ? "✕" : "☰";
+      const ico = $("fabMainIco"); if(ico) ico.textContent = open ? "✕" : "☰";
     }
 
     if(fabMain) fabMain.addEventListener("click", fabToggle);
@@ -2210,15 +2023,14 @@
 
     initMesAno();
     ensureCharts();
-    refreshGreeting("");
-    atualizarResumoTopo(0,0,0,0);
 
-    syncSession().finally(() => {
+    syncSession().finally(async () => {
       refreshWaLink();
-      refreshDashboard().catch(()=>{});
-      refreshIA().catch(()=>{});
-      refreshInsightsDashboard().catch(()=>{});
-      atualizarScoreFinanceiro().catch(()=>{});
+      await refreshDashboard().catch(()=>{});
+      await refreshIA().catch(()=>{});
+      await refreshInsightsDashboard().catch(()=>{});
+      await atualizarScoreFinanceiro().catch(()=>{});
+      await refreshHeroSummary().catch(()=>{});
     });
 
     if ("serviceWorker" in navigator) {
