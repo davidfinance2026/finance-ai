@@ -77,6 +77,11 @@ class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+
+    nome_apelido = db.Column(db.String(120), nullable=True)
+    nome_completo = db.Column(db.String(200), nullable=True)
+    telefone = db.Column(db.String(40), nullable=True)
+
     password_hash = db.Column(db.String(64), nullable=False)
     password_set = db.Column(db.Boolean, nullable=False, server_default=text("false"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -213,6 +218,11 @@ def _bootstrap_schema():
                 db.session.commit()
             except SQLAlchemyError:
                 db.session.rollback()
+
+        if has_table("users"):
+            add_col("users", "nome_apelido", "VARCHAR(120)")
+            add_col("users", "nome_completo", "VARCHAR(200)")
+            add_col("users", "telefone", "VARCHAR(40)")
 
         if has_table("recurring_rules"):
             add_col("recurring_rules", "start_date", "DATE")
@@ -359,17 +369,81 @@ def _iso_date(value):
         return datetime.utcnow().date()
 
 
-def _get_or_create_user_by_email(email: str, password: str | None = None) -> User:
+def _display_name_from_user(u: User | None) -> str:
+    if not u:
+        return ""
+
+    nome_apelido = str(getattr(u, "nome_apelido", "") or "").strip()
+    nome_completo = str(getattr(u, "nome_completo", "") or "").strip()
+
+    if nome_apelido:
+        return nome_apelido
+
+    if nome_completo:
+        return nome_completo.split()[0].strip()
+
+    email = str(getattr(u, "email", "") or "").strip()
+    if email and "@" in email:
+        base = email.split("@")[0]
+        base = re.split(r"[._\-0-9]+", base)[0] or base
+        return base[:1].upper() + base[1:] if base else ""
+
+    return ""
+
+
+def _get_or_create_user_by_email(
+    email: str,
+    password: str | None = None,
+    nome_apelido: str | None = None,
+    nome_completo: str | None = None,
+    telefone: str | None = None,
+) -> User:
     email = _normalize_email(email)
     u = User.query.filter_by(email=email).first()
+
+    nome_apelido = str(nome_apelido or "").strip() or None
+    nome_completo = str(nome_completo or "").strip() or None
+    telefone = str(telefone or "").strip() or None
+
     if u:
+        changed = False
+
+        if nome_apelido and not (u.nome_apelido or "").strip():
+            u.nome_apelido = nome_apelido
+            changed = True
+
+        if nome_completo and not (u.nome_completo or "").strip():
+            u.nome_completo = nome_completo
+            changed = True
+
+        if telefone and not (u.telefone or "").strip():
+            u.telefone = telefone
+            changed = True
+
+        if changed:
+            db.session.commit()
+
         return u
 
     if password is None:
         pw_hash = _hash_password(os.urandom(16).hex())
-        u = User(email=email, password_hash=pw_hash, password_set=False)
+        u = User(
+            email=email,
+            nome_apelido=nome_apelido,
+            nome_completo=nome_completo,
+            telefone=telefone,
+            password_hash=pw_hash,
+            password_set=False,
+        )
     else:
-        u = User(email=email, password_hash=_hash_password(password), password_set=True)
+        u = User(
+            email=email,
+            nome_apelido=nome_apelido,
+            nome_completo=nome_completo,
+            telefone=telefone,
+            password_hash=_hash_password(password),
+            password_set=True,
+        )
 
     db.session.add(u)
     db.session.commit()
@@ -379,6 +453,7 @@ def _get_or_create_user_by_email(email: str, password: str | None = None) -> Use
 def _login_user(u: User):
     session["user_id"] = u.id
     session["user_email"] = u.email
+    session["user_name"] = _display_name_from_user(u)
 
 
 def _status_payload():
@@ -1157,6 +1232,10 @@ def api_panic_reset():
 def api_register():
     data = request.get_json(silent=True) or {}
 
+    nome_apelido = str(data.get("nome_apelido") or data.get("apelido") or "").strip()
+    nome_completo = str(data.get("nome_completo") or data.get("nome") or "").strip()
+    telefone = str(data.get("telefone") or "").strip()
+
     email = _normalize_email(data.get("email"))
     senha = str(data.get("senha") or data.get("password") or "")
     confirmar = str(data.get("confirmar_senha") or data.get("confirmar") or data.get("confirm") or "")
@@ -1173,14 +1252,32 @@ def api_register():
         if getattr(existing, "password_set", False) is False:
             existing.password_hash = _hash_password(senha)
             existing.password_set = True
+
+            if nome_apelido:
+                existing.nome_apelido = nome_apelido
+            if nome_completo:
+                existing.nome_completo = nome_completo
+            if telefone:
+                existing.telefone = telefone
+
             db.session.commit()
             _login_user(existing)
-            return jsonify(email=existing.email, claimed=True)
+            return jsonify(
+                email=existing.email,
+                name=_display_name_from_user(existing),
+                claimed=True
+            )
         return jsonify(error="Email já cadastrado"), 400
 
-    u = _get_or_create_user_by_email(email, password=senha)
+    u = _get_or_create_user_by_email(
+        email,
+        password=senha,
+        nome_apelido=nome_apelido,
+        nome_completo=nome_completo,
+        telefone=telefone,
+    )
     _login_user(u)
-    return jsonify(email=u.email)
+    return jsonify(email=u.email, name=_display_name_from_user(u))
 
 
 @app.post("/api/login")
@@ -1194,7 +1291,7 @@ def api_login():
         return jsonify(error="Email ou senha inválidos"), 401
 
     _login_user(u)
-    return jsonify(email=u.email)
+    return jsonify(email=u.email, name=_display_name_from_user(u))
 
 
 @app.post("/api/logout")
@@ -1229,7 +1326,13 @@ def api_reset_password():
 
 @app.get("/api/me")
 def api_me():
-    return jsonify(email=_get_logged_email(), user_id=_get_logged_user_id())
+    uid = _get_logged_user_id()
+    u = User.query.filter_by(id=uid).first() if uid else None
+    return jsonify(
+        email=_get_logged_email(),
+        user_id=uid,
+        name=_display_name_from_user(u)
+    )
 
 
 # -------------------------
@@ -1464,6 +1567,8 @@ def api_dashboard():
 
     saldo = receitas - gastos
     return jsonify(receitas=float(receitas), gastos=float(gastos), saldo=float(saldo))
+
+
 # -----------------------
 # Insights Inteligentes
 # -----------------------
@@ -1553,6 +1658,7 @@ def api_insights_dashboard():
         receitas=float(receitas),
         gastos=float(gastos),
     )
+
 
 @app.get("/api/projecao")
 def api_projecao():
@@ -2785,6 +2891,7 @@ def wa_webhook():
 
     return "ok", 200
 
+
 @app.route("/api/score_financeiro")
 def api_score_financeiro():
     uid = _require_login()
@@ -2840,4 +2947,3 @@ def api_score_financeiro():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
-
