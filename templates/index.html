@@ -1114,8 +1114,9 @@
       return "Boa noite";
     }
 
-    function refreshGreeting(email="") {
-      const name = firstNameFromEmail(email);
+    function refreshGreeting(nameOrEmail="") {
+      const raw = String(nameOrEmail || "").trim();
+      const name = raw.includes("@") ? firstNameFromEmail(raw) : (raw || "você");
       $("helloTitle").textContent = `${greetingByHour()}, ${name} 👋`;
     }
 
@@ -1145,7 +1146,8 @@
     }
 
     let currentUserEmail = "";
-
+    let currentUserName = "";
+    
     async function refreshWaLink(){
       const a = $("fabWhats");
       if(!a) return;
