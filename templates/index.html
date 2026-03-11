@@ -1248,9 +1248,24 @@
     }
 
     btnAccount.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleAccountMenu();
-    });
+  e.stopPropagation();
+  toggleAccountMenu();
+});
+
+// abrir modal de login
+$("btnLogin").addEventListener("click", () => {
+
+  toggleAccountMenu(false);
+
+  openAuthModal("entrar");
+
+});
+
+document.addEventListener("click", (e) => {
+  if (!accountDropdown.contains(e.target) && e.target !== btnAccount) {
+    toggleAccountMenu(false);
+  }
+});
 
     document.addEventListener("click", (e) => {
       if (!accountDropdown.contains(e.target) && e.target !== btnAccount) {
