@@ -18,17 +18,25 @@
 
   <style>
     :root{
-      --bg:#070B18; --panel:#0B1024; --text:#EAF0FF; --muted:#93A4C7;
-      --brand:#4B8CFF; --danger:#FF4B6E; --ok:#2EE59D; --warn:#FFB84D;
-      --border:rgba(255,255,255,.10); --shadow:0 14px 50px rgba(0,0,0,.55);
-      --radius:18px; --radius2:26px;
+      --bg:#070B18;
+      --panel:#0B1024;
+      --text:#EAF0FF;
+      --muted:#93A4C7;
+      --brand:#4B8CFF;
+      --danger:#FF4B6E;
+      --ok:#2EE59D;
+      --warn:#FFB84D;
+      --border:rgba(255,255,255,.10);
+      --shadow:0 14px 50px rgba(0,0,0,.55);
+      --radius:18px;
+      --radius2:26px;
     }
 
     *{box-sizing:border-box}
 
     body{
       margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
       background:
         radial-gradient(1200px 700px at 10% 0%, rgba(75,140,255,.20), transparent 55%),
         radial-gradient(900px 600px at 90% 25%, rgba(46,229,157,.10), transparent 60%),
@@ -37,6 +45,7 @@
     }
 
     .wrap{max-width:1100px;margin:0 auto;padding:22px 16px 80px}
+
     .topbar{
       display:flex;
       align-items:flex-start;
@@ -50,49 +59,63 @@
 
     .helloBlock{
       margin-top:14px;
-      padding:14px 16px;
+      padding:18px 18px;
       border:1px solid var(--border);
       border-radius:22px;
-      background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      background:
+        radial-gradient(700px 240px at 0% 0%, rgba(75,140,255,.16), transparent 65%),
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
       box-shadow:var(--shadow);
     }
-    .helloMini{
-      color:var(--muted);
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:.4px;
-      font-weight:800;
-      margin-bottom:6px;
-    }
+
     .helloTitle{
       font-size:26px;
       font-weight:900;
-      line-height:1.2;
-      margin-bottom:4px;
+      line-height:1.15;
+      margin-bottom:8px;
     }
+
+    .helloMini{
+      color:var(--text);
+      font-size:13px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.5px;
+      margin-bottom:8px;
+    }
+
     .helloSub{
       color:var(--muted);
-      font-size:14px;
-      line-height:1.5;
+      font-size:15px;
+      line-height:1.6;
     }
 
     .btn{
       border:1px solid var(--border);
       background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
       color:var(--text);
-      padding:10px 14px;border-radius:999px;cursor:pointer;
+      padding:10px 14px;
+      border-radius:999px;
+      cursor:pointer;
       transition:.15s transform,.2s background;
-      display:inline-flex;align-items:center;gap:8px;user-select:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
     }
+
     .btn:hover{transform:translateY(-1px)}
+
     .btn.primary{
       border-color:rgba(75,140,255,.45);
       background:linear-gradient(180deg, rgba(75,140,255,.35), rgba(45,107,255,.18));
     }
+
     .btn.danger{
       border-color:rgba(255,75,110,.45);
       background:linear-gradient(180deg, rgba(255,75,110,.28), rgba(255,75,110,.10));
     }
+
     .btn.small{padding:8px 12px;font-size:13px}
 
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -103,15 +126,28 @@
     @media(min-width:980px){.grid.cols3{grid-template-columns:1fr 1fr 1fr}}
 
     .tabs{
-      display:flex;gap:10px;flex-wrap:wrap;
-      padding:8px;border-radius:999px;border:1px solid var(--border);
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      padding:8px;
+      border-radius:999px;
+      border:1px solid var(--border);
       background:rgba(255,255,255,.04);
-      margin:14px 0 16px;width:fit-content;
+      margin:14px 0 16px;
+      width:fit-content;
     }
+
     .tab{
-      padding:10px 14px;border-radius:999px;cursor:pointer;
-      color:var(--muted);border:1px solid transparent;user-select:none;font-weight:700;font-size:14px;
+      padding:10px 14px;
+      border-radius:999px;
+      cursor:pointer;
+      color:var(--muted);
+      border:1px solid transparent;
+      user-select:none;
+      font-weight:700;
+      font-size:14px;
     }
+
     .tab.active{
       color:var(--text);
       border-color:rgba(75,140,255,.35);
@@ -126,6 +162,7 @@
       padding:16px;
       overflow:hidden;
     }
+
     .card h2{
       margin:0 0 8px;
       font-size:14px;
@@ -136,18 +173,30 @@
 
     .field{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     label{font-size:12px;color:var(--muted);letter-spacing:.2px}
+
     input,select,textarea{
-      width:100%;border-radius:14px;padding:12px 12px;border:1px solid var(--border);
-      background:rgba(0,0,0,.20);color:var(--text);outline:none;
+      width:100%;
+      border-radius:14px;
+      padding:12px 12px;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,.20);
+      color:var(--text);
+      outline:none;
     }
+
     textarea{min-height:92px;resize:vertical}
     .split{display:grid;gap:10px}
     @media(min-width:640px){.split{grid-template-columns:1fr 1fr}}
 
     .toast{
-      margin-top:12px;padding:12px 12px;border-radius:16px;border:1px solid var(--border);
-      background:rgba(0,0,0,.25);display:none
+      margin-top:12px;
+      padding:12px 12px;
+      border-radius:16px;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,.25);
+      display:none
     }
+
     .toast.show{display:block}
     .toast.ok{border-color:rgba(46,229,157,.35)}
     .toast.err{border-color:rgba(255,75,110,.35)}
@@ -159,40 +208,77 @@
     .divider{height:1px;background:var(--border);margin:14px 0}
 
     .overlay{
-      position:fixed;inset:0;background:rgba(0,0,0,.55);
-      display:none;align-items:flex-end;justify-content:center;padding:16px;z-index:50
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      padding:16px;
+      z-index:50
     }
+
     .overlay.show{display:flex}
+
     .modal{
       width:min(560px, 100%);
-      border-radius:26px;border:1px solid var(--border);
+      border-radius:26px;
+      border:1px solid var(--border);
       background:linear-gradient(180deg, rgba(11,16,36,.98), rgba(7,11,24,.98));
-      box-shadow:var(--shadow);padding:16px;
+      box-shadow:var(--shadow);
+      padding:16px;
     }
+
     .modalHead{display:flex;align-items:center;gap:12px}
     .modalHead h3{margin:0;font-size:20px}
+
     .x{
-      margin-left:auto;width:42px;height:42px;border-radius:999px;border:1px solid var(--border);
-      background:rgba(255,255,255,.05);cursor:pointer;color:var(--text);font-size:18px
+      margin-left:auto;
+      width:42px;
+      height:42px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.05);
+      cursor:pointer;
+      color:var(--text);
+      font-size:18px
     }
+
     .segTabs{
-      margin-top:12px;display:flex;gap:8px;padding:6px;border-radius:999px;
-      border:1px solid var(--border);background:rgba(255,255,255,.04)
+      margin-top:12px;
+      display:flex;
+      gap:8px;
+      padding:6px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04)
     }
+
     .seg{
-      flex:1;text-align:center;padding:10px 12px;border-radius:999px;cursor:pointer;
-      color:var(--muted);font-weight:800;user-select:none
+      flex:1;
+      text-align:center;
+      padding:10px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      color:var(--muted);
+      font-weight:800;
+      user-select:none
     }
+
     .seg.active{
       color:var(--text);
       background:linear-gradient(180deg, rgba(75,140,255,.26), rgba(75,140,255,.10));
       border:1px solid rgba(75,140,255,.35)
     }
+
     .hint{font-size:12px;color:var(--muted);margin-top:8px}
 
     .miniCard{
-      box-shadow:none;border-radius:18px;background:rgba(255,255,255,.03);
-      border:1px solid var(--border);padding:12px;
+      box-shadow:none;
+      border-radius:18px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--border);
+      padding:12px;
     }
 
     .kpi{font-weight:900}
@@ -207,11 +293,15 @@
       padding:12px;
       margin-top:12px;
     }
+
     .chartTitle{
-      display:flex;align-items:center;gap:10px;
+      display:flex;
+      align-items:center;
+      gap:10px;
       font-weight:900;
       margin:0 0 8px;
     }
+
     .chartHint{color:var(--muted);font-size:12px;margin:0 0 10px}
     canvas{width:100% !important;height:260px !important;}
     @media(min-width:840px){canvas{height:280px !important;}}
@@ -223,44 +313,86 @@
       padding:12px;
       margin-top:10px;
     }
+
     .alert-item.high{border-color:rgba(255,75,110,.35)}
     .alert-item.medium{border-color:rgba(255,184,77,.35)}
     .alert-title{font-weight:900;margin-bottom:6px}
     .alert-msg{color:var(--muted);font-size:13px;line-height:1.5}
 
     .fab-wrap{
-      position:fixed;right:16px;bottom:16px;z-index:999;
-      display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      z-index:999;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:10px;
     }
+
     .fab-actions{
-      display:flex;flex-direction:column;gap:10px;align-items:flex-end;
-      opacity:0;transform:translateY(8px);pointer-events:none;transition:.18s ease;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:flex-end;
+      opacity:0;
+      transform:translateY(8px);
+      pointer-events:none;
+      transition:.18s ease;
     }
+
     .fab-wrap.open .fab-actions{opacity:1;transform:translateY(0);pointer-events:auto}
     .fab-action{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
+
     .fab-label{
-      font-weight:900;font-size:13px;padding:10px 12px;border-radius:999px;
-      border:1px solid var(--border);background:rgba(0,0,0,.30);
-      box-shadow:0 10px 30px rgba(0,0,0,.25);backdrop-filter:blur(8px);
+      font-weight:900;
+      font-size:13px;
+      padding:10px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(0,0,0,.30);
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      backdrop-filter:blur(8px);
     }
+
     .fab-btn{
-      width:54px;height:54px;border-radius:999px;border:1px solid var(--border);
+      width:54px;
+      height:54px;
+      border-radius:999px;
+      border:1px solid var(--border);
       background:linear-gradient(180deg, rgba(75,140,255,.42), rgba(45,107,255,.20));
       box-shadow:0 14px 40px rgba(0,0,0,.45);
-      color:var(--text);display:grid;place-items:center;cursor:pointer;user-select:none;
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+      user-select:none;
       transition:.15s transform;
     }
+
     .fab-btn:active{transform:translateY(1px)}
     .fab-btn.small{width:48px;height:48px;background:rgba(255,255,255,.06)}
     .fab-btn.wa{
-      background:#25D366;border-color:rgba(255,255,255,.18);color:#05131a;font-weight:900;
+      background:#25D366;
+      border-color:rgba(255,255,255,.18);
+      color:#05131a;
+      font-weight:900;
     }
+
     .fab-ico{font-size:20px;line-height:1}
     .fab-plus{font-size:22px;line-height:1}
+
     .fab-backdrop{
-      position:fixed;inset:0;background:rgba(0,0,0,.18);backdrop-filter:blur(1px);
-      z-index:998;opacity:0;pointer-events:none;transition:.18s ease;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.18);
+      backdrop-filter:blur(1px);
+      z-index:998;
+      opacity:0;
+      pointer-events:none;
+      transition:.18s ease;
     }
+
     .fab-wrap.open + .fab-backdrop{opacity:1;pointer-events:auto}
 
     .progressWrap{
@@ -272,6 +404,7 @@
       border:1px solid var(--border);
       overflow:hidden;
     }
+
     .progressBar{
       height:100%;
       width:0%;
@@ -279,6 +412,7 @@
       background:linear-gradient(90deg, rgba(46,229,157,.95), rgba(75,140,255,.95));
       transition:width .35s ease;
     }
+
     .badgeNivel{
       padding:6px 10px;
       border-radius:999px;
@@ -287,49 +421,23 @@
       border:1px solid var(--border);
       background:rgba(255,255,255,.05);
     }
+
     .badgeNivel.positive{
       color:#63f0b4;
       border-color:rgba(46,229,157,.35);
     }
+
     .badgeNivel.warn{
       color:#ffc76f;
       border-color:rgba(255,184,77,.35);
     }
+
     .badgeNivel.negative{
       color:#ff7b93;
       border-color:rgba(255,75,110,.35);
     }
-    .smartText{
-      color:var(--muted);
-      font-size:14px;
-      line-height:1.5;
-    }
 
-    .heroInsight{
-      position:relative;
-      padding:16px;
-      border-radius:22px;
-      background:
-        radial-gradient(700px 240px at 0% 0%, rgba(75,140,255,.18), transparent 65%),
-        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      overflow:hidden;
-    }
-    .heroInsightTitle{
-      font-size:12px;
-      color:var(--muted);
-      letter-spacing:.4px;
-      text-transform:uppercase;
-      margin-bottom:8px;
-      font-weight:800;
-    }
-    .heroInsightMain{
-      font-size:22px;
-      font-weight:900;
-      line-height:1.2;
-      margin-bottom:8px;
-    }
-    .heroInsightSub{
+    .smartText{
       color:var(--muted);
       font-size:14px;
       line-height:1.5;
@@ -339,6 +447,7 @@
       position:relative;
       z-index:120;
     }
+
     .profileBtn{
       width:46px;
       height:46px;
@@ -352,6 +461,7 @@
       font-size:18px;
       box-shadow:var(--shadow);
     }
+
     .profileMenu{
       position:absolute;
       top:56px;
@@ -364,7 +474,9 @@
       padding:12px;
       display:none;
     }
+
     .profileMenu.show{display:block}
+
     .profileMenuMail{
       color:var(--text);
       font-size:14px;
@@ -372,11 +484,13 @@
       word-break:break-word;
       margin-bottom:4px;
     }
+
     .profileMenuHint{
       color:var(--muted);
       font-size:12px;
       margin-bottom:12px;
     }
+
     .profileMenu .btn{
       width:100%;
       justify-content:center;
@@ -391,7 +505,6 @@
       .tab{flex:1;text-align:center;padding:10px 8px;font-size:13px}
       .card{padding:14px}
       .miniCard{padding:12px}
-      .heroInsightMain{font-size:20px}
       .fab-wrap{right:12px;bottom:12px}
       .fab-btn{width:52px;height:52px}
     }
@@ -418,9 +531,9 @@
     </div>
 
     <div class="helloBlock">
-      <div class="helloMini">Finance AI</div>
       <div id="helloTitle" class="helloTitle">Olá 👋</div>
-      <div id="helloSub" class="helloSub">Seu resumo financeiro está pronto para análise.</div>
+      <div class="helloMini">Resumo financeiro</div>
+      <div id="helloSub" class="helloSub">Seu painel inteligente está pronto para análise.</div>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Navegação">
@@ -431,12 +544,6 @@
     </div>
 
     <section id="tab-dashboard" class="grid">
-      <div class="heroInsight">
-        <div class="heroInsightTitle">Resumo financeiro</div>
-        <div class="heroInsightMain" id="txtResumoTopo">Seu painel inteligente está pronto para análise.</div>
-        <div class="heroInsightSub" id="txtResumoTopoSub">Atualize o dashboard para ver projeções, score, metas e recomendações.</div>
-      </div>
-
       <div class="grid cols2">
         <div class="card">
           <h2>Resumo do mês</h2>
@@ -462,6 +569,7 @@
                 <div id="valReceitas" class="kpi">R$ 0,00</div>
               </div>
             </div>
+
             <div class="miniCard">
               <div class="row">
                 <div class="muted" style="font-weight:900">GASTOS</div>
@@ -469,6 +577,7 @@
                 <div id="valGastos" class="kpi">R$ 0,00</div>
               </div>
             </div>
+
             <div class="miniCard">
               <div class="row">
                 <div class="muted" style="font-weight:900">SALDO</div>
@@ -1008,7 +1117,22 @@
     function refreshGreeting(email="") {
       const name = firstNameFromEmail(email);
       $("helloTitle").textContent = `${greetingByHour()}, ${name} 👋`;
-      $("helloSub").textContent = "Aqui está seu resumo financeiro.";
+    }
+
+    function atualizarResumoTopo(receitas, gastos, saldo, score) {
+      const sub = $("helloSub");
+      if (!sub) return;
+
+      if (!receitas && !gastos) {
+        sub.textContent = "Seu painel inteligente está pronto para análise.";
+        return;
+      }
+
+      if (saldo >= 0) {
+        sub.innerHTML = `Você está fechando o período com saldo positivo de <b>${moneyBR(saldo)}</b>.<br>Receitas em <b>${moneyBR(receitas)}</b>, gastos em <b>${moneyBR(gastos)}</b> e score atual de <b>${score}/100</b>.`;
+      } else {
+        sub.innerHTML = `Atenção: o período está com saldo negativo de <b>${moneyBR(saldo)}</b>.<br>Receitas em <b>${moneyBR(receitas)}</b>, gastos em <b>${moneyBR(gastos)}</b> e score atual de <b>${score}/100</b>.`;
+      }
     }
 
     const WA_NUMBER_FALLBACK = "5537998675231";
@@ -1161,6 +1285,7 @@
       currentUserEmail = "";
       setLoggedUI(false);
       closeProfileMenu();
+      atualizarResumoTopo(0,0,0,0);
       refreshDashboard().catch(()=>{});
       refreshIA().catch(()=>{});
       refreshInsightsDashboard().catch(()=>{});
@@ -1504,25 +1629,6 @@
         `pode melhorar seu saldo em ${moneyBR(reduzir10)} e fechar o período com aproximadamente ${moneyBR(novoSaldo)}.`;
     }
 
-    function atualizarResumoTopo(receitas, gastos, saldo, score) {
-      const main = $("txtResumoTopo");
-      const sub = $("txtResumoTopoSub");
-
-      if (!receitas && !gastos) {
-        main.textContent = "Seu painel inteligente está pronto para análise.";
-        sub.textContent = "Atualize o dashboard para ver projeções, score, metas e recomendações.";
-        return;
-      }
-
-      if (saldo >= 0) {
-        main.textContent = `Você está fechando o período com saldo positivo de ${moneyBR(saldo)}.`;
-      } else {
-        main.textContent = `Atenção: o período está com saldo negativo de ${moneyBR(saldo)}.`;
-      }
-
-      sub.textContent = `Receitas em ${moneyBR(receitas)}, gastos em ${moneyBR(gastos)} e score atual de ${score}/100.`;
-    }
-
     async function updateDailyChart(mes, ano) {
       ensureCharts();
       if (!chartDaily) return;
@@ -1677,7 +1783,6 @@
       } catch (e) {
         $("valScore").textContent = "0/100";
         $("txtScoreHint").textContent = "Faça login para visualizar.";
-        console.log("erro score", e);
       }
     }
 
@@ -2104,6 +2209,7 @@
     initMesAno();
     ensureCharts();
     refreshGreeting("");
+    atualizarResumoTopo(0,0,0,0);
 
     syncSession().finally(() => {
       refreshWaLink();
