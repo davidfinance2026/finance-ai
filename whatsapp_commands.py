@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import re
-from datetime import datetime, date
+from datetime import datetime
 
 from utils_core import norm_word, tokenize, parse_brl_value
+from utils_auth import normalize_email
+from utils_workflows import parse_kv_assignments
 
 CONNECT_ALIASES = ("conectar", "vincular", "linkar", "associar", "registrar", "conexao", "conexão")
 NEGATIONS = {"nao", "não", "nunca", "jamais"}
@@ -202,11 +204,11 @@ def parse_wa_text(msg_text: str):
 
     m = CMD_CORRIGIR_ULTIMA_RE.match(t)
     if m:
-        return {"cmd": "CORRIGIR_ULTIMA", "fields": _parse_kv_assignments(m.group(1))}
+        return {"cmd": "CORRIGIR_ULTIMA", "fields": parse_kv_assignments(m.group(1))}
 
     m = CMD_EDITAR_RE.match(t)
     if m:
-        return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": _parse_kv_assignments(m.group(2))}
+        return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": parse_kv_assignments(m.group(2))}
 
     low_simple = norm_word(t)
     if low_simple in ("receita", "gasto"):
@@ -255,7 +257,3 @@ def parse_wa_text(msg_text: str):
         "data": datetime.utcnow().date(),
         "raw_text": t,
     }
-
-# -------------------------
-# WhatsApp Webhook
-# -------------------------
