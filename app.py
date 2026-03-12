@@ -99,8 +99,15 @@ from routes.finance_routes import register_finance_routes
 from routes.investment_routes import register_investment_routes
 from routes.dashboard_routes import register_dashboard_routes
 from routes.whatsapp_routes import register_whatsapp_routes
+from routes.budget_routes import register_budget_routes
 
-
+register_budget_routes(
+    app,
+    db,
+    BudgetGoal,
+    require_login,
+    parse_money_br_to_decimal
+)
 # -------------------------
 # App / Config
 # -------------------------
@@ -208,6 +215,29 @@ class Investment(db.Model):
     user = db.relationship("User", backref=db.backref("investments", lazy=True))
 
 
+class BudgetGoal(db.Model):
+
+    __tablename__ = "budget_goals"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    ano = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+
+    categoria = db.Column(db.String(80), nullable=False, default="TOTAL")
+
+    valor_meta = db.Column(db.Numeric(12, 2), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class WaLink(db.Model):
     __tablename__ = "wa_links"
     id = db.Column(db.Integer, primary_key=True)
@@ -277,6 +307,12 @@ init_finance_services(
     openai_headers_func=_openai_headers,
 )
 
+from budget_services import init_budget_services
+
+init_budget_services(
+    BudgetGoal=BudgetGoal,
+    Transaction=Transaction
+)
 
 def _create_tables_if_needed():
     try:
@@ -538,3 +574,4 @@ def api_panic_reset():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
+
