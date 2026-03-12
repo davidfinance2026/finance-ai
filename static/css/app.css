@@ -580,3 +580,19 @@
     flex: 1 1 100%;
   }
 }
+.assistant-answer {
+  min-height: 220px;
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  color: rgba(234,240,255,.92);
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.ask-chip {
+  border-radius: 999px;
+  font-size: 13px;
+  padding: 10px 14px;
+}
