@@ -87,6 +87,10 @@ function escapeHtml(v) {
     .replace(/'/g, "&#39;");
 }
 
+function nl2brSafe(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 const WA_NUMBER_FALLBACK = "5537998675231";
 
 function buildWaLinkFallback(email) {
@@ -187,7 +191,7 @@ const tabEls = Array.from(document.querySelectorAll(".tab"));
 function _setTabBase(name) {
   tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
 
-  ["dashboard", "lancar", "ultimos", "investimentos", "orcamentos"].forEach(n => {
+  ["dashboard", "lancar", "ultimos", "investimentos", "orcamentos", "assistente"].forEach(n => {
     $("tab-" + n).classList.toggle("hidden", n !== name);
   });
 
@@ -202,6 +206,7 @@ function _setTabBase(name) {
   if (name === "ultimos") carregarUltimos().catch(() => {});
   if (name === "investimentos") carregarInvestimentos().catch(() => {});
   if (name === "orcamentos") carregarOrcamentos().catch(() => {});
+  if (name === "assistente") initAssistenteTab();
 }
 
 let setTab = _setTabBase;
@@ -295,6 +300,7 @@ $("btnEntrar").addEventListener("click", async () => {
       await carregarInvestimentos().catch(() => {});
       await carregarOrcamentos().catch(() => {});
       await refreshHeroSummary().catch(() => {});
+      initAssistenteTab();
     }, 600);
   } catch (e) {
     showToast(t, "err", "Falha no login", e.message);
@@ -336,6 +342,7 @@ $("btnCriarConta").addEventListener("click", async () => {
       await carregarInvestimentos().catch(() => {});
       await carregarOrcamentos().catch(() => {});
       await refreshHeroSummary().catch(() => {});
+      initAssistenteTab();
     }, 600);
   } catch (e) {
     showToast(t, "err", "Erro ao cadastrar", e.message);
@@ -395,6 +402,7 @@ $("btnLogout").addEventListener("click", async () => {
   carregarUltimos().catch(() => {});
   carregarInvestimentos().catch(() => {});
   carregarOrcamentos().catch(() => {});
+  initAssistenteTab();
   toggleAccountMenu(false);
 });
 
@@ -782,6 +790,7 @@ function renderOrcamentoAlertas(items) {
       <div class="alert-msg">
         Meta: ${moneyBR(a.meta)} • Gasto: ${moneyBR(a.gasto)} • Restante: ${moneyBR(a.restante)}<br>
         Uso: ${Number(a.percentual || 0).toFixed(0)}%
+        ${a.mensagem ? `<br>${escapeHtml(a.mensagem)}` : ""}
       </div>
     </div>
   `).join("");
@@ -839,7 +848,7 @@ async function carregarOrcamentos() {
     }
 
     updateOrcResumo(items);
-    renderOrcamentoAlertas(items.filter(i => i.status === "atencao" || i.status === "excedido"));
+    renderOrcamentoAlertas(items.filter(i => i.status === "atencao" || i.status === "excedido" || i.estoura_meta));
 
     list.innerHTML = items.map(it => {
       const percent = Number(it.percentual || 0);
@@ -860,13 +869,21 @@ async function carregarOrcamentos() {
                 <div style="width:${Math.min(percent, 100)}%;background:${barColor}"></div>
               </div>
               <div class="hint" style="margin-top:6px">
-                Uso: ${percent.toFixed(0)}% • 
+                Uso: ${percent.toFixed(0)}% •
                 <span class="${
                   it.status === "excedido" ? "orc-status-excedido" :
                   it.status === "atencao" ? "orc-status-atencao" :
                   "orc-status-ok"
                 }">${escapeHtml(it.status)}</span>
               </div>
+              ${it.projecao_final !== undefined ? `
+                <div class="hint" style="margin-top:6px">
+                  Projeção do mês: ${moneyBR(it.projecao_final)}
+                </div>
+              ` : ""}
+              ${it.mensagem ? `
+                <div class="hint" style="margin-top:6px">${escapeHtml(it.mensagem)}</div>
+              ` : ""}
             </div>
             <div>
               <button class="btn danger small" onclick="apagarOrcamento(${it.id})">Apagar</button>
@@ -967,6 +984,35 @@ async function refreshInsightsDashboard() {
       chartCategorias.data.datasets[0].data = [];
       chartCategorias.update();
     }
+  }
+}
+
+async function atualizarScoreFinanceiro() {
+  try {
+    const data = await api("/api/score_financeiro", "GET");
+
+    $("valScore").textContent = `${data.score || 0}/100`;
+
+    const scoreEl = $("valScore");
+    scoreEl.classList.remove("positive", "negative", "warn");
+
+    const scoreNum = Number(data.score || 0);
+    if (scoreNum >= 80) scoreEl.classList.add("positive");
+    else if (scoreNum >= 60) scoreEl.classList.add("warn");
+    else scoreEl.classList.add("negative");
+
+    if (data.status === "saudavel") {
+      $("txtScoreHint").textContent = "🟢 Situação financeira saudável";
+    } else if (data.status === "atencao") {
+      $("txtScoreHint").textContent = "🟡 Atenção com os gastos";
+    } else if (data.status === "critico") {
+      $("txtScoreHint").textContent = "🔴 Situação financeira crítica";
+    } else {
+      $("txtScoreHint").textContent = "Score atualizado.";
+    }
+  } catch (e) {
+    $("valScore").textContent = "0/100";
+    $("txtScoreHint").textContent = "Faça login para visualizar.";
   }
 }
 
@@ -1295,6 +1341,80 @@ $("btnLimparInv").addEventListener("click", () => {
   hideToast($("toastInv"));
 });
 
+/* =========================
+   ASSISTENTE FINANCEIRO
+========================= */
+
+function initAssistenteTab() {
+  const answer = $("assistantAnswer");
+  const question = $("assistantQuestion");
+  if (!answer || !question) return;
+
+  if (!currentUserEmail) {
+    answer.innerHTML = "Faça login e envie uma pergunta para começar.";
+  } else if (!answer.dataset.started) {
+    answer.innerHTML = "Pergunte algo como: <br>• Quanto posso gastar este mês?<br>• Qual categoria estou gastando mais?<br>• Como melhorar meu score financeiro?";
+  }
+}
+
+async function perguntarAssistente(pergunta) {
+  const toast = $("toastAssistente");
+  const answer = $("assistantAnswer");
+  hideToast(toast);
+
+  const q = String(pergunta || $("assistantQuestion").value || "").trim();
+
+  if (!q) {
+    showToast(toast, "err", "Pergunta vazia", "Digite uma pergunta para o assistente.");
+    return;
+  }
+
+  if (!currentUserEmail) {
+    showToast(toast, "err", "Faça login", "Entre para usar o assistente financeiro.");
+    return;
+  }
+
+  answer.dataset.started = "1";
+  answer.innerHTML = "Pensando na sua resposta...";
+
+  try {
+    const res = await api("/api/assistant_finance", "POST", { pergunta: q });
+    const resposta = (res && (res.resposta || res.answer || res.message)) ? (res.resposta || res.answer || res.message) : "Não consegui responder agora.";
+    answer.innerHTML = nl2brSafe(resposta);
+  } catch (e) {
+    answer.innerHTML = "Não consegui responder agora.";
+    showToast(toast, "err", "Erro no assistente", e.message);
+  }
+}
+
+$("btnPerguntarAssistente")?.addEventListener("click", async () => {
+  await perguntarAssistente();
+});
+
+$("assistantQuestion")?.addEventListener("keydown", async (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    await perguntarAssistente();
+  }
+});
+
+$("btnLimparAssistente")?.addEventListener("click", () => {
+  $("assistantQuestion").value = "";
+  $("assistantAnswer").dataset.started = "";
+  $("assistantAnswer").innerHTML = currentUserEmail
+    ? "Pergunte algo como: <br>• Quanto posso gastar este mês?<br>• Qual categoria estou gastando mais?<br>• Como melhorar meu score financeiro?"
+    : "Faça login e envie uma pergunta para começar.";
+  hideToast($("toastAssistente"));
+});
+
+document.querySelectorAll(".ask-chip").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const q = btn.dataset.question || "";
+    $("assistantQuestion").value = q;
+    await perguntarAssistente(q);
+  });
+});
+
 const fabWrap = $("fabWrap");
 const fabMain = $("fabMain");
 const fabBackdrop = $("fabBackdrop");
@@ -1361,6 +1481,7 @@ syncSession().finally(async () => {
   await atualizarScoreFinanceiro().catch(() => {});
   await carregarOrcamentos().catch(() => {});
   await refreshHeroSummary().catch(() => {});
+  initAssistenteTab();
 });
 
 if ("serviceWorker" in navigator) {
