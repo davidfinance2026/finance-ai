@@ -342,8 +342,7 @@ const $ = (id) => document.getElementById(id);
         const nome = $("contaNome").value.trim();
         if (!nome) throw new Error("Informe um nome para exibição.");
 
-        const res = await api("/api/profile", "PUT", { name: nome });
-
+        const res = await api("/api/account", "POST", { name: nome });
         currentUserName = (res && res.name) ? res.name : nome;
         await syncSession();
         refreshGreeting(currentUserName || currentUserEmail || "");
