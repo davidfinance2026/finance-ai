@@ -6,7 +6,6 @@ def register_budget_routes(app, db, BudgetGoal, require_login, parse_money_br_to
 
     @app.get("/api/orcamentos")
     def list_orcamentos():
-
         uid = require_login()
         if not uid:
             return jsonify(error="Não logado"), 401
@@ -15,13 +14,10 @@ def register_budget_routes(app, db, BudgetGoal, require_login, parse_money_br_to
         ano = int(request.args.get("ano"))
 
         items = get_budget_summary(uid, ano, mes)
-
         return jsonify(items=items)
-
 
     @app.post("/api/orcamentos")
     def create_orcamento():
-
         uid = require_login()
         if not uid:
             return jsonify(error="Não logado"), 401
@@ -29,7 +25,6 @@ def register_budget_routes(app, db, BudgetGoal, require_login, parse_money_br_to
         data = request.get_json()
 
         categoria = data.get("categoria") or "TOTAL"
-
         meta = parse_money_br_to_decimal(data.get("valor_meta"))
 
         item = BudgetGoal(
@@ -45,10 +40,8 @@ def register_budget_routes(app, db, BudgetGoal, require_login, parse_money_br_to
 
         return jsonify(ok=True, id=item.id)
 
-
     @app.delete("/api/orcamentos/<int:id>")
     def delete_orcamento(id):
-
         uid = require_login()
         if not uid:
             return jsonify(error="Não logado"), 401
