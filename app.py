@@ -88,6 +88,8 @@ from finance_services import (
     make_alerts_text,
 )
 
+from budget_services import init_budget_services
+
 from whatsapp_commands import (
     parse_wa_text,
     wa_help_text,
@@ -101,13 +103,7 @@ from routes.dashboard_routes import register_dashboard_routes
 from routes.whatsapp_routes import register_whatsapp_routes
 from routes.budget_routes import register_budget_routes
 
-register_budget_routes(
-    app,
-    db,
-    BudgetGoal,
-    require_login,
-    parse_money_br_to_decimal
-)
+
 # -------------------------
 # App / Config
 # -------------------------
@@ -216,7 +212,6 @@ class Investment(db.Model):
 
 
 class BudgetGoal(db.Model):
-
     __tablename__ = "budget_goals"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -307,12 +302,11 @@ init_finance_services(
     openai_headers_func=_openai_headers,
 )
 
-from budget_services import init_budget_services
-
 init_budget_services(
     BudgetGoal=BudgetGoal,
-    Transaction=Transaction
+    Transaction=Transaction,
 )
+
 
 def _create_tables_if_needed():
     try:
@@ -408,6 +402,14 @@ register_account_routes(app, db, User, get_logged_user_id, get_logged_email, req
 register_finance_routes(app, db, Transaction, require_login, parse_date_any, parse_brl_value, guess_category_from_text)
 register_investment_routes(app, db, Investment, require_login, parse_money_br_to_decimal, iso_date)
 register_dashboard_routes(app, Transaction, require_login, calc_projection, calc_alerts, calc_patrimonio_series)
+
+register_budget_routes(
+    app,
+    db,
+    BudgetGoal,
+    require_login,
+    parse_money_br_to_decimal,
+)
 
 register_whatsapp_routes(
     app=app,
@@ -543,7 +545,7 @@ def api_panic_reset():
     try:
         db.session.execute(
             text(
-                "TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, wa_pending, recurring_rules, investments, users "
+                "TRUNCATE TABLE processed_messages, wa_links, transactions, category_rules, wa_pending, recurring_rules, investments, budget_goals, users "
                 "RESTART IDENTITY CASCADE;"
             )
         )
@@ -560,6 +562,7 @@ def api_panic_reset():
         WaPending.query.delete()
         RecurringRule.query.delete()
         Investment.query.delete()
+        BudgetGoal.query.delete()
         User.query.delete()
         db.session.commit()
         return jsonify({"ok": True, "message": "Banco limpo (fallback)."})
@@ -574,4 +577,3 @@ def api_panic_reset():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
-
