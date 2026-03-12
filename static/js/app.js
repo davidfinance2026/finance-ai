@@ -6,15 +6,24 @@ const moneyBR = (n) => {
 };
 
 async function api(path, method = "GET", body = null) {
-  const opt = { method, headers: { "Content-Type": "application/json" }, credentials: "include" };
+  const opt = {
+    method,
+    headers: { "Content-Type": "application/json" },
+    credentials: "include"
+  };
   if (body) opt.body = JSON.stringify(body);
+
   const res = await fetch(path, opt);
   let data = null;
   try { data = await res.json(); } catch (e) {}
+
   if (!res.ok) {
-    const msg = (data && (data.error || data.message)) ? (data.error || data.message) : `Erro ${res.status}`;
+    const msg = (data && (data.error || data.message))
+      ? (data.error || data.message)
+      : `Erro ${res.status}`;
     throw new Error(msg);
   }
+
   return data;
 }
 
@@ -104,7 +113,9 @@ async function refreshWaLink() {
 
   try {
     const res = await api("/api/wa_link", "GET");
-    const href = (res && (res.url || res.href || res.link)) ? (res.url || res.href || res.link) : "";
+    const href = (res && (res.url || res.href || res.link))
+      ? (res.url || res.href || res.link)
+      : "";
     a.href = href || buildWaLinkFallback(currentUserEmail);
   } catch (e) {
     a.href = buildWaLinkFallback(currentUserEmail);
@@ -175,6 +186,7 @@ const tabEls = Array.from(document.querySelectorAll(".tab"));
 
 function _setTabBase(name) {
   tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+
   ["dashboard", "lancar", "ultimos", "investimentos", "orcamentos"].forEach(n => {
     $("tab-" + n).classList.toggle("hidden", n !== name);
   });
@@ -186,6 +198,7 @@ function _setTabBase(name) {
     atualizarScoreFinanceiro().catch(() => {});
     refreshHeroSummary().catch(() => {});
   }
+
   if (name === "ultimos") carregarUltimos().catch(() => {});
   if (name === "investimentos") carregarInvestimentos().catch(() => {});
   if (name === "orcamentos") carregarOrcamentos().catch(() => {});
@@ -217,7 +230,9 @@ $("btnFechar1").addEventListener("click", closeModal);
 $("btnFechar2").addEventListener("click", closeModal);
 $("btnFechar3").addEventListener("click", closeModal);
 $("btnFecharConta").addEventListener("click", closeModal);
-overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+overlay.addEventListener("click", (e) => {
+  if (e.target === overlay) closeModal();
+});
 
 function setSeg(seg) {
   segs.forEach(s => s.classList.toggle("active", s.dataset.seg === seg));
@@ -245,7 +260,10 @@ function setSeg(seg) {
 }
 
 segs.forEach(s => s.addEventListener("click", () => setSeg(s.dataset.seg)));
-function openAuthModal(seg = "entrar") { setSeg(seg); }
+
+function openAuthModal(seg = "entrar") {
+  setSeg(seg);
+}
 
 function openContaModal() {
   $("segContaTab").classList.remove("hidden");
@@ -361,12 +379,15 @@ $("btnSalvarConta").addEventListener("click", async () => {
 
 $("btnLogout").addEventListener("click", async () => {
   try { await api("/api/logout", "POST"); } catch (e) {}
+
   currentUserEmail = "";
   currentUserName = "";
   currentUserId = null;
+
   setLoggedUI(false);
   refreshGreeting("");
   $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro.";
+
   refreshDashboard().catch(() => {});
   refreshIA().catch(() => {});
   refreshInsightsDashboard().catch(() => {});
@@ -429,7 +450,8 @@ function ensureCharts() {
         }]
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "rgba(234,240,255,.85)" } },
           tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -453,7 +475,8 @@ function ensureCharts() {
         }]
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } }
@@ -502,7 +525,8 @@ function ensureCharts() {
         ]
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "rgba(234,240,255,.85)" } },
           tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -531,7 +555,8 @@ function ensureCharts() {
         }]
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "rgba(234,240,255,.85)" } },
           tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)}` } }
@@ -569,11 +594,7 @@ function ensureCharts() {
         maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: "rgba(234,240,255,.85)" } },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}`
-            }
-          }
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyBR(ctx.raw || 0)}` } }
         },
         cutout: "60%"
       }
@@ -667,111 +688,16 @@ async function updatePatrimonioChart() {
   }
 }
 
-async function refreshInsightsDashboard() {
-  const mes = Number($("dashMes").value);
-  const ano = Number($("dashAno").value);
-
-  try {
-    const res = await api(`/api/insights_dashboard?mes=${mes}&ano=${ano}`, "GET");
-
-    $("valScore").textContent = `${res.score || 0}/100`;
-    $("txtInsightAuto").textContent = res.insight || "Sem insight disponível.";
-
-    const scoreEl = $("valScore");
-    scoreEl.classList.remove("positive", "negative", "warn");
-
-    const scoreNum = Number(res.score || 0);
-    if (scoreNum >= 80) scoreEl.classList.add("positive");
-    else if (scoreNum >= 60) scoreEl.classList.add("warn");
-    else scoreEl.classList.add("negative");
-
-    if (res.status === "saudavel") {
-      $("txtScoreHint").textContent = "Saúde financeira boa.";
-    } else if (res.status === "atencao") {
-      $("txtScoreHint").textContent = "Atenção moderada no período.";
-    } else if (res.status === "critico") {
-      $("txtScoreHint").textContent = "Seu período exige mais atenção.";
-    } else {
-      $("txtScoreHint").textContent = "Análise concluída.";
-    }
-
-    ensureCharts();
-    if (chartCategorias) {
-      chartCategorias.data.labels = res.categorias || [];
-      chartCategorias.data.datasets[0].data = res.valores || [];
-      chartCategorias.update();
-    }
-  } catch (e) {
-    $("valScore").textContent = "0/100";
-    $("txtScoreHint").textContent = "Faça login para visualizar.";
-    $("txtInsightAuto").textContent = "Sem dados para análise.";
-
-    if (chartCategorias) {
-      chartCategorias.data.labels = [];
-      chartCategorias.data.datasets[0].data = [];
-      chartCategorias.update();
-    }
-  }
-}
-
-async function atualizarScoreFinanceiro() {
-  try {
-    const data = await api("/api/score_financeiro", "GET");
-
-    $("valScore").textContent = `${data.score || 0}/100`;
-
-    const scoreEl = $("valScore");
-    scoreEl.classList.remove("positive", "negative", "warn");
-
-    const scoreNum = Number(data.score || 0);
-    if (scoreNum >= 80) scoreEl.classList.add("positive");
-    else if (scoreNum >= 60) scoreEl.classList.add("warn");
-    else scoreEl.classList.add("negative");
-
-    if (data.status === "saudavel") {
-      $("txtScoreHint").textContent = "🟢 Situação financeira saudável";
-    } else if (data.status === "atencao") {
-      $("txtScoreHint").textContent = "🟡 Atenção com os gastos";
-    } else if (data.status === "critico") {
-      $("txtScoreHint").textContent = "🔴 Situação financeira crítica";
-    } else {
-      $("txtScoreHint").textContent = "Score atualizado.";
-    }
-  } catch (e) {
-    $("valScore").textContent = "0/100";
-    $("txtScoreHint").textContent = "Faça login para visualizar.";
-  }
-}
-
-function fillMonthSelect(selectId) {
-  const sel = $(selectId);
-  const now = new Date();
-  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  sel.innerHTML = meses.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
-  sel.value = String(now.getMonth() + 1);
-}
-
-function initMesAno() {
-  const now = new Date();
-
-  fillMonthSelect("dashMes");
-  fillMonthSelect("orcMes");
-
-  $("dashAno").value = String(now.getFullYear());
-  $("orcAno").value = String(now.getFullYear());
-
-  $("lanData").value = isoToBR(now.toISOString().slice(0, 10));
-  $("invData").value = isoToBR(now.toISOString().slice(0, 10));
-}
-
 async function refreshDashboard() {
   const toast = $("toastDash");
   hideToast(toast);
+
   const mes = Number($("dashMes").value);
   const ano = Number($("dashAno").value);
 
   try {
     const res = await api(`/api/dashboard?mes=${mes}&ano=${ano}`, "GET");
+
     $("valReceitas").textContent = moneyBR(res.receitas);
     $("valGastos").textContent = moneyBR(res.gastos);
     $("valSaldo").textContent = moneyBR(res.saldo);
@@ -824,7 +750,7 @@ async function refreshIA() {
     $("txtProjecaoResumo").textContent = "Faça login para usar a projeção.";
     renderAlertas([]);
     await updatePatrimonioChart();
-    showToast($("toastIA"), "err", "IA indisponível", e.message);
+    showToast(toast, "err", "IA indisponível", e.message);
   }
 }
 
@@ -881,6 +807,9 @@ function updateOrcResumo(items) {
   $("orcResumoMeta").textContent = moneyBR(meta);
   $("orcResumoGasto").textContent = moneyBR(gasto);
   $("orcResumoRestante").textContent = moneyBR(meta - gasto);
+
+  $("orcResumoRestante").classList.remove("positive", "negative");
+  $("orcResumoRestante").classList.add((meta - gasto) >= 0 ? "positive" : "negative");
 }
 
 async function carregarOrcamentos() {
@@ -915,9 +844,9 @@ async function carregarOrcamentos() {
     list.innerHTML = items.map(it => {
       const percent = Number(it.percentual || 0);
       const barColor =
-        it.status === "excedido" ? "rgba(255,75,110,.85)" :
-        it.status === "atencao" ? "rgba(255,184,77,.85)" :
-        "rgba(46,229,157,.85)";
+        it.status === "excedido" ? "linear-gradient(90deg, rgba(255,75,110,.95), rgba(255,110,140,.95))" :
+        it.status === "atencao" ? "linear-gradient(90deg, rgba(255,184,77,.95), rgba(255,210,120,.95))" :
+        "linear-gradient(90deg, rgba(46,229,157,.95), rgba(108,241,195,.95))";
 
       return `
         <div class="miniCard">
@@ -927,11 +856,16 @@ async function carregarOrcamentos() {
               <div class="muted" style="margin-top:4px;font-size:13px">
                 Meta: ${moneyBR(it.meta)} • Gasto: ${moneyBR(it.gasto)} • Restante: ${moneyBR(it.restante)}
               </div>
-              <div style="margin-top:10px;height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden">
-                <div style="height:100%;width:${Math.min(percent, 100)}%;background:${barColor};border-radius:999px"></div>
+              <div class="orc-progress">
+                <div style="width:${Math.min(percent, 100)}%;background:${barColor}"></div>
               </div>
               <div class="hint" style="margin-top:6px">
-                Uso: ${percent.toFixed(0)}% • Status: ${escapeHtml(it.status)}
+                Uso: ${percent.toFixed(0)}% • 
+                <span class="${
+                  it.status === "excedido" ? "orc-status-excedido" :
+                  it.status === "atencao" ? "orc-status-atencao" :
+                  "orc-status-ok"
+                }">${escapeHtml(it.status)}</span>
               </div>
             </div>
             <div>
@@ -950,6 +884,7 @@ async function carregarOrcamentos() {
 window.apagarOrcamento = async (id) => {
   const toast = $("toastOrc");
   hideToast(toast);
+
   if (!confirm("Quer mesmo apagar este orçamento?")) return;
 
   try {
@@ -993,6 +928,48 @@ $("btnRecarregarOrc").addEventListener("click", () => carregarOrcamentos());
 $("orcMes").addEventListener("change", () => carregarOrcamentos().catch(() => {}));
 $("orcAno").addEventListener("change", () => carregarOrcamentos().catch(() => {}));
 
+async function refreshInsightsDashboard() {
+  const mes = Number($("dashMes").value);
+  const ano = Number($("dashAno").value);
+
+  try {
+    const res = await api(`/api/insights_dashboard?mes=${mes}&ano=${ano}`, "GET");
+
+    $("valScore").textContent = `${res.score || 0}/100`;
+    $("txtInsightAuto").textContent = res.insight || "Sem insight disponível.";
+
+    const scoreEl = $("valScore");
+    scoreEl.classList.remove("positive", "negative", "warn");
+
+    const scoreNum = Number(res.score || 0);
+    if (scoreNum >= 80) scoreEl.classList.add("positive");
+    else if (scoreNum >= 60) scoreEl.classList.add("warn");
+    else scoreEl.classList.add("negative");
+
+    if (res.status === "saudavel") $("txtScoreHint").textContent = "Saúde financeira boa.";
+    else if (res.status === "atencao") $("txtScoreHint").textContent = "Atenção moderada no período.";
+    else if (res.status === "critico") $("txtScoreHint").textContent = "Seu período exige mais atenção.";
+    else $("txtScoreHint").textContent = "Análise concluída.";
+
+    ensureCharts();
+    if (chartCategorias) {
+      chartCategorias.data.labels = res.categorias || [];
+      chartCategorias.data.datasets[0].data = res.valores || [];
+      chartCategorias.update();
+    }
+  } catch (e) {
+    $("valScore").textContent = "0/100";
+    $("txtScoreHint").textContent = "Faça login para visualizar.";
+    $("txtInsightAuto").textContent = "Sem dados para análise.";
+
+    if (chartCategorias) {
+      chartCategorias.data.labels = [];
+      chartCategorias.data.datasets[0].data = [];
+      chartCategorias.update();
+    }
+  }
+}
+
 $("btnAtualizarDash").addEventListener("click", async () => {
   await refreshDashboard();
   await refreshInsightsDashboard();
@@ -1031,6 +1008,7 @@ $("dashAno").addEventListener("change", () => {
 $("btnSalvarLanc").addEventListener("click", async () => {
   const toast = $("toastLanc");
   hideToast(toast);
+
   try {
     const payload = {
       tipo: $("lanTipo").value,
@@ -1039,11 +1017,14 @@ $("btnSalvarLanc").addEventListener("click", async () => {
       descricao: $("lanDescricao").value.trim(),
       valor: $("lanValor").value.trim(),
     };
+
     await api("/api/lancamentos", "POST", payload);
     showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
+
     $("lanCategoria").value = "";
     $("lanDescricao").value = "";
     $("lanValor").value = "";
+
     refreshDashboard().catch(() => {});
     refreshIA().catch(() => {});
     refreshInsightsDashboard().catch(() => {});
@@ -1067,7 +1048,9 @@ $("btnRecarregarUltimos").addEventListener("click", () => carregarUltimos());
 
 function normalizeValorToMoneyBR(raw) {
   const n = Number(String(raw ?? "").trim().replace(/\s/g, "").replace(",", "."));
-  if (!isNaN(n)) return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!isNaN(n)) {
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   return String(raw ?? "");
 }
 
@@ -1110,7 +1093,6 @@ async function carregarUltimos() {
         </div>
       `;
     }).join("");
-
   } catch (e) {
     showToast(toast, "err", "Erro ao carregar", e.message);
   }
@@ -1119,11 +1101,13 @@ async function carregarUltimos() {
 async function apagarLancamento(row) {
   const toast = $("toastUltimos");
   hideToast(toast);
+
   if (!confirm("Quer mesmo apagar este lançamento?")) return;
 
   try {
     await api(`/api/lancamentos/${row}`, "DELETE");
     showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+
     await carregarUltimos();
     await refreshWaLink();
     await refreshDashboard();
@@ -1187,6 +1171,7 @@ $("btnSalvarEdicao").addEventListener("click", async () => {
 
     await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
     showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
+
     await carregarUltimos();
     await refreshWaLink();
     await refreshDashboard();
@@ -1195,6 +1180,7 @@ $("btnSalvarEdicao").addEventListener("click", async () => {
     await atualizarScoreFinanceiro();
     await carregarOrcamentos();
     await refreshHeroSummary();
+
     setTimeout(() => { closeModal(); }, 450);
   } catch (e) {
     showToast(toast, "err", "Erro ao editar", e.message);
@@ -1217,6 +1203,7 @@ async function carregarInvestimentos() {
   try {
     const res = await api("/api/investimentos?limit=50", "GET");
     const items = res.items || [];
+
     if (items.length === 0) {
       list.innerHTML = `<div class="muted">Nenhum investimento ainda.</div>`;
       return;
@@ -1227,6 +1214,7 @@ async function carregarInvestimentos() {
       const desc = escapeHtml(it.descricao || "");
       const ativo = escapeHtml(it.ativo || "");
       const tipo = escapeHtml((it.tipo || "APORTE").toUpperCase());
+
       return `
         <div class="miniCard">
           <div class="row" style="gap:12px;align-items:flex-start">
@@ -1253,10 +1241,13 @@ async function carregarInvestimentos() {
 window.apagarInvestimento = async (id) => {
   const toast = $("toastInv");
   hideToast(toast);
+
   if (!confirm("Quer mesmo apagar este investimento?")) return;
+
   try {
     await api(`/api/investimentos/${id}`, "DELETE");
     showToast(toast, "ok", "Apagado!", "Investimento removido.");
+
     await carregarInvestimentos();
     await refreshIA();
     await refreshInsightsDashboard();
@@ -1279,11 +1270,14 @@ $("btnSalvarInv").addEventListener("click", async () => {
       valor: $("invValor").value.trim(),
       descricao: $("invDescricao").value.trim(),
     };
+
     await api("/api/investimentos", "POST", payload);
     showToast(toast, "ok", "Salvo!", "Investimento registrado.");
+
     $("invAtivo").value = "";
     $("invValor").value = "";
     $("invDescricao").value = "";
+
     await carregarInvestimentos();
     await refreshIA();
     await refreshInsightsDashboard();
@@ -1326,9 +1320,35 @@ function fabToggle() {
 
 fabMain.addEventListener("click", fabToggle);
 fabBackdrop.addEventListener("click", fabClose);
-fabNovo.addEventListener("click", (e) => { e.preventDefault(); fabClose(); setTab("lancar"); });
-fabDash.addEventListener("click", (e) => { e.preventDefault(); fabClose(); setTab("dashboard"); });
+fabNovo.addEventListener("click", (e) => {
+  e.preventDefault();
+  fabClose();
+  setTab("lancar");
+});
+fabDash.addEventListener("click", (e) => {
+  e.preventDefault();
+  fabClose();
+  setTab("dashboard");
+});
 tabEls.forEach(t => t.addEventListener("click", fabClose));
+
+function fillMonthSelect(selectId) {
+  const sel = $(selectId);
+  const now = new Date();
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  sel.innerHTML = meses.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+  sel.value = String(now.getMonth() + 1);
+}
+
+function initMesAno() {
+  const now = new Date();
+  fillMonthSelect("dashMes");
+  fillMonthSelect("orcMes");
+  $("dashAno").value = String(now.getFullYear());
+  $("orcAno").value = String(now.getFullYear());
+  $("lanData").value = isoToBR(now.toISOString().slice(0, 10));
+  $("invData").value = isoToBR(now.toISOString().slice(0, 10));
+}
 
 initMesAno();
 ensureCharts();
