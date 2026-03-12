@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 import calendar
-from datetime import datetime, date
+from datetime import datetime, timedelta
+
+WEEKDAY_MAP = {
+    "segunda": 0,
+    "terça": 1,
+    "terca": 1,
+    "quarta": 2,
+    "quinta": 3,
+    "sexta": 4,
+    "sábado": 5,
+    "sabado": 5,
+    "domingo": 6,
+}
 from decimal import Decimal
 
 import requests
