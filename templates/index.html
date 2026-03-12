@@ -53,6 +53,7 @@
       <div class="tab active" data-tab="dashboard">Dashboard</div>
       <div class="tab" data-tab="investimentos">Investimentos</div>
       <div class="tab" data-tab="orcamentos">Orçamentos</div>
+      <div class="tab" data-tab="assistente">Assistente</div>
     </div>
 
     <section id="tab-dashboard" class="grid">
@@ -436,7 +437,6 @@
           </div>
 
           <div class="divider"></div>
-
           <div id="orcAlertas" class="grid" style="gap:10px">
             <div class="muted">Nenhum alerta de orçamento por enquanto.</div>
           </div>
@@ -446,6 +446,56 @@
       <div class="card">
         <h2>Metas do mês</h2>
         <div id="listaOrcamentos" style="margin-top:12px;display:grid;gap:10px"></div>
+      </div>
+    </section>
+
+    <section id="tab-assistente" class="hidden">
+      <div class="grid cols2">
+        <div class="card">
+          <div class="row" style="align-items:center">
+            <h2 style="margin:0">Assistente Financeiro</h2>
+            <div class="spacer"></div>
+            <button class="btn" id="btnLimparAssistente">Limpar</button>
+          </div>
+
+          <div class="hint" style="margin-top:8px">
+            Pergunte sobre saldo, gastos, categorias, score, patrimônio, investimentos e orçamento.
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="field">
+            <label>Sua pergunta</label>
+            <textarea id="assistantQuestion" placeholder="Ex: Quanto posso gastar este mês?"></textarea>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button id="btnPerguntarAssistente" class="btn primary">Perguntar</button>
+            <div class="spacer"></div>
+            <span class="hint">Use perguntas curtas e objetivas.</span>
+          </div>
+
+          <div id="toastAssistente" class="toast"></div>
+
+          <div class="divider"></div>
+
+          <div style="font-weight:900;margin-bottom:8px">Sugestões rápidas</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button class="btn ask-chip" data-question="Quanto posso gastar este mês?">Quanto posso gastar este mês?</button>
+            <button class="btn ask-chip" data-question="Qual categoria estou gastando mais?">Qual categoria estou gastando mais?</button>
+            <button class="btn ask-chip" data-question="Como melhorar meu score financeiro?">Como melhorar meu score financeiro?</button>
+            <button class="btn ask-chip" data-question="Qual meu saldo previsto?">Qual meu saldo previsto?</button>
+            <button class="btn ask-chip" data-question="Quanto gastei este mês?">Quanto gastei este mês?</button>
+            <button class="btn ask-chip" data-question="Quanto tenho investido?">Quanto tenho investido?</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Resposta do assistente</h2>
+          <div id="assistantAnswer" class="assistant-answer">
+            Faça login e envie uma pergunta para começar.
+          </div>
+        </div>
       </div>
     </section>
   </div>
