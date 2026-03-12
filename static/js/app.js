@@ -343,6 +343,7 @@ const $ = (id) => document.getElementById(id);
         if (!nome) throw new Error("Informe um nome para exibição.");
 
         const res = await api("/api/account", "POST", { name: nome });
+
         currentUserName = (res && res.name) ? res.name : nome;
         await syncSession();
         refreshGreeting(currentUserName || currentUserEmail || "");
