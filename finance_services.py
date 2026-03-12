@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import calendar
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 WEEKDAY_MAP = {
     "segunda": 0,
