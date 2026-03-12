@@ -400,3 +400,23 @@ def _run_recorrentes_for_user(user_id: int, today: date | None = None):
     db.session.commit()
     return created
 
+def parse_kv_assignments(text: str):
+    result = {}
+
+    if not text:
+        return result
+
+    parts = text.split()
+
+    for part in parts:
+        if "=" not in part:
+            continue
+
+        key, value = part.split("=", 1)
+
+        key = key.strip().lower()
+        value = value.strip().strip('"')
+
+        result[key] = value
+
+    return result
