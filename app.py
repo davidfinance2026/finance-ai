@@ -95,7 +95,8 @@ from whatsapp_commands import (
 
 from routes.auth_routes import register_auth_routes
 from routes.account_routes import register_account_routes
-
+from routes.finance_routes import register_finance_routes
+from routes.investment_routes import register_investment_routes
 
 
 # -------------------------
@@ -364,6 +365,11 @@ with app.app_context():
 # -------------------------
 # Helpers
 # -------------------------
+register_auth_routes(app, db, User, MIN_PASSWORD_LEN, normalize_email, hash_password, login_user)
+register_account_routes(app, db, User, get_logged_user_id, get_logged_email, require_login)
+register_finance_routes(app, db, Transaction, require_login, parse_date_any, parse_brl_value, guess_category_from_text)
+register_investment_routes(app, db, Investment, require_login, parse_money_br_to_decimal, iso_date)
+
 # -------------------------
 # Static / Frontend
 # -------------------------
@@ -491,194 +497,8 @@ def api_panic_reset():
 # -------------------------
 # Transactions API
 # -------------------------
-@app.get("/api/lancamentos")
-def api_list_lancamentos():
-    uid = require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    limit = int(request.args.get("limit", 30))
-    limit = max(1, min(limit, 200))
-
-    rows = (
-        Transaction.query
-        .filter(Transaction.user_id == uid)
-        .order_by(Transaction.data.desc(), Transaction.id.desc())
-        .limit(limit)
-        .all()
-    )
-
-    items = []
-    for t in rows:
-        items.append({
-            "row": t.id,
-            "id": t.id,
-            "data": t.data.isoformat() if t.data else None,
-            "tipo": t.tipo,
-            "categoria": t.categoria,
-            "descricao": t.descricao or "",
-            "valor": float(t.valor) if t.valor is not None else 0.0,
-            "origem": t.origem,
-            "criado_em": t.created_at.isoformat() if t.created_at else "",
-        })
-
-    return jsonify(items=items)
-
-
-@app.post("/api/lancamentos")
-def api_create_lancamento():
-    uid = require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    dataj = request.get_json(silent=True) or {}
-
-    tipo = str(dataj.get("tipo") or "").strip().upper()
-    if tipo not in ("RECEITA", "GASTO"):
-        return jsonify(error="Tipo inválido"), 400
-
-    descricao = str(dataj.get("descricao") or "").strip() or None
-    raw_categoria = str(dataj.get("categoria") or "").strip()
-    categoria = raw_categoria.title() if raw_categoria else None
-    if not categoria:
-        categoria = guess_category_from_text(uid, f"{raw_categoria} {descricao or ''}") or "Outros"
-
-    d = parse_date_any(dataj.get("data"))
-
-    try:
-        valor = parse_brl_value(dataj.get("valor"))
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
-
-    t = Transaction(
-        user_id=uid,
-        tipo=tipo,
-        data=d,
-        categoria=categoria,
-        descricao=descricao,
-        valor=valor,
-        origem="APP",
-    )
-    db.session.add(t)
-    db.session.commit()
-    return jsonify(ok=True, id=t.id, row=t.id)
-
-
-@app.put("/api/lancamentos/<int:row>")
-def api_edit_lancamento(row: int):
-    uid = require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    payload = request.get_json(silent=True) or {}
-
-    t = Transaction.query.filter_by(id=row, user_id=uid).first()
-    if not t:
-        return jsonify(error="Sem permissão ou inexistente"), 403
-
-    tipo = str(payload.get("tipo") or t.tipo).strip().upper()
-    if tipo not in ("RECEITA", "GASTO"):
-        return jsonify(error="Tipo inválido"), 400
-
-    t.tipo = tipo
-    t.data = parse_date_any(payload.get("data") or t.data.isoformat())
-    t.categoria = (str(payload.get("categoria") or t.categoria).strip() or "Outros").title()
-    t.descricao = str(payload.get("descricao") or "").strip() or None
-
-    try:
-        t.valor = parse_brl_value(payload.get("valor"))
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
-
-    db.session.commit()
-    return jsonify(ok=True)
-
-
-@app.delete("/api/lancamentos/<int:row>")
-def api_delete_lancamento(row: int):
-    uid = require_login()
-    if not uid:
-        return jsonify(error="Não logado"), 401
-
-    t = Transaction.query.filter_by(id=row, user_id=uid).first()
-    if not t:
-        return jsonify(error="Sem permissão ou inexistente"), 403
-
-    db.session.delete(t)
-    db.session.commit()
-    return jsonify(ok=True)
-
-# -----------------------
-# Investimentos
-# -----------------------
-@app.get("/api/investimentos")
-def api_investimentos_list():
-    user_id = require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    limit = int(request.args.get("limit", "50"))
-    q = Investment.query.filter_by(user_id=user_id).order_by(Investment.data.desc(), Investment.id.desc())
-    items = q.limit(min(limit, 200)).all()
-
-    out = []
-    for it in items:
-        out.append({
-            "id": it.id,
-            "data": it.data.isoformat(),
-            "ativo": it.ativo,
-            "tipo": it.tipo,
-            "valor": str(it.valor),
-            "descricao": it.descricao or "",
-        })
-    return jsonify({"items": out})
-
-
-@app.post("/api/investimentos")
-def api_investimentos_create():
-    user_id = require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    data = request.get_json(silent=True) or {}
-    ativo = str(data.get("ativo") or "").strip()
-    if not ativo:
-        return jsonify({"error": "Informe o ativo (ex: Tesouro Selic, PETR4, BTC)."}), 400
-
-    tipo = str(data.get("tipo") or "APORTE").strip().upper()
-    if tipo not in ("APORTE", "RESGATE"):
-        return jsonify({"error": "Tipo inválido. Use APORTE ou RESGATE."}), 400
-
-    valor = parse_money_br_to_decimal(data.get("valor"))
-    if valor <= 0:
-        return jsonify({"error": "Informe um valor válido (> 0)."}), 400
-
-    it = Investment(
-        user_id=user_id,
-        data=iso_date(data.get("data")),
-        ativo=ativo,
-        tipo=tipo,
-        valor=valor,
-        descricao=str(data.get("descricao") or "").strip() or None,
-    )
-    db.session.add(it)
-    db.session.commit()
-    return jsonify({"ok": True, "id": it.id})
-
-
-@app.delete("/api/investimentos/<int:item_id>")
-def api_investimentos_delete(item_id: int):
-    user_id = require_login()
-    if not user_id:
-        return jsonify({"error": "Não logado"}), 401
-
-    it = Investment.query.filter_by(user_id=user_id, id=item_id).first()
-    if not it:
-        return jsonify({"error": "Investimento não encontrado."}), 404
-
-    db.session.delete(it)
-    db.session.commit()
-    return jsonify({"ok": True})
+# -------------------------
+# Financial CRUD routes moved to routes/finance_routes.py and routes/investment_routes.py
 
 # -------------------------
 # Dashboard + IA
