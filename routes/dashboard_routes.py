@@ -4,7 +4,16 @@ from decimal import Decimal
 from flask import request, jsonify
 
 
-def register_dashboard_routes(app, Transaction, require_login, calc_projection, calc_alerts, calc_patrimonio_series):
+def register_dashboard_routes(
+    app,
+    Transaction,
+    require_login,
+    calc_projection,
+    calc_alerts,
+    calc_patrimonio_series,
+    looks_like_finance_question=None,
+    reply_finance_question=None,
+):
     @app.get("/api/dashboard")
     def api_dashboard():
         uid = require_login()
@@ -30,6 +39,7 @@ def register_dashboard_routes(app, Transaction, require_login, calc_projection, 
 
         receitas = Decimal("0")
         gastos = Decimal("0")
+
         for t in q:
             v = Decimal(t.valor or 0)
             if (t.tipo or "").upper() == "RECEITA":
@@ -38,7 +48,11 @@ def register_dashboard_routes(app, Transaction, require_login, calc_projection, 
                 gastos += v
 
         saldo = receitas - gastos
-        return jsonify(receitas=float(receitas), gastos=float(gastos), saldo=float(saldo))
+        return jsonify(
+            receitas=float(receitas),
+            gastos=float(gastos),
+            saldo=float(saldo),
+        )
 
     @app.get("/api/insights_dashboard")
     def api_insights_dashboard():
@@ -160,6 +174,7 @@ def register_dashboard_routes(app, Transaction, require_login, calc_projection, 
 
         months = int(request.args.get("months", "6"))
         months = max(3, min(12, months))
+
         labels, values = calc_patrimonio_series(uid, months)
         return jsonify(labels=labels, values=values)
 
@@ -204,5 +219,33 @@ def register_dashboard_routes(app, Transaction, require_login, calc_projection, 
             "status": status,
             "receitas": float(receitas),
             "gastos": float(gastos),
-            "saldo": float(saldo)
+            "saldo": float(saldo),
         })
+
+    @app.post("/api/assistant_finance")
+    def api_assistant_finance():
+        uid = require_login()
+        if not uid:
+            return jsonify(error="Não logado"), 401
+
+        if reply_finance_question is None:
+            return jsonify(error="Assistente não configurado"), 500
+
+        data = request.get_json(silent=True) or {}
+        pergunta = str(data.get("pergunta") or data.get("question") or "").strip()
+
+        if not pergunta:
+            return jsonify(error="Pergunta obrigatória"), 400
+
+        if looks_like_finance_question is not None and not looks_like_finance_question(pergunta):
+            return jsonify(
+                ok=True,
+                resposta="Eu posso ajudar com perguntas financeiras do app, como saldo previsto, gastos, categorias, score, investimentos e orçamento."
+            )
+
+        try:
+            resposta = reply_finance_question(uid, pergunta)
+            return jsonify(ok=True, resposta=resposta)
+        except Exception as e:
+            print("assistant_finance error:", repr(e))
+            return jsonify(error="Falha ao processar pergunta"), 500
