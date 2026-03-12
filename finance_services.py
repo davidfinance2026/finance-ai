@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 import calendar
 from datetime import datetime, date, timedelta
+from decimal import Decimal
+
+import requests
+
+from utils_core import month_bounds, fmt_brl, norm_word, tokenize, period_range
 
 WEEKDAY_MAP = {
     "segunda": 0,
@@ -13,11 +18,6 @@ WEEKDAY_MAP = {
     "sabado": 5,
     "domingo": 6,
 }
-from decimal import Decimal
-
-import requests
-
-from utils_core import month_bounds, fmt_brl, norm_word, tokenize, period_range
 
 _CFG = {
     "Transaction": None,
@@ -330,6 +330,31 @@ def sum_investments_position(user_id: int):
     return aportes, resgates, patrimonio_investido, invs
 
 
+def _top_categories_month(user_id: int):
+    Transaction, _, _, _ = _models()
+    today = datetime.utcnow().date()
+    start, end = month_bounds(today.year, today.month)
+
+    rows = (
+        Transaction.query
+        .filter(Transaction.user_id == user_id)
+        .filter(Transaction.tipo == "GASTO")
+        .filter(Transaction.data >= start)
+        .filter(Transaction.data < end)
+        .all()
+    )
+
+    cat_map = {}
+    total = Decimal("0")
+    for t in rows:
+        v = Decimal(t.valor or 0)
+        total += v
+        cat_map[t.categoria] = cat_map.get(t.categoria, Decimal("0")) + v
+
+    ordered = sorted(cat_map.items(), key=lambda kv: kv[1], reverse=True)
+    return ordered, total
+
+
 def build_ai_finance_context(user_id: int) -> str:
     Transaction, Investment, _, _ = _models()
     today = datetime.utcnow().date()
@@ -345,6 +370,7 @@ def build_ai_finance_context(user_id: int) -> str:
             continue
         v = Decimal(t.valor or 0)
         top_cats[t.categoria] = top_cats.get(t.categoria, Decimal("0")) + v
+
     top_lines = []
     for cat, val in sorted(top_cats.items(), key=lambda kv: kv[1], reverse=True)[:5]:
         top_lines.append(f"- {cat}: R$ {fmt_brl(val)}")
@@ -401,31 +427,103 @@ def looks_like_finance_question(text_msg: str) -> bool:
     txt = norm_word(text_msg)
     if not txt:
         return False
+
     keywords = {
         "gastei", "gasto", "gastos", "receita", "receitas", "saldo", "sobrou", "faltando",
         "projecao", "projeção", "alerta", "alertas", "investi", "investido",
         "investimentos", "patrimonio", "patrimônio", "aporte", "resgate", "mercado",
         "categoria", "categorias", "dinheiro", "financeiro", "financas", "finanças",
-        "mes", "mês", "semana", "hoje", "quanto", "posso", "tenho"
+        "mes", "mês", "semana", "hoje", "quanto", "posso", "tenho", "score", "melhorar"
     }
     return any(k in txt for k in keywords)
+
+
+def _local_finance_answer(user_id: int, question: str) -> str | None:
+    q = norm_word(question)
+    today = datetime.utcnow().date()
+
+    receitas_mes, gastos_mes, saldo_mes, _ = sum_period(
+        user_id,
+        *month_bounds(today.year, today.month)
+    )
+    proj = calc_projection(user_id, today)
+    top_cats, total_gastos = _top_categories_month(user_id)
+
+    if "quanto posso gastar" in q or "posso gastar" in q:
+        dias = max(1, proj["dias_restantes"])
+        saldo_prev = Decimal(proj["saldo_previsto"] or 0)
+        valor_dia = saldo_prev / Decimal(dias) if dias > 0 else Decimal("0")
+        return (
+            f"💡 Você pode gastar cerca de R$ {fmt_brl(valor_dia)} por dia até o fim do mês, "
+            f"considerando o saldo previsto atual de R$ {fmt_brl(saldo_prev)}."
+        )
+
+    if "qual categoria" in q and ("mais" in q or "maior" in q):
+        if not top_cats:
+            return "Ainda não encontrei gastos suficientes no mês para identificar a categoria principal."
+        cat, val = top_cats[0]
+        pct = (val / total_gastos * 100) if total_gastos > 0 else Decimal("0")
+        return f"📊 Sua maior categoria no mês é {cat}, com R$ {fmt_brl(val)} ({pct:.0f}% dos gastos)."
+
+    if "saldo previsto" in q or "saldo final" in q or "como fecho o mês" in q:
+        return (
+            f"📈 Seu saldo previsto para o fim do mês é R$ {fmt_brl(proj['saldo_previsto'])}. "
+            f"Hoje seu saldo do mês está em R$ {fmt_brl(saldo_mes)}."
+        )
+
+    if "score" in q and ("melhorar" in q or "como melhorar" in q):
+        if not top_cats:
+            return "Para melhorar seu score, tente reduzir gastos variáveis e manter o mês com saldo positivo."
+        cat, val = top_cats[0]
+        sugestao = val * Decimal("0.10")
+        return (
+            f"🧠 Para melhorar seu score, sua melhor oportunidade agora é reduzir a categoria {cat}. "
+            f"Se cortar cerca de R$ {fmt_brl(sugestao)}, seu resultado mensal já melhora."
+        )
+
+    if "quanto gastei" in q and ("mes" in q or "mês" in q):
+        return f"💸 Neste mês você gastou R$ {fmt_brl(gastos_mes)}."
+
+    if "quanto recebi" in q or ("receitas" in q and ("mes" in q or "mês" in q)):
+        return f"💰 Neste mês você recebeu R$ {fmt_brl(receitas_mes)}."
+
+    if "investi" in q or "investimentos" in q or "patrimonio" in q or "patrimônio" in q:
+        aportes, resgates, patrimonio_investido, _ = sum_investments_position(user_id)
+        return (
+            f"💎 Você tem R$ {fmt_brl(patrimonio_investido)} investidos líquidos. "
+            f"Aportes: R$ {fmt_brl(aportes)} | Resgates: R$ {fmt_brl(resgates)}."
+        )
+
+    if "alerta" in q or "alertas" in q:
+        alerts = calc_alerts(user_id, today)
+        if not alerts:
+            return "✅ Você não tem alertas financeiros importantes no momento."
+        a = alerts[0]
+        return f"🚨 {a['titulo']}: {a['mensagem']}"
+
+    return None
 
 
 def ask_openai_finance_assistant(user_id: int, question: str) -> str:
     openai_available = _CFG["openai_available_func"]
     openai_headers = _CFG["openai_headers_func"]
+
+    local_answer = _local_finance_answer(user_id, question)
+    if local_answer:
+        return local_answer
+
     if not openai_available or not openai_available():
         return "⚠️ A IA ainda não está ativa no servidor. Configure OPENAI_API_KEY no Railway."
 
     context = build_ai_finance_context(user_id)
     system = (
-        "Você é o Finance AI, um assistente financeiro pessoal via WhatsApp. "
+        "Você é o Finance AI, um assistente financeiro pessoal dentro de um app. "
         "Responda sempre em português do Brasil, com linguagem clara, objetiva e amigável. "
         "Use SOMENTE o contexto financeiro fornecido. "
         "Se a pergunta fugir de finanças pessoais do usuário, diga que você ajuda apenas com dados financeiros do app. "
         "Não invente valores. Se algo não estiver no contexto, diga explicitamente que não encontrou dados suficientes. "
         "Quando fizer sentido, cite números exatos do contexto e dê uma dica prática curta no final. "
-        "Mantenha a resposta curta, adequada para WhatsApp, no máximo 12 linhas."
+        "Mantenha a resposta curta, no máximo 10 linhas."
     )
     user_prompt = (
         f"Contexto financeiro do usuário:\n{context}\n\n"
