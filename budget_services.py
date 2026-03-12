@@ -19,7 +19,6 @@ def month_bounds(year, month):
 
 
 def get_budget_summary(user_id, ano, mes):
-
     start, end = month_bounds(ano, mes)
 
     txs = (
@@ -49,17 +48,12 @@ def get_budget_summary(user_id, ano, mes):
     items = []
 
     for m in metas:
-
         meta = Decimal(m.valor_meta or 0)
-
         gasto = total if m.categoria == "TOTAL" else gastos.get(m.categoria, Decimal("0"))
-
         restante = meta - gasto
-
         percentual = float((gasto / meta) * 100) if meta > 0 else 0
 
         status = "ok"
-
         if gasto > meta:
             status = "excedido"
         elif percentual >= 80:
