@@ -394,3 +394,189 @@
       transition:.18s ease;
     }
     .fab-wrap.open + .fab-backdrop{opacity:1;pointer-events:auto}
+/* =========================
+   ORÇAMENTOS
+========================= */
+
+#tab-orcamentos .miniCard {
+  position: relative;
+  overflow: hidden;
+}
+
+#tab-orcamentos .miniCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.04);
+  border-radius: 18px;
+}
+
+#tab-orcamentos .kpi {
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+#tab-orcamentos .hint {
+  color: rgba(234,240,255,.68);
+}
+
+#listaOrcamentos {
+  display: grid;
+  gap: 12px;
+}
+
+#listaOrcamentos .miniCard {
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 10px 24px rgba(0,0,0,.16);
+}
+
+#listaOrcamentos .miniCard:hover {
+  transform: translateY(-1px);
+  transition: .18s ease;
+  border-color: rgba(255,255,255,.10);
+}
+
+#listaOrcamentos .miniCard .row {
+  align-items: center;
+}
+
+#listaOrcamentos .miniCard .muted {
+  color: rgba(234,240,255,.68);
+}
+
+#listaOrcamentos .miniCard .btn.small {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+.orc-progress {
+  margin-top: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.20);
+}
+
+.orc-progress > div {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .25s ease;
+}
+
+.orc-status-ok {
+  color: #2ee59d;
+}
+
+.orc-status-atencao {
+  color: #ffb84d;
+}
+
+.orc-status-excedido {
+  color: #ff4b6e;
+}
+
+#orcAlertas {
+  display: grid;
+  gap: 10px;
+}
+
+#orcAlertas .alert-item {
+  border-radius: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.03);
+  box-shadow: 0 8px 18px rgba(0,0,0,.14);
+}
+
+#orcAlertas .alert-item.high {
+  background: rgba(255,75,110,.10);
+  border-color: rgba(255,75,110,.28);
+}
+
+#orcAlertas .alert-item.medium {
+  background: rgba(255,184,77,.10);
+  border-color: rgba(255,184,77,.24);
+}
+
+#orcAlertas .alert-title {
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+#orcAlertas .alert-msg {
+  color: rgba(234,240,255,.76);
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+#tab-orcamentos .field input,
+#tab-orcamentos .field select {
+  width: 100%;
+}
+
+#tab-orcamentos .card h2 {
+  margin-bottom: 8px;
+}
+
+#orcResumoMeta,
+#orcResumoGasto,
+#orcResumoRestante {
+  font-size: 1.06rem;
+}
+
+#orcResumoRestante.negative {
+  color: #ff4b6e;
+}
+
+#orcResumoRestante.positive {
+  color: #2ee59d;
+}
+
+.tabs {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab {
+  min-width: 110px;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  #tab-orcamentos .grid.cols2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .tab {
+    min-width: unset;
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  #listaOrcamentos .miniCard .row {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  #listaOrcamentos .miniCard .btn.small {
+    margin-top: 10px;
+  }
+
+  #tab-orcamentos .row {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .tab {
+    flex: 1 1 100%;
+  }
+}
