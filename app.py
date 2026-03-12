@@ -34,6 +34,33 @@ from utils_core import (
     next_monthly_date,
     next_weekly_date,
 )
+from utils_auth import (
+    get_logged_user_id,
+    get_logged_email,
+    require_login,
+    get_or_create_user_by_email,
+    login_user,
+    status_payload,
+)
+
+
+from utils_core import (
+    hash_password,
+    normalize_email,
+    parse_brl_value,
+    parse_date_any,
+    parse_money_br_to_decimal,
+    iso_date,
+    extract_json_from_text,
+    fmt_brl,
+    month_bounds,
+    norm_word,
+    tokenize,
+    normalize_wa_number,
+    period_range,
+    next_monthly_date,
+    next_weekly_date,
+)
 
 
 # -------------------------
@@ -281,52 +308,6 @@ with app.app_context():
 # -------------------------
 # Helpers
 # -------------------------
-def _get_logged_user_id():
-    return session.get("user_id")
-
-
-def _get_logged_email():
-    return session.get("user_email")
-
-
-def _require_login():
-    return _get_logged_user_id()
-
-
-def _get_or_create_user_by_email(email: str, password: str | None = None) -> User:
-    email = normalize_email(email)
-    u = User.query.filter_by(email=email).first()
-    if u:
-        return u
-
-    if password is None:
-        pw_hash = hash_password(os.urandom(16).hex())
-        u = User(email=email, password_hash=pw_hash, password_set=False)
-    else:
-        u = User(email=email, password_hash=hash_password(password), password_set=True)
-
-    db.session.add(u)
-    db.session.commit()
-    return u
-
-
-def _login_user(u: User):
-    session["user_id"] = u.id
-    session["user_email"] = u.email
-
-
-def _status_payload():
-    return {
-        "ok": True,
-        "db_enabled": DB_ENABLED,
-        "db_uri_set": bool(_raw_db_url),
-        "graph_version": GRAPH_VERSION,
-        "wa_ready": bool(WA_ACCESS_TOKEN and WA_PHONE_NUMBER_ID and WA_VERIFY_TOKEN),
-        "min_password_len": MIN_PASSWORD_LEN,
-        "openai_ready": bool(OPENAI_API_KEY),
-    }
-
-
 def wa_send_text(to_number: str, text_msg: str):
     to_number = normalize_wa_number(to_number)
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN and to_number):
@@ -1301,13 +1282,22 @@ def robots():
 
 @app.get("/health")
 def health():
-    return jsonify(_status_payload())
+    return jsonify(status_payload(
+        db_enabled=DB_ENABLED,
+        raw_db_url=_raw_db_url,
+        graph_version=GRAPH_VERSION,
+        wa_access_token=WA_ACCESS_TOKEN,
+        wa_phone_number_id=WA_PHONE_NUMBER_ID,
+        wa_verify_token=WA_VERIFY_TOKEN,
+        min_password_len=MIN_PASSWORD_LEN,
+        openai_api_key=OPENAI_API_KEY,
+    ))
 
 
 @app.get("/api/wa_link")
 def api_wa_link():
-    uid = _get_logged_user_id()
-    email = _get_logged_email()
+    uid = get_logged_user_id()
+    email = get_logged_email()
 
     to = normalize_wa_number(WA_PUBLIC_NUMBER)
     if not uid or not email:
@@ -1320,8 +1310,8 @@ def api_wa_link():
 
 @app.get("/wa")
 def wa_shortcut():
-    uid = _get_logged_user_id()
-    email = _get_logged_email()
+    uid = get_logged_user_id()
+    email = get_logged_email()
     to = normalize_wa_number(WA_PUBLIC_NUMBER)
 
     if uid and email:
@@ -1413,7 +1403,7 @@ def api_register():
             if nome and not existing.name:
                 existing.name = nome
             db.session.commit()
-            _login_user(existing)
+            login_user(existing)
             return jsonify(email=existing.email, name=existing.name, claimed=True)
         return jsonify(error="Email já cadastrado"), 400
 
@@ -1426,7 +1416,7 @@ def api_register():
     db.session.add(u)
     db.session.commit()
 
-    _login_user(u)
+    login_user(u)
     return jsonify(email=u.email, name=u.name)
 
 
@@ -1440,7 +1430,7 @@ def api_login():
     if not u or u.password_hash != hash_password(senha):
         return jsonify(error="Email ou senha inválidos"), 401
 
-    _login_user(u)
+    login_user(u)
     return jsonify(email=u.email, name=u.name)
 
 
@@ -1476,8 +1466,8 @@ def api_reset_password():
 
 @app.get("/api/me")
 def api_me():
-    uid = _get_logged_user_id()
-    email = _get_logged_email()
+    uid = get_logged_user_id()
+    email = get_logged_email()
 
     name = None
     if uid:
@@ -1489,7 +1479,7 @@ def api_me():
 
 @app.post("/api/account")
 def api_account_update():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1518,7 +1508,7 @@ def api_account_update():
 # -------------------------
 @app.get("/api/lancamentos")
 def api_list_lancamentos():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1552,7 +1542,7 @@ def api_list_lancamentos():
 
 @app.post("/api/lancamentos")
 def api_create_lancamento():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1591,7 +1581,7 @@ def api_create_lancamento():
 
 @app.put("/api/lancamentos/<int:row>")
 def api_edit_lancamento(row: int):
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1621,7 +1611,7 @@ def api_edit_lancamento(row: int):
 
 @app.delete("/api/lancamentos/<int:row>")
 def api_delete_lancamento(row: int):
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1638,7 +1628,7 @@ def api_delete_lancamento(row: int):
 # -----------------------
 @app.get("/api/investimentos")
 def api_investimentos_list():
-    user_id = _require_login()
+    user_id = require_login()
     if not user_id:
         return jsonify({"error": "Não logado"}), 401
 
@@ -1661,7 +1651,7 @@ def api_investimentos_list():
 
 @app.post("/api/investimentos")
 def api_investimentos_create():
-    user_id = _require_login()
+    user_id = require_login()
     if not user_id:
         return jsonify({"error": "Não logado"}), 401
 
@@ -1693,7 +1683,7 @@ def api_investimentos_create():
 
 @app.delete("/api/investimentos/<int:item_id>")
 def api_investimentos_delete(item_id: int):
-    user_id = _require_login()
+    user_id = require_login()
     if not user_id:
         return jsonify({"error": "Não logado"}), 401
 
@@ -1710,7 +1700,7 @@ def api_investimentos_delete(item_id: int):
 # -------------------------
 @app.get("/api/dashboard")
 def api_dashboard():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1746,7 +1736,7 @@ def api_dashboard():
 
 @app.get("/api/insights_dashboard")
 def api_insights_dashboard():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1834,7 +1824,7 @@ def api_insights_dashboard():
 
 @app.get("/api/projecao")
 def api_projecao():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1853,7 +1843,7 @@ def api_projecao():
 
 @app.get("/api/alertas")
 def api_alertas():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
     return jsonify(items=_calc_alerts(uid))
@@ -1861,7 +1851,7 @@ def api_alertas():
 
 @app.get("/api/patrimonio")
 def api_patrimonio():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify(error="Não logado"), 401
 
@@ -1873,7 +1863,7 @@ def api_patrimonio():
 
 @app.route("/api/score_financeiro")
 def api_score_financeiro():
-    uid = _require_login()
+    uid = require_login()
     if not uid:
         return jsonify({"error": "Não logado"}), 401
 
@@ -2319,7 +2309,7 @@ def wa_webhook():
                             wa_send_text(wa_from, "Email inválido. Ex: conectar david@email.com")
                             continue
 
-                        u = _get_or_create_user_by_email(email, password=None)
+                        u = get_or_create_user_by_email(User, db, email, password=None)
 
                         link = WaLink.query.filter_by(wa_from=wa_from).first()
                         already = False
