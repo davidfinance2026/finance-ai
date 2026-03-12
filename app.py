@@ -17,6 +17,25 @@ from sqlalchemy.exc import SQLAlchemyError
 from urllib.parse import quote
 from PyPDF2 import PdfReader
 
+from utils_core import (
+    hash_password,
+    normalize_email,
+    parse_brl_value,
+    parse_date_any,
+    parse_money_br_to_decimal,
+    iso_date,
+    extract_json_from_text,
+    fmt_brl,
+    month_bounds,
+    norm_word,
+    tokenize,
+    normalize_wa_number,
+    period_range,
+    next_monthly_date,
+    next_weekly_date,
+)
+
+
 # -------------------------
 # App / Config
 # -------------------------
@@ -262,14 +281,6 @@ with app.app_context():
 # -------------------------
 # Helpers
 # -------------------------
-def _hash_password(pw: str) -> str:
-    return hashlib.sha256((pw or "").encode("utf-8")).hexdigest()
-
-
-def _normalize_email(email: str) -> str:
-    return str(email or "").strip().lower()
-
-
 def _get_logged_user_id():
     return session.get("user_id")
 
@@ -282,78 +293,17 @@ def _require_login():
     return _get_logged_user_id()
 
 
-def _parse_brl_value(v) -> Decimal:
-    if v is None:
-        raise ValueError("valor vazio")
-
-    s = str(v).strip()
-    if not s:
-        raise ValueError("valor vazio")
-
-    s = re.sub(r"[^0-9,\.-]", "", s)
-
-    if "." in s and "," in s:
-        s = s.replace(".", "").replace(",", ".")
-    else:
-        if "," in s and "." not in s:
-            s = s.replace(",", ".")
-
-    try:
-        return Decimal(s)
-    except InvalidOperation:
-        raise ValueError("valor inválido")
-
-
-def _parse_date_any(v) -> date:
-    if not v:
-        return datetime.utcnow().date()
-
-    s = str(v).strip()
-    try:
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
-            return datetime.strptime(s, "%Y-%m-%d").date()
-        if re.match(r"^\d{2}/\d{2}/\d{4}$", s):
-            return datetime.strptime(s, "%d/%m/%Y").date()
-        if re.match(r"^\d{2}-\d{2}-\d{4}$", s):
-            return datetime.strptime(s, "%d-%m-%Y").date()
-    except Exception:
-        pass
-
-    return datetime.utcnow().date()
-
-
-def _parse_money_br_to_decimal(value):
-    s = str(value or "").strip()
-    if not s:
-        return Decimal("0")
-    s = s.replace(" ", "")
-    if "," in s:
-        s = s.replace(".", "").replace(",", ".")
-    try:
-        return Decimal(s)
-    except Exception:
-        return Decimal("0")
-
-
-def _iso_date(value):
-    s = str(value or "").strip()
-    try:
-        return datetime.strptime(s[:10], "%Y-%m-%d").date()
-    except Exception:
-        return datetime.utcnow().date()
-
-
 def _get_or_create_user_by_email(email: str, password: str | None = None) -> User:
-    email = _normalize_email(email)
+    email = normalize_email(email)
     u = User.query.filter_by(email=email).first()
     if u:
         return u
 
     if password is None:
-        pw_hash = _hash_password(os.urandom(16).hex())
+        pw_hash = hash_password(os.urandom(16).hex())
         u = User(email=email, password_hash=pw_hash, password_set=False)
     else:
-        u = User(email=email, password_hash=_hash_password(password), password_set=True)
+        u = User(email=email, password_hash=hash_password(password), password_set=True)
 
     db.session.add(u)
     db.session.commit()
@@ -377,14 +327,8 @@ def _status_payload():
     }
 
 
-def _normalize_wa_number(raw: str) -> str:
-    s = (raw or "").strip().replace("+", "")
-    s = re.sub(r"[^0-9]", "", s)
-    return s
-
-
 def wa_send_text(to_number: str, text_msg: str):
-    to_number = _normalize_wa_number(to_number)
+    to_number = normalize_wa_number(to_number)
     if not (WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN and to_number):
         print("WA send skipped (missing creds or number). msg:", text_msg)
         return
@@ -477,32 +421,12 @@ def _extract_pdf_text(file_path: str) -> str:
         return ""
 
 
-def _extract_json_from_text(raw: str) -> dict:
-    raw = (raw or "").strip()
-    if not raw:
-        return {}
-
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not m:
-        return {}
-
-    try:
-        return json.loads(m.group(0))
-    except Exception:
-        return {}
-
-
 def _normalize_ai_result(obj: dict) -> dict | None:
     if not obj:
         return None
 
     try:
-        valor = _parse_brl_value(obj.get("valor"))
+        valor = parse_brl_value(obj.get("valor"))
     except Exception:
         return None
 
@@ -521,7 +445,7 @@ def _normalize_ai_result(obj: dict) -> dict | None:
         "valor": str(valor),
         "categoria": categoria,
         "descricao": descricao,
-        "data": _parse_date_any(obj.get("data")).isoformat(),
+        "data": parse_date_any(obj.get("data")).isoformat(),
         "confidence": confidence,
         "justificativa": str(obj.get("justificativa") or "").strip(),
     }
@@ -560,7 +484,7 @@ def _call_openai_finance_json(user_prompt: str, image_base64: str | None = None,
     r = requests.post("https://api.openai.com/v1/chat/completions", headers=_openai_headers(), json=payload, timeout=120)
     r.raise_for_status()
     raw = r.json()["choices"][0]["message"]["content"]
-    return _normalize_ai_result(_extract_json_from_text(raw))
+    return _normalize_ai_result(extract_json_from_text(raw))
 
 
 def _analyze_text_transaction(text_value: str, source_name: str = "texto") -> dict | None:
@@ -590,10 +514,10 @@ def _save_ai_transaction(user_id: int, tx_data: dict, origem: str = "WA") -> Tra
     tx = Transaction(
         user_id=user_id,
         tipo=tx_data["tipo"],
-        data=_parse_date_any(tx_data.get("data")),
+        data=parse_date_any(tx_data.get("data")),
         categoria=(tx_data.get("categoria") or "Outros").title(),
         descricao=tx_data.get("descricao") or None,
-        valor=_parse_brl_value(tx_data.get("valor")),
+        valor=parse_brl_value(tx_data.get("valor")),
         origem=origem,
     )
     db.session.add(tx)
@@ -601,42 +525,8 @@ def _save_ai_transaction(user_id: int, tx_data: dict, origem: str = "WA") -> Tra
     return tx
 
 
-def _fmt_brl(v: Decimal | float | int | None) -> str:
-    try:
-        d = Decimal(v or 0)
-    except Exception:
-        d = Decimal("0")
-    s = f"{d:.2f}"
-    return s.replace(".", ",")
-
-
-def _month_bounds(year: int, month: int):
-    start = date(year, month, 1)
-    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    return start, end
-
-
-def _norm_word(w: str) -> str:
-    w = (w or "").strip().lower()
-    w = (
-        w.replace("á", "a").replace("à", "a").replace("â", "a").replace("ã", "a")
-         .replace("é", "e").replace("ê", "e")
-         .replace("í", "i")
-         .replace("ó", "o").replace("ô", "o").replace("õ", "o")
-         .replace("ú", "u")
-         .replace("ç", "c")
-    )
-    return w
-
-
-def _tokenize(textv: str) -> list[str]:
-    textv = _norm_word(textv)
-    parts = re.split(r"[^a-z0-9]+", textv)
-    return [p for p in parts if p]
-
-
 def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
-    tokens = set(_tokenize(full_text))
+    tokens = set(tokenize(full_text))
 
     try:
         rules = (
@@ -646,7 +536,7 @@ def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
             .all()
         )
         for r in rules:
-            key = _norm_word(r.pattern)
+            key = norm_word(r.pattern)
             if not key:
                 continue
             if key in tokens or any(key in t for t in tokens):
@@ -666,33 +556,11 @@ def _guess_category_from_text(user_id: int, full_text: str) -> str | None:
     ]
 
     for cat, keys in default_category_keywords:
-        nkeys = {_norm_word(k) for k in keys}
+        nkeys = {norm_word(k) for k in keys}
         if tokens & nkeys:
             return cat
 
     return None
-
-
-def _period_range(kind: str):
-    today = datetime.utcnow().date()
-    k = _norm_word(kind)
-
-    if k in ("hoje", "dia"):
-        start = today
-        end = today + timedelta(days=1)
-        label = "hoje"
-        return start, end, label
-
-    if k == "semana":
-        start = today - timedelta(days=today.weekday())
-        end = start + timedelta(days=7)
-        label = "esta semana"
-        return start, end, label
-
-    start = date(today.year, today.month, 1)
-    end = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
-    label = "este mês"
-    return start, end, label
 
 
 def _sum_period(user_id: int, start: date, end: date):
@@ -718,7 +586,7 @@ def _sum_period(user_id: int, start: date, end: date):
 
 def _calc_projection(user_id: int, ref_date: date | None = None):
     today = ref_date or datetime.utcnow().date()
-    start, end = _month_bounds(today.year, today.month)
+    start, end = month_bounds(today.year, today.month)
 
     rows = (
         Transaction.query
@@ -785,7 +653,7 @@ def _calc_projection(user_id: int, ref_date: date | None = None):
 
 def _calc_alerts(user_id: int, ref_date: date | None = None):
     today = ref_date or datetime.utcnow().date()
-    start, end = _month_bounds(today.year, today.month)
+    start, end = month_bounds(today.year, today.month)
 
     current_rows = (
         Transaction.query
@@ -812,7 +680,7 @@ def _calc_alerts(user_id: int, ref_date: date | None = None):
         alerts.append({
             "nivel": "alto",
             "titulo": "Saldo previsto negativo",
-            "mensagem": f"Seu saldo projetado para o fim do mês é R$ {_fmt_brl(projection['saldo_previsto'])}.",
+            "mensagem": f"Seu saldo projetado para o fim do mês é R$ {fmt_brl(projection['saldo_previsto'])}.",
         })
 
     if total_gastos > 0:
@@ -833,7 +701,7 @@ def _calc_alerts(user_id: int, ref_date: date | None = None):
                 base_month += 12
                 base_year -= 1
 
-            h_start, h_end = _month_bounds(base_year, base_month)
+            h_start, h_end = month_bounds(base_year, base_month)
             rows = (
                 Transaction.query
                 .filter(Transaction.user_id == user_id)
@@ -851,7 +719,7 @@ def _calc_alerts(user_id: int, ref_date: date | None = None):
                 alerts.append({
                     "nivel": "medio",
                     "titulo": f"{cat} acima da média",
-                    "mensagem": f"Você gastou R$ {_fmt_brl(current_value)} em {cat}; média recente R$ {_fmt_brl(media_hist)}.",
+                    "mensagem": f"Você gastou R$ {fmt_brl(current_value)} em {cat}; média recente R$ {fmt_brl(media_hist)}.",
                 })
 
     return alerts[:5]
@@ -877,7 +745,7 @@ def _calc_patrimonio_series(user_id: int, months: int = 6):
             month -= 12
             year += 1
 
-        start, end = _month_bounds(year, month)
+        start, end = month_bounds(year, month)
 
         txs = (
             Transaction.query
@@ -923,7 +791,7 @@ def _sum_investments_position(user_id: int):
 
 def _build_ai_finance_context(user_id: int) -> str:
     today = datetime.utcnow().date()
-    month_start, month_end = _month_bounds(today.year, today.month)
+    month_start, month_end = month_bounds(today.year, today.month)
     receitas_mes, gastos_mes, saldo_mes, rows_mes = _sum_period(user_id, month_start, month_end)
     proj = _calc_projection(user_id, today)
     alerts = _calc_alerts(user_id, today)
@@ -937,7 +805,7 @@ def _build_ai_finance_context(user_id: int) -> str:
         top_cats[t.categoria] = top_cats.get(t.categoria, Decimal("0")) + v
     top_lines = []
     for cat, val in sorted(top_cats.items(), key=lambda kv: kv[1], reverse=True)[:5]:
-        top_lines.append(f"- {cat}: R$ {_fmt_brl(val)}")
+        top_lines.append(f"- {cat}: R$ {fmt_brl(val)}")
 
     last_txs = (
         Transaction.query
@@ -948,7 +816,7 @@ def _build_ai_finance_context(user_id: int) -> str:
     )
     tx_lines = []
     for t in last_txs:
-        tx_lines.append(f"- {t.data.isoformat()} | {t.tipo} | {t.categoria} | R$ {_fmt_brl(t.valor)} | {t.descricao or '-'}")
+        tx_lines.append(f"- {t.data.isoformat()} | {t.tipo} | {t.categoria} | R$ {fmt_brl(t.valor)} | {t.descricao or '-'}")
 
     last_invs = (
         Investment.query
@@ -959,26 +827,26 @@ def _build_ai_finance_context(user_id: int) -> str:
     )
     inv_lines = []
     for it in last_invs:
-        inv_lines.append(f"- {it.data.isoformat()} | {it.tipo} | {it.ativo} | R$ {_fmt_brl(it.valor)} | {it.descricao or '-'}")
+        inv_lines.append(f"- {it.data.isoformat()} | {it.tipo} | {it.ativo} | R$ {fmt_brl(it.valor)} | {it.descricao or '-'}")
 
     alert_lines = [f"- {a['titulo']}: {a['mensagem']}" for a in alerts[:5]]
 
     return (
         f"Data de referência: {today.isoformat()}\n"
         f"Resumo do mês atual ({today.month:02d}/{today.year}):\n"
-        f"- Receitas: R$ {_fmt_brl(receitas_mes)}\n"
-        f"- Gastos: R$ {_fmt_brl(gastos_mes)}\n"
-        f"- Saldo: R$ {_fmt_brl(saldo_mes)}\n"
-        f"- Gasto médio por dia: R$ {_fmt_brl(proj['gasto_medio_diario'])}\n"
-        f"- Estimativa restante do mês: R$ {_fmt_brl(proj['estimativa_gastos_restantes'])}\n"
-        f"- Saldo previsto do mês: R$ {_fmt_brl(proj['saldo_previsto'])}\n"
-        f"- Receitas recorrentes futuras: R$ {_fmt_brl(proj['receitas_recorrentes_futuras'])}\n"
-        f"- Gastos recorrentes futuros: R$ {_fmt_brl(proj['gastos_recorrentes_futuros'])}\n"
+        f"- Receitas: R$ {fmt_brl(receitas_mes)}\n"
+        f"- Gastos: R$ {fmt_brl(gastos_mes)}\n"
+        f"- Saldo: R$ {fmt_brl(saldo_mes)}\n"
+        f"- Gasto médio por dia: R$ {fmt_brl(proj['gasto_medio_diario'])}\n"
+        f"- Estimativa restante do mês: R$ {fmt_brl(proj['estimativa_gastos_restantes'])}\n"
+        f"- Saldo previsto do mês: R$ {fmt_brl(proj['saldo_previsto'])}\n"
+        f"- Receitas recorrentes futuras: R$ {fmt_brl(proj['receitas_recorrentes_futuras'])}\n"
+        f"- Gastos recorrentes futuros: R$ {fmt_brl(proj['gastos_recorrentes_futuros'])}\n"
         f"- Dias restantes no mês: {proj['dias_restantes']}\n\n"
         f"Investimentos:\n"
-        f"- Total aportado: R$ {_fmt_brl(aportes)}\n"
-        f"- Total resgatado: R$ {_fmt_brl(resgates)}\n"
-        f"- Patrimônio investido líquido: R$ {_fmt_brl(patrimonio_investido)}\n"
+        f"- Total aportado: R$ {fmt_brl(aportes)}\n"
+        f"- Total resgatado: R$ {fmt_brl(resgates)}\n"
+        f"- Patrimônio investido líquido: R$ {fmt_brl(patrimonio_investido)}\n"
         f"- Quantidade de lançamentos de investimento: {len(invs)}\n\n"
         f"Top categorias de gasto no mês:\n" + ("\n".join(top_lines) if top_lines else "- sem dados") + "\n\n"
         f"Alertas atuais:\n" + ("\n".join(alert_lines) if alert_lines else "- nenhum alerta importante") + "\n\n"
@@ -988,7 +856,7 @@ def _build_ai_finance_context(user_id: int) -> str:
 
 
 def _looks_like_finance_question(text_msg: str) -> bool:
-    txt = _norm_word(text_msg)
+    txt = norm_word(text_msg)
     if not txt:
         return False
     keywords = {
@@ -1051,7 +919,7 @@ def _reply_finance_question(user_id: int, text_msg: str) -> str:
 
 
 def _pending_confirmation_choice(text_msg: str) -> str | None:
-    norm = _norm_word(text_msg)
+    norm = norm_word(text_msg)
     if norm in ("1", "sim", "s", "confirmar", "ok"):
         return "confirm"
     if norm in ("2", "nao", "não", "n", "cancelar", "cancela"):
@@ -1112,7 +980,7 @@ def _handle_pending_ai_confirmation(wa_from: str, user_id: int, text_msg: str) -
         "✅ Lançamento salvo!\n"
         f"ID: {tx.id}\n"
         f"Tipo: {tx.tipo}\n"
-        f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+        f"Valor: R$ {fmt_brl(tx.valor)}\n"
         f"Categoria: {tx.categoria}\n"
         f"Data: {tx.data.isoformat()}"
     )
@@ -1125,7 +993,7 @@ def _send_ai_confirmation_request(wa_from: str, user_id: int, tx_data: dict, sou
         wa_from,
         "🤖 Identifiquei este lançamento, mas quero sua confirmação:\n\n"
         f"Tipo: {tx_data['tipo']}\n"
-        f"Valor: R$ {_fmt_brl(tx_data['valor'])}\n"
+        f"Valor: R$ {fmt_brl(tx_data['valor'])}\n"
         f"Categoria: {tx_data['categoria']}\n"
         f"Descrição: {tx_data.get('descricao') or '-'}\n"
         f"Data: {tx_data['data']}\n\n"
@@ -1190,7 +1058,7 @@ def _handle_whatsapp_media_message(link: WaLink, wa_from: str, msg: dict) -> boo
                 "✅ Lançamento salvo pela IA!\n"
                 f"ID: {tx.id}\n"
                 f"Tipo: {tx.tipo}\n"
-                f"Valor: R$ {_fmt_brl(tx.valor)}\n"
+                f"Valor: R$ {fmt_brl(tx.valor)}\n"
                 f"Categoria: {tx.categoria}\n"
                 f"Data: {tx.data.isoformat()}"
             )
@@ -1228,7 +1096,7 @@ def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
         return False, "Nenhum campo informado."
 
     if "tipo" in fields:
-        v = _norm_word(fields["tipo"])
+        v = norm_word(fields["tipo"])
         if v in ("receita", "gasto"):
             tx.tipo = "RECEITA" if v == "receita" else "GASTO"
         else:
@@ -1236,13 +1104,13 @@ def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
 
     if "valor" in fields:
         try:
-            tx.valor = _parse_brl_value(fields["valor"])
+            tx.valor = parse_brl_value(fields["valor"])
         except Exception:
             return False, "Valor inválido. Ex: valor=35,90"
 
     if "data" in fields:
         try:
-            tx.data = _parse_date_any(fields["data"])
+            tx.data = parse_date_any(fields["data"])
         except Exception:
             return False, "Data inválida. Ex: data=2026-03-01"
 
@@ -1259,32 +1127,6 @@ def _apply_edit_fields(tx: Transaction, fields: dict) -> tuple[bool, str]:
     return True, "OK"
 
 
-def _next_monthly_date(from_date: date, day_of_month: int) -> date:
-    y, m = from_date.year, from_date.month
-    last_day = calendar.monthrange(y, m)[1]
-    d = min(day_of_month, last_day)
-    cand = date(y, m, d)
-    if cand >= from_date:
-        return cand
-
-    if m == 12:
-        y, m = y + 1, 1
-    else:
-        m += 1
-
-    last_day = calendar.monthrange(y, m)[1]
-    d = min(day_of_month, last_day)
-    return date(y, m, d)
-
-
-def _next_weekly_date(from_date: date, weekday: int) -> date:
-    delta = (weekday - from_date.weekday()) % 7
-    cand = from_date + timedelta(days=delta)
-    if cand >= from_date:
-        return cand
-    return cand + timedelta(days=7)
-
-
 def _parse_recorrente_args(rest: str):
     rest = (rest or "").strip()
     if not rest:
@@ -1293,7 +1135,7 @@ def _parse_recorrente_args(rest: str):
 
 
 def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
-    freq = _norm_word(freq_raw)
+    freq = norm_word(freq_raw)
     today = datetime.utcnow().date()
 
     if freq in ("mensal",):
@@ -1307,13 +1149,13 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
             return None, "Dia do mês deve ser 1-31."
 
         try:
-            valor = _parse_brl_value(parts[1])
+            valor = parse_brl_value(parts[1])
         except Exception:
             return None, "Valor inválido."
 
         categoria = parts[2].title()
         descricao = " ".join(parts[3:]).strip() or None
-        next_run = _next_monthly_date(today, dom)
+        next_run = next_monthly_date(today, dom)
 
         rule = RecurringRule(
             user_id=user_id,
@@ -1332,19 +1174,19 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
     if freq in ("semanal",):
         if len(parts) < 3:
             return None, "Use: recorrente semanal SEG VALOR CATEGORIA [descricao]"
-        wd = _norm_word(parts[0])
+        wd = norm_word(parts[0])
         if wd not in WEEKDAY_MAP:
             return None, "Dia da semana inválido. Use: seg/ter/qua/qui/sex/sab/dom"
 
         weekday = WEEKDAY_MAP[wd]
         try:
-            valor = _parse_brl_value(parts[1])
+            valor = parse_brl_value(parts[1])
         except Exception:
             return None, "Valor inválido."
 
         categoria = parts[2].title()
         descricao = " ".join(parts[3:]).strip() or None
-        next_run = _next_weekly_date(today, weekday)
+        next_run = next_weekly_date(today, weekday)
 
         rule = RecurringRule(
             user_id=user_id,
@@ -1364,7 +1206,7 @@ def _create_recurring_rule(user_id: int, freq_raw: str, parts: list[str]):
         if len(parts) < 2:
             return None, "Use: recorrente diário VALOR CATEGORIA [descricao]"
         try:
-            valor = _parse_brl_value(parts[0])
+            valor = parse_brl_value(parts[0])
         except Exception:
             return None, "Valor inválido."
 
@@ -1419,7 +1261,7 @@ def _run_recorrentes_for_user(user_id: int, today: date | None = None):
                 r.next_run = r.next_run + timedelta(days=7)
             elif r.freq == "MONTHLY":
                 base = r.next_run + timedelta(days=1)
-                r.next_run = _next_monthly_date(base, int(r.day_of_month or 1))
+                r.next_run = next_monthly_date(base, int(r.day_of_month or 1))
             else:
                 r.is_active = False
                 break
@@ -1467,7 +1309,7 @@ def api_wa_link():
     uid = _get_logged_user_id()
     email = _get_logged_email()
 
-    to = _normalize_wa_number(WA_PUBLIC_NUMBER)
+    to = normalize_wa_number(WA_PUBLIC_NUMBER)
     if not uid or not email:
         return jsonify(url=f"https://wa.me/{to}")
 
@@ -1480,7 +1322,7 @@ def api_wa_link():
 def wa_shortcut():
     uid = _get_logged_user_id()
     email = _get_logged_email()
-    to = _normalize_wa_number(WA_PUBLIC_NUMBER)
+    to = normalize_wa_number(WA_PUBLIC_NUMBER)
 
     if uid and email:
         text_msg = f"conectar {email}"
@@ -1552,7 +1394,7 @@ def api_register():
         or ""
     ).strip()
 
-    email = _normalize_email(data.get("email"))
+    email = normalize_email(data.get("email"))
     senha = str(data.get("senha") or data.get("password") or "")
     confirmar = str(data.get("confirmar_senha") or data.get("confirmar") or data.get("confirm") or "")
 
@@ -1566,7 +1408,7 @@ def api_register():
     existing = User.query.filter_by(email=email).first()
     if existing:
         if getattr(existing, "password_set", False) is False:
-            existing.password_hash = _hash_password(senha)
+            existing.password_hash = hash_password(senha)
             existing.password_set = True
             if nome and not existing.name:
                 existing.name = nome
@@ -1578,7 +1420,7 @@ def api_register():
     u = User(
         email=email,
         name=nome or None,
-        password_hash=_hash_password(senha),
+        password_hash=hash_password(senha),
         password_set=True,
     )
     db.session.add(u)
@@ -1591,11 +1433,11 @@ def api_register():
 @app.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
-    email = _normalize_email(data.get("email"))
+    email = normalize_email(data.get("email"))
     senha = str(data.get("senha") or data.get("password") or "")
 
     u = User.query.filter_by(email=email).first()
-    if not u or u.password_hash != _hash_password(senha):
+    if not u or u.password_hash != hash_password(senha):
         return jsonify(error="Email ou senha inválidos"), 401
 
     _login_user(u)
@@ -1611,7 +1453,7 @@ def api_logout():
 @app.post("/api/reset_password")
 def api_reset_password():
     data = request.get_json(silent=True) or {}
-    email = _normalize_email(data.get("email"))
+    email = normalize_email(data.get("email"))
     nova = str(data.get("nova_senha") or data.get("newPassword") or data.get("password") or "")
     confirmar = str(data.get("confirmar") or data.get("confirm") or "")
 
@@ -1626,7 +1468,7 @@ def api_reset_password():
     if not u:
         return jsonify(error="Email não encontrado"), 404
 
-    u.password_hash = _hash_password(nova)
+    u.password_hash = hash_password(nova)
     u.password_set = True
     db.session.commit()
     return jsonify(ok=True)
@@ -1726,10 +1568,10 @@ def api_create_lancamento():
     if not categoria:
         categoria = _guess_category_from_text(uid, f"{raw_categoria} {descricao or ''}") or "Outros"
 
-    d = _parse_date_any(dataj.get("data"))
+    d = parse_date_any(dataj.get("data"))
 
     try:
-        valor = _parse_brl_value(dataj.get("valor"))
+        valor = parse_brl_value(dataj.get("valor"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
 
@@ -1764,12 +1606,12 @@ def api_edit_lancamento(row: int):
         return jsonify(error="Tipo inválido"), 400
 
     t.tipo = tipo
-    t.data = _parse_date_any(payload.get("data") or t.data.isoformat())
+    t.data = parse_date_any(payload.get("data") or t.data.isoformat())
     t.categoria = (str(payload.get("categoria") or t.categoria).strip() or "Outros").title()
     t.descricao = str(payload.get("descricao") or "").strip() or None
 
     try:
-        t.valor = _parse_brl_value(payload.get("valor"))
+        t.valor = parse_brl_value(payload.get("valor"))
     except ValueError as e:
         return jsonify(error=str(e)), 400
 
@@ -1832,13 +1674,13 @@ def api_investimentos_create():
     if tipo not in ("APORTE", "RESGATE"):
         return jsonify({"error": "Tipo inválido. Use APORTE ou RESGATE."}), 400
 
-    valor = _parse_money_br_to_decimal(data.get("valor"))
+    valor = parse_money_br_to_decimal(data.get("valor"))
     if valor <= 0:
         return jsonify({"error": "Informe um valor válido (> 0)."}), 400
 
     it = Investment(
         user_id=user_id,
-        data=_iso_date(data.get("data")),
+        data=iso_date(data.get("data")),
         ativo=ativo,
         tipo=tipo,
         valor=valor,
@@ -2134,8 +1976,8 @@ def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: l
     bset = set(before_tokens)
     aset = set(after_tokens)
 
-    income_set = {_norm_word(x) for x in INCOME_HINTS}
-    expense_set = {_norm_word(x) for x in EXPENSE_HINTS}
+    income_set = {norm_word(x) for x in INCOME_HINTS}
+    expense_set = {norm_word(x) for x in EXPENSE_HINTS}
 
     b_income = len(bset & income_set)
     b_exp = len(bset & expense_set)
@@ -2145,7 +1987,7 @@ def _detect_tipo_with_score(sign: str, before_tokens: list[str], after_tokens: l
     score_income = (b_income * 3) + a_income
     score_exp = (b_exp * 3) + a_exp
 
-    has_neg = any(t in {_norm_word(n) for n in NEGATIONS} for n in NEGATIONS for t in before_tokens[:2])
+    has_neg = any(t in {norm_word(n) for n in NEGATIONS} for n in NEGATIONS for t in before_tokens[:2])
     if has_neg and score_income > 0 and score_exp == 0:
         score_income = 0
 
@@ -2206,18 +2048,18 @@ def _wa_help_text():
 
 
 def _make_resumo_text(user_id: int, kind: str):
-    start, end, label = _period_range(kind)
+    start, end, label = period_range(kind)
     receitas, gastos, saldo, _ = _sum_period(user_id, start, end)
     return (
         f"📊 Resumo ({label}):\n"
-        f"Receitas: R$ {_fmt_brl(receitas)}\n"
-        f"Gastos: R$ {_fmt_brl(gastos)}\n"
-        f"Saldo: R$ {_fmt_brl(saldo)}"
+        f"Receitas: R$ {fmt_brl(receitas)}\n"
+        f"Gastos: R$ {fmt_brl(gastos)}\n"
+        f"Saldo: R$ {fmt_brl(saldo)}"
     )
 
 
 def _make_analise_text(user_id: int, kind: str | None):
-    start, end, label = _period_range(kind or "mes")
+    start, end, label = period_range(kind or "mes")
     receitas, gastos, saldo, rows = _sum_period(user_id, start, end)
 
     cat_map = {}
@@ -2235,7 +2077,7 @@ def _make_analise_text(user_id: int, kind: str | None):
     total_gastos = Decimal(gastos or 0)
     for cat, val in top:
         pct = (val / total_gastos * 100) if total_gastos > 0 else Decimal("0")
-        top_lines.append(f"• {cat}: R$ {_fmt_brl(val)} ({pct:.0f}%)")
+        top_lines.append(f"• {cat}: R$ {fmt_brl(val)} ({pct:.0f}%)")
 
     today = datetime.utcnow().date()
     proj_line = None
@@ -2244,7 +2086,7 @@ def _make_analise_text(user_id: int, kind: str | None):
         days_in_month = calendar.monthrange(today.year, today.month)[1]
         daily_avg = (total_gastos / Decimal(days_elapsed)) if total_gastos > 0 else Decimal("0")
         forecast = daily_avg * Decimal(days_in_month)
-        proj_line = f"Média/dia: R$ {_fmt_brl(daily_avg)} | Projeção mês: R$ {_fmt_brl(forecast)}"
+        proj_line = f"Média/dia: R$ {fmt_brl(daily_avg)} | Projeção mês: R$ {fmt_brl(forecast)}"
 
     alerts = []
     if total_gastos > 0:
@@ -2254,9 +2096,9 @@ def _make_analise_text(user_id: int, kind: str | None):
 
     msg = [
         f"🧠 Análise ({label}):",
-        f"Receitas: R$ {_fmt_brl(receitas)}",
-        f"Gastos: R$ {_fmt_brl(gastos)}",
-        f"Saldo: R$ {_fmt_brl(saldo)}",
+        f"Receitas: R$ {fmt_brl(receitas)}",
+        f"Gastos: R$ {fmt_brl(gastos)}",
+        f"Saldo: R$ {fmt_brl(saldo)}",
     ]
     if proj_line:
         msg.append(proj_line)
@@ -2266,7 +2108,7 @@ def _make_analise_text(user_id: int, kind: str | None):
         msg.extend(top_lines)
 
     if biggest and Decimal(biggest.valor or 0) > 0:
-        msg.append(f"\nMaior gasto: R$ {_fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})")
+        msg.append(f"\nMaior gasto: R$ {fmt_brl(biggest.valor)} em {biggest.categoria} ({biggest.data.isoformat()})")
 
     if alerts:
         msg.append("\n" + "\n".join(alerts))
@@ -2280,12 +2122,12 @@ def _make_projection_text(user_id: int):
     lines = [
         "📈 Projeção Finance AI",
         "",
-        f"Saldo atual: R$ {_fmt_brl(p['saldo_atual'])}",
-        f"Receitas recorrentes futuras: R$ {_fmt_brl(p['receitas_recorrentes_futuras'])}",
-        f"Gastos recorrentes futuros: R$ {_fmt_brl(p['gastos_recorrentes_futuros'])}",
-        f"Gasto médio/dia: R$ {_fmt_brl(p['gasto_medio_diario'])}",
-        f"Estimativa do restante do mês: R$ {_fmt_brl(p['estimativa_gastos_restantes'])}",
-        f"Saldo previsto: R$ {_fmt_brl(p['saldo_previsto'])}",
+        f"Saldo atual: R$ {fmt_brl(p['saldo_atual'])}",
+        f"Receitas recorrentes futuras: R$ {fmt_brl(p['receitas_recorrentes_futuras'])}",
+        f"Gastos recorrentes futuros: R$ {fmt_brl(p['gastos_recorrentes_futuros'])}",
+        f"Gasto médio/dia: R$ {fmt_brl(p['gasto_medio_diario'])}",
+        f"Estimativa do restante do mês: R$ {fmt_brl(p['estimativa_gastos_restantes'])}",
+        f"Saldo previsto: R$ {fmt_brl(p['saldo_previsto'])}",
     ]
     if p["alerta_negativo"]:
         lines.append("")
@@ -2380,16 +2222,16 @@ def _parse_wa_text(msg_text: str):
     if m:
         return {"cmd": "EDITAR", "id": int(m.group(1)), "fields": _parse_kv_assignments(m.group(2))}
 
-    low_simple = _norm_word(t)
+    low_simple = norm_word(t)
     if low_simple in ("receita", "gasto"):
         return {"cmd": "CONFIRM_TIPO", "tipo": "RECEITA" if low_simple == "receita" else "GASTO"}
 
-    low = _norm_word(t)
+    low = norm_word(t)
     low = re.sub(r"\s+", " ", low).strip()
     for alias in CONNECT_ALIASES:
-        if low.startswith(_norm_word(alias) + " "):
+        if low.startswith(norm_word(alias) + " "):
             email = t.split(" ", 1)[1].strip()
-            return {"cmd": "CONNECT", "email": _normalize_email(email)}
+            return {"cmd": "CONNECT", "email": normalize_email(email)}
 
     m = VALUE_RE.search(low)
     if not m:
@@ -2398,15 +2240,15 @@ def _parse_wa_text(msg_text: str):
     sign = m.group(1) or ""
     valor_raw = m.group(2)
     try:
-        valor = _parse_brl_value(valor_raw)
+        valor = parse_brl_value(valor_raw)
     except Exception:
         return {"cmd": "NONE"}
 
     before = (low[:m.start()] or "").strip()
     after = (low[m.end():] or "").strip(" -–—")
 
-    before_tokens = _tokenize(before)
-    after_tokens = _tokenize(after)
+    before_tokens = tokenize(before)
+    after_tokens = tokenize(after)
 
     tipo, confidence = _detect_tipo_with_score(sign, before_tokens, after_tokens)
 
@@ -2456,7 +2298,7 @@ def wa_webhook():
                         continue
 
                     msg_id = msg.get("id")
-                    wa_from = _normalize_wa_number(msg.get("from") or "")
+                    wa_from = normalize_wa_number(msg.get("from") or "")
                     body = ((msg.get("text") or {}) or {}).get("body", "") or ""
 
                     if msg_id and ProcessedMessage.query.filter_by(msg_id=msg_id).first():
@@ -2573,10 +2415,10 @@ def wa_webhook():
                         ttx = Transaction(
                             user_id=link.user_id,
                             tipo=payload_tx["tipo"],
-                            data=_parse_date_any(payload_tx.get("data")),
+                            data=parse_date_any(payload_tx.get("data")),
                             categoria=categoria,
                             descricao=(payload_tx.get("descricao") or None),
-                            valor=_parse_brl_value(payload_tx.get("valor")),
+                            valor=parse_brl_value(payload_tx.get("valor")),
                             origem="WA",
                         )
                         db.session.add(ttx)
@@ -2588,7 +2430,7 @@ def wa_webhook():
                             "✅ Lançamento salvo (confirmado)!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
-                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Valor: R$ {fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
                             f"Data: {ttx.data.isoformat()}"
                         )
@@ -2611,7 +2453,7 @@ def wa_webhook():
                             wa_send_text(wa_from, "Formato inválido. Ex: categoria ifood = Alimentação")
                             continue
 
-                        key_norm = _norm_word(key)
+                        key_norm = norm_word(key)
                         if len(key_norm) < 2:
                             wa_send_text(wa_from, "Chave muito curta. Ex: categoria uber = Transporte")
                             continue
@@ -2628,7 +2470,7 @@ def wa_webhook():
                         continue
 
                     if parsed["cmd"] == "CAT_DEL":
-                        key = _norm_word(parsed.get("key") or "")
+                        key = norm_word(parsed.get("key") or "")
                         if not key:
                             wa_send_text(wa_from, "Formato inválido. Ex: remover categoria uber")
                             continue
@@ -2681,7 +2523,7 @@ def wa_webhook():
                             f"ID: {rule.id}\n"
                             f"Freq: {rule.freq}\n"
                             f"Próximo: {rule.next_run.isoformat()}\n"
-                            f"Valor: R$ {_fmt_brl(rule.valor)}\n"
+                            f"Valor: R$ {fmt_brl(rule.valor)}\n"
                             f"Categoria: {rule.categoria}"
                         )
                         continue
@@ -2699,7 +2541,7 @@ def wa_webhook():
                                 elif r.freq == "WEEKLY":
                                     inv = {v: k for k, v in WEEKDAY_MAP.items()}
                                     extra = f"{inv.get(r.weekday, 'dia')}"
-                                lines.append(f"• ID {r.id} | {r.freq} {extra} | R$ {_fmt_brl(r.valor)} | {r.categoria} | próximo {r.next_run.isoformat()}")
+                                lines.append(f"• ID {r.id} | {r.freq} {extra} | R$ {fmt_brl(r.valor)} | {r.categoria} | próximo {r.next_run.isoformat()}")
                             lines.append("\nPara remover: remover recorrente ID")
                             lines.append("Para gerar agora: rodar recorrentes")
                             wa_send_text(wa_from, "\n".join(lines))
@@ -2728,7 +2570,7 @@ def wa_webhook():
                         else:
                             lines = ["🧾 Últimos 5 lançamentos:"]
                             for ttx in txs:
-                                lines.append(f"• ID {ttx.id} | {ttx.tipo} | R$ {_fmt_brl(ttx.valor)} | {ttx.categoria} | {ttx.data.isoformat()}")
+                                lines.append(f"• ID {ttx.id} | {ttx.tipo} | R$ {fmt_brl(ttx.valor)} | {ttx.categoria} | {ttx.data.isoformat()}")
                             lines.append("\nPara editar: editar ID valor=... categoria=... data=... tipo=receita/gasto")
                             lines.append("Para apagar: apagar ID")
                             wa_send_text(wa_from, "\n".join(lines))
@@ -2764,7 +2606,7 @@ def wa_webhook():
                             "✅ Editado!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
-                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Valor: R$ {fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
                             f"Data: {ttx.data.isoformat()}"
                         )
@@ -2788,7 +2630,7 @@ def wa_webhook():
                             "✅ Corrigido na última transação!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
-                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Valor: R$ {fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
                             f"Data: {ttx.data.isoformat()}"
                         )
@@ -2818,7 +2660,7 @@ def wa_webhook():
                                 wa_from,
                                 "🤔 Fiquei em dúvida se isso foi *RECEITA* ou *GASTO*.\n\n"
                                 f"Mensagem: {raw_text}\n"
-                                f"Valor: R$ {_fmt_brl(parsed['valor'])}\n"
+                                f"Valor: R$ {fmt_brl(parsed['valor'])}\n"
                                 f"Categoria sugerida: {categoria}\n\n"
                                 "Responda apenas com:\n"
                                 "• receita\n"
@@ -2844,7 +2686,7 @@ def wa_webhook():
                             "✅ Lançamento salvo!\n"
                             f"ID: {ttx.id}\n"
                             f"Tipo: {ttx.tipo}\n"
-                            f"Valor: R$ {_fmt_brl(ttx.valor)}\n"
+                            f"Valor: R$ {fmt_brl(ttx.valor)}\n"
                             f"Categoria: {ttx.categoria}\n"
                             f"Data: {ttx.data.isoformat()}\n\n"
                             "Dica: digite 'ultimos' para ver e editar."
