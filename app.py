@@ -401,7 +401,17 @@ register_auth_routes(app, db, User, MIN_PASSWORD_LEN, normalize_email, hash_pass
 register_account_routes(app, db, User, get_logged_user_id, get_logged_email, require_login)
 register_finance_routes(app, db, Transaction, require_login, parse_date_any, parse_brl_value, guess_category_from_text)
 register_investment_routes(app, db, Investment, require_login, parse_money_br_to_decimal, iso_date)
-register_dashboard_routes(app, Transaction, require_login, calc_projection, calc_alerts, calc_patrimonio_series)
+
+register_dashboard_routes(
+    app,
+    Transaction,
+    require_login,
+    calc_projection,
+    calc_alerts,
+    calc_patrimonio_series,
+    looks_like_finance_question,
+    reply_finance_question,
+)
 
 register_budget_routes(
     app,
