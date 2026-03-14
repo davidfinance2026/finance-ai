@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
 import requests
-from flask import Flask, request, jsonify, send_from_directory, session, render_template
+from flask import Flask, request, jsonify, send_from_directory, session, render_template, redirect
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text, inspect
 from sqlalchemy.exc import SQLAlchemyError
@@ -465,7 +465,16 @@ register_whatsapp_routes(
 # -------------------------
 @app.get("/")
 def home():
+    if not get_logged_user_id():
+        return redirect("/login")
     return render_template("index.html")
+
+
+@app.get("/login")
+def login_page():
+    if get_logged_user_id():
+        return redirect("/")
+    return render_template("login.html")
 
 
 @app.get("/offline.html")
