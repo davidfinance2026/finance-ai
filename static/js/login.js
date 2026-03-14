@@ -1,191 +1,200 @@
-// ------------------------------------
-// Finance AI - Login JS
-// ------------------------------------
+const $ = (id) => document.getElementById(id);
 
-function showToast(el, msg, ok=true){
-  if(!el) return
-  el.textContent = msg
-  el.className = "toast show " + (ok ? "ok":"err")
-  setTimeout(()=> el.className="toast",4000)
-}
+async function api(path, method = "GET", body = null) {
+  const opt = {
+    method,
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+  };
 
-// ------------------------------------
-// Tabs
-// ------------------------------------
-
-document.querySelectorAll("[data-auth-tab]").forEach(tab=>{
-  tab.addEventListener("click",()=>{
-
-    document.querySelectorAll("[data-auth-tab]").forEach(t=>t.classList.remove("active"))
-    tab.classList.add("active")
-
-    const name = tab.dataset.authTab
-
-    document.querySelectorAll(".login-tab-panel").forEach(p=>p.classList.add("hidden"))
-
-    document.getElementById("login-tab-"+name).classList.remove("hidden")
-  })
-})
-
-
-// ------------------------------------
-// LOGIN
-// ------------------------------------
-
-const btnLogin = document.getElementById("btnEntrarPage")
-
-if(btnLogin){
-
-btnLogin.onclick = async ()=>{
-
-  const email = document.getElementById("loginEmailPage").value.trim()
-  const senha = document.getElementById("loginSenhaPage").value.trim()
-
-  const toast = document.getElementById("toastLoginPage")
-
-  if(!email || !senha){
-    showToast(toast,"Preencha email e senha",false)
-    return
+  if (body) {
+    opt.body = JSON.stringify(body);
   }
 
-  try{
+  const res = await fetch(path, opt);
 
-    const r = await fetch("/api/login",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        email:email,
-        senha:senha
-      })
-    })
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {}
 
-    const j = await r.json()
+  if (!res.ok) {
+    const msg =
+      data && (data.error || data.message)
+        ? (data.error || data.message)
+        : `Erro ${res.status}`;
+    throw new Error(msg);
+  }
 
-    if(!r.ok){
-      showToast(toast,j.error || "Erro ao entrar",false)
-      return
+  return data;
+}
+
+function showToast(el, type, title, desc = "") {
+  if (!el) return;
+  el.className =
+    "toast show " + (type === "ok" ? "ok" : type === "warn" ? "warn" : "err");
+  el.innerHTML =
+    `<div class="t">${title}</div>` +
+    (desc ? `<div class="d">${desc}</div>` : "");
+}
+
+function hideToast(el) {
+  if (!el) return;
+  el.className = "toast";
+  el.innerHTML = "";
+}
+
+function hideAllToasts() {
+  ["toastLoginPage", "toastRegisterPage", "toastResetPage"].forEach((id) => {
+    hideToast($(id));
+  });
+}
+
+function setAuthTab(tabName) {
+  document.querySelectorAll("[data-auth-tab]").forEach((el) => {
+    el.classList.toggle("active", el.dataset.authTab === tabName);
+  });
+
+  ["entrar", "criar", "reset"].forEach((name) => {
+    const panel = $(`login-tab-${name}`);
+    if (!panel) return;
+    panel.classList.toggle("hidden", name !== tabName);
+  });
+
+  hideAllToasts();
+}
+
+async function checkExistingSession() {
+  try {
+    const me = await api("/api/me", "GET");
+    if (me && me.email) {
+      window.location.href = "/";
     }
+  } catch (e) {}
+}
 
-    showToast(toast,"Login realizado com sucesso")
+document.querySelectorAll("[data-auth-tab]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setAuthTab(btn.dataset.authTab);
+  });
+});
 
-    setTimeout(()=>{
-      window.location="/"
-    },800)
+$("btnEntrarPage")?.addEventListener("click", async () => {
+  const toast = $("toastLoginPage");
+  hideToast(toast);
 
-  }catch(e){
-    showToast(toast,"Erro de conexão",false)
+  try {
+    const email = String($("loginEmailPage")?.value || "")
+      .trim()
+      .toLowerCase();
+    const senha = String($("loginSenhaPage")?.value || "");
+
+    if (!email) throw new Error("Informe seu e-mail.");
+    if (!senha) throw new Error("Informe sua senha.");
+
+    await api("/api/login", "POST", { email, senha });
+
+    showToast(toast, "ok", "Login realizado", "Redirecionando...");
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 500);
+  } catch (e) {
+    showToast(toast, "err", "Falha no login", e.message);
   }
+});
 
-}
-}
+$("btnCriarContaPage")?.addEventListener("click", async () => {
+  const toast = $("toastRegisterPage");
+  hideToast(toast);
 
+  try {
+    const nome_apelido = String($("regApelidoPage")?.value || "").trim();
+    const nome_completo = String($("regNomeCompletoPage")?.value || "").trim();
+    const telefone = String($("regTelefonePage")?.value || "").trim();
+    const email = String($("regEmailPage")?.value || "")
+      .trim()
+      .toLowerCase();
+    const senha = String($("regSenhaPage")?.value || "");
+    const confirmar_senha = String($("regConfPage")?.value || "");
 
-// ------------------------------------
-// REGISTER
-// ------------------------------------
+    if (!email) throw new Error("Informe seu e-mail.");
+    if (!senha) throw new Error("Informe sua senha.");
+    if (!confirmar_senha) throw new Error("Confirme sua senha.");
 
-const btnRegister = document.getElementById("btnCriarContaPage")
+    await api("/api/register", "POST", {
+      nome_apelido,
+      nome_completo,
+      telefone,
+      email,
+      senha,
+      confirmar_senha,
+    });
 
-if(btnRegister){
-
-btnRegister.onclick = async ()=>{
-
-  const nomeCompleto = document.getElementById("regNomeCompletoPage").value.trim()
-  const apelido = document.getElementById("regApelidoPage").value.trim()
-
-  const email = document.getElementById("regEmailPage").value.trim()
-
-  const senha = document.getElementById("regSenhaPage").value.trim()
-  const confirmar = document.getElementById("regConfPage").value.trim()
-
-  const toast = document.getElementById("toastRegisterPage")
-
-  if(!email || !senha){
-    showToast(toast,"Preencha email e senha",false)
-    return
+    showToast(toast, "ok", "Conta criada", "Redirecionando...");
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 600);
+  } catch (e) {
+    showToast(toast, "err", "Erro ao cadastrar", e.message);
   }
+});
 
-  try{
+$("btnResetarPage")?.addEventListener("click", async () => {
+  const toast = $("toastResetPage");
+  hideToast(toast);
 
-    const r = await fetch("/api/register",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        nome_completo: nomeCompleto,
-        nome: apelido,
-        email: email,
-        senha: senha,
-        confirmar_senha: confirmar
-      })
-    })
+  try {
+    const email = String($("rstEmailPage")?.value || "")
+      .trim()
+      .toLowerCase();
+    const nova_senha = String($("rstSenhaPage")?.value || "");
+    const confirmar = String($("rstConfPage")?.value || "");
 
-    const j = await r.json()
+    if (!email) throw new Error("Informe seu e-mail.");
+    if (!nova_senha) throw new Error("Informe a nova senha.");
+    if (!confirmar) throw new Error("Confirme a nova senha.");
 
-    if(!r.ok){
-      showToast(toast,j.error || "Erro ao criar conta",false)
-      return
-    }
+    await api("/api/reset_password", "POST", {
+      email,
+      nova_senha,
+      confirmar,
+    });
 
-    showToast(toast,"Conta criada com sucesso")
+    showToast(
+      toast,
+      "ok",
+      "Senha alterada",
+      "Agora você já pode entrar com a nova senha."
+    );
 
-    setTimeout(()=>{
-      window.location="/"
-    },800)
-
-  }catch(e){
-    showToast(toast,"Erro de conexão",false)
+    $("loginEmailPage").value = email;
+    $("loginSenhaPage").value = "";
+    setAuthTab("entrar");
+  } catch (e) {
+    showToast(toast, "err", "Falha no reset", e.message);
   }
+});
 
-}
-}
-
-
-// ------------------------------------
-// RESET PASSWORD
-// ------------------------------------
-
-const btnReset = document.getElementById("btnResetarPage")
-
-if(btnReset){
-
-btnReset.onclick = async ()=>{
-
-  const email = document.getElementById("rstEmailPage").value.trim()
-
-  const senha = document.getElementById("rstSenhaPage").value.trim()
-  const confirmar = document.getElementById("rstConfPage").value.trim()
-
-  const toast = document.getElementById("toastResetPage")
-
-  if(!email || !senha){
-    showToast(toast,"Preencha os campos",false)
-    return
+$("loginSenhaPage")?.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    await $("btnEntrarPage")?.click();
   }
+});
 
-  try{
-
-    const r = await fetch("/api/reset_password",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        email: email,
-        nova_senha: senha,
-        confirmar: confirmar
-      })
-    })
-
-    const j = await r.json()
-
-    if(!r.ok){
-      showToast(toast,j.error || "Erro ao resetar senha",false)
-      return
-    }
-
-    showToast(toast,"Senha alterada com sucesso")
-
-  }catch(e){
-    showToast(toast,"Erro de conexão",false)
+$("regConfPage")?.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    await $("btnCriarContaPage")?.click();
   }
+});
 
-}
-}
+$("rstConfPage")?.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    await $("btnResetarPage")?.click();
+  }
+});
+
+setAuthTab("entrar");
+checkExistingSession();
