@@ -596,3 +596,195 @@
   font-size: 13px;
   padding: 10px 14px;
 }
+/* =========================
+   LOGIN PAGE - BANCO DIGITAL PREMIUM
+========================= */
+
+.login-body{
+  min-height:100vh;
+  margin:0;
+  background:
+    radial-gradient(1200px 800px at 10% 0%, rgba(75,140,255,.24), transparent 55%),
+    radial-gradient(1000px 700px at 90% 20%, rgba(140,120,255,.18), transparent 55%),
+    radial-gradient(900px 600px at 50% 100%, rgba(46,229,157,.08), transparent 50%),
+    #060914;
+  color:var(--text);
+  overflow-x:hidden;
+}
+
+.login-shell{
+  min-height:100vh;
+  max-width:1240px;
+  margin:0 auto;
+  padding:28px 18px;
+  display:grid;
+  gap:24px;
+  align-items:center;
+}
+
+@media (min-width: 980px){
+  .login-shell{
+    grid-template-columns: 1.05fr .95fr;
+    padding:36px 22px;
+  }
+}
+
+.login-hero{
+  position:relative;
+  padding:18px 6px;
+}
+
+.login-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.04);
+  color:#cdd8ff;
+  padding:8px 14px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:800;
+  margin-bottom:18px;
+  backdrop-filter:blur(10px);
+}
+
+.login-hero h1{
+  margin:0;
+  font-size:40px;
+  line-height:1.05;
+  letter-spacing:-.8px;
+  font-weight:900;
+  max-width:560px;
+}
+
+.login-hero p{
+  margin:16px 0 0;
+  max-width:560px;
+  color:rgba(234,240,255,.72);
+  line-height:1.75;
+  font-size:15px;
+}
+
+.login-feature-list{
+  display:grid;
+  gap:12px;
+  margin-top:28px;
+  max-width:560px;
+}
+
+.login-feature-item{
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.035);
+  border-radius:18px;
+  padding:14px 16px;
+  color:#dbe5ff;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+  backdrop-filter:blur(10px);
+}
+
+.login-card{
+  position:relative;
+  border:1px solid rgba(255,255,255,.11);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border-radius:30px;
+  padding:22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.45);
+  backdrop-filter:blur(18px);
+}
+
+.login-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:30px;
+  pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 30%);
+}
+
+.login-card-top{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-bottom:16px;
+}
+
+.login-logo{
+  width:52px;
+  height:52px;
+  border-radius:18px;
+  display:grid;
+  place-items:center;
+  font-size:24px;
+  font-weight:900;
+  color:white;
+  background:linear-gradient(135deg, rgba(75,140,255,.95), rgba(126,91,255,.92));
+  box-shadow:0 14px 30px rgba(75,140,255,.30);
+}
+
+.login-title{
+  font-size:24px;
+  font-weight:900;
+  line-height:1.1;
+}
+
+.login-subtitle{
+  color:rgba(234,240,255,.70);
+  font-size:14px;
+  margin-top:4px;
+}
+
+.login-seg-tabs{
+  margin-top:18px;
+  margin-bottom:6px;
+}
+
+.login-tab-panel{
+  margin-top:16px;
+}
+
+.login-main-btn{
+  width:100%;
+  margin-top:16px;
+  min-height:48px;
+  font-size:15px;
+  font-weight:900;
+  border-radius:16px;
+}
+
+.login-card input{
+  min-height:48px;
+  border-radius:16px;
+  background:rgba(2,8,24,.55);
+  border:1px solid rgba(255,255,255,.09);
+}
+
+.login-card input:focus{
+  border-color:rgba(75,140,255,.55);
+  box-shadow:0 0 0 4px rgba(75,140,255,.10);
+}
+
+.login-footer-note{
+  margin-top:18px;
+  color:rgba(234,240,255,.58);
+  font-size:12px;
+  line-height:1.6;
+  text-align:center;
+}
+
+@media (max-width: 979px){
+  .login-hero{
+    padding-top:8px;
+    padding-bottom:0;
+  }
+
+  .login-hero h1{
+    font-size:31px;
+  }
+
+  .login-card{
+    padding:18px;
+    border-radius:24px;
+  }
+}
