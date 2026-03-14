@@ -34,7 +34,7 @@
           <div id="accountEmail" class="accountEmail">Não conectado</div>
 
           <div class="row">
-            <button id="btnLogin" class="btn primary" style="flex:1">Entrar</button>
+            <a id="btnLogin" class="btn primary" style="flex:1" href="/login">Entrar</a>
             <button id="btnEditConta" class="btn hidden" style="flex:1">Conta</button>
             <button id="btnLogout" class="btn danger hidden" style="flex:1">Sair</button>
           </div>
@@ -103,7 +103,7 @@
           <div class="row" style="margin-top:14px">
             <button id="btnAtualizarDash" class="btn primary">Atualizar painel</button>
             <div class="spacer"></div>
-            <span class="hint">Faça login para ver seus dados.</span>
+            <span class="hint">Dados do seu mês atual.</span>
           </div>
 
           <div id="toastDash" class="toast"></div>
@@ -229,7 +229,7 @@
 
           <div class="row">
             <button class="btn" id="goLancar">➕ Lançar agora</button>
-            <button class="btn" id="openLogin2">🔒 Abrir login</button>
+            <a class="btn" id="openLogin2" href="/login">🔒 Conta</a>
             <button class="btn" id="goUltimos">🧾 Ver últimos</button>
           </div>
         </div>
@@ -275,8 +275,6 @@
         <div class="row" style="margin-top:12px">
           <button id="btnSalvarLanc" class="btn primary">Salvar</button>
           <button id="btnLimparLanc" class="btn">Limpar</button>
-          <div class="spacer"></div>
-          <span class="hint">Você precisa estar logado.</span>
         </div>
 
         <div id="toastLanc" class="toast"></div>
@@ -348,8 +346,6 @@
         <div class="row" style="margin-top:12px">
           <button id="btnSalvarInv" class="btn primary">Salvar investimento</button>
           <button id="btnLimparInv" class="btn">Limpar</button>
-          <div class="spacer"></div>
-          <span class="hint">Você precisa estar logado.</span>
         </div>
 
         <div id="toastInv" class="toast"></div>
@@ -400,8 +396,6 @@
           <div class="row" style="margin-top:12px">
             <button id="btnSalvarOrc" class="btn primary">Salvar orçamento</button>
             <button id="btnLimparOrc" class="btn">Limpar</button>
-            <div class="spacer"></div>
-            <span class="hint">Use TOTAL para meta geral do mês.</span>
           </div>
 
           <div id="toastOrc" class="toast"></div>
@@ -493,7 +487,7 @@
         <div class="card">
           <h2>Resposta do assistente</h2>
           <div id="assistantAnswer" class="assistant-answer">
-            Faça login e envie uma pergunta para começar.
+            Faça uma pergunta para começar.
           </div>
         </div>
       </div>
@@ -503,124 +497,15 @@
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
-        <div style="font-size:22px" id="modalIcon">🔒</div>
+        <div style="font-size:22px" id="modalIcon">✏️</div>
         <div>
-          <h3 id="modalTitle">Login</h3>
-          <div class="hint" id="modalSub">Entre com seu e-mail e senha.</div>
+          <h3 id="modalTitle">Editar lançamento</h3>
+          <div class="hint" id="modalSub">Edite e salve.</div>
         </div>
         <button class="x" id="closeModal">✕</button>
       </div>
 
-      <div id="authBlock">
-        <div class="segTabs">
-          <div class="seg active" data-seg="entrar">Entrar</div>
-          <div class="seg" data-seg="criar">Criar conta</div>
-          <div class="seg" data-seg="reset">Resetar senha</div>
-          <div class="seg hidden" id="segContaTab" data-seg="conta">Conta</div>
-        </div>
-
-        <div id="seg-entrar" style="margin-top:12px">
-          <div class="field">
-            <label>E-mail</label>
-            <input id="loginEmail" type="email" placeholder="seuemail@dominio.com" />
-          </div>
-          <div class="field">
-            <label>Senha</label>
-            <input id="loginSenha" type="password" placeholder="Sua senha" />
-          </div>
-          <div class="row" style="margin-top:12px">
-            <button id="btnEntrar" class="btn primary" style="flex:1">Entrar</button>
-            <button class="btn" id="btnFechar1">Sair</button>
-          </div>
-          <div id="toastAuth1" class="toast"></div>
-        </div>
-
-        <div id="seg-criar" class="hidden" style="margin-top:12px">
-          <div class="split">
-            <div class="field">
-              <label>Nome / Apelido</label>
-              <input id="regApelido" placeholder="Ex: David" />
-            </div>
-            <div class="field">
-              <label>Telefone</label>
-              <input id="regTelefone" inputmode="tel" placeholder="(37) 99999-9999" />
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Nome completo</label>
-            <input id="regNomeCompleto" placeholder="Seu nome completo" />
-          </div>
-
-          <div class="field">
-            <label>E-mail</label>
-            <input id="regEmail" type="email" placeholder="seuemail@dominio.com" />
-          </div>
-
-          <div class="split">
-            <div class="field">
-              <label>Senha</label>
-              <input id="regSenha" type="password" placeholder="Mínimo 6 caracteres" />
-            </div>
-            <div class="field">
-              <label>Confirmar senha</label>
-              <input id="regConf" type="password" placeholder="Repita a senha" />
-            </div>
-          </div>
-
-          <div class="row" style="margin-top:12px">
-            <button id="btnCriarConta" class="btn primary" style="flex:1">Criar conta</button>
-            <button class="btn" id="btnFechar2">Sair</button>
-          </div>
-
-          <div id="toastAuth2" class="toast"></div>
-        </div>
-
-        <div id="seg-reset" class="hidden" style="margin-top:12px">
-          <div class="field">
-            <label>E-mail</label>
-            <input id="rstEmail" type="email" placeholder="seuemail@dominio.com" />
-          </div>
-          <div class="split">
-            <div class="field">
-              <label>Nova senha</label>
-              <input id="rstSenha" type="password" placeholder="Mínimo 6 caracteres" />
-            </div>
-            <div class="field">
-              <label>Confirmar</label>
-              <input id="rstConf" type="password" placeholder="Repita a senha" />
-            </div>
-          </div>
-
-          <div class="row" style="margin-top:12px">
-            <button id="btnResetar" class="btn primary" style="flex:1">Resetar senha</button>
-            <button class="btn" id="btnFechar3">Sair</button>
-          </div>
-
-          <div id="toastAuth3" class="toast"></div>
-        </div>
-
-        <div id="seg-conta" class="hidden" style="margin-top:12px">
-          <div class="field">
-            <label>Nome exibido</label>
-            <input id="contaNome" placeholder="Ex: David" />
-          </div>
-
-          <div class="field">
-            <label>E-mail</label>
-            <input id="contaEmail" disabled />
-          </div>
-
-          <div class="row" style="margin-top:12px">
-            <button id="btnSalvarConta" class="btn primary" style="flex:1">Salvar conta</button>
-            <button class="btn" id="btnFecharConta">Fechar</button>
-          </div>
-
-          <div id="toastConta" class="toast"></div>
-        </div>
-      </div>
-
-      <div id="editBlock" class="hidden" style="margin-top:12px">
+      <div id="editBlock" style="margin-top:12px">
         <div class="split">
           <div class="field">
             <label>Tipo</label>
