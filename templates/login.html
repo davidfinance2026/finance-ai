@@ -1,135 +1,191 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Entrar • Finance AI</title>
+// ------------------------------------
+// Finance AI - Login JS
+// ------------------------------------
 
-  <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#0b1020" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="Finance AI" />
-  <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" />
-  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+function showToast(el, msg, ok=true){
+  if(!el) return
+  el.textContent = msg
+  el.className = "toast show " + (ok ? "ok":"err")
+  setTimeout(()=> el.className="toast",4000)
+}
 
-  <link rel="stylesheet" href="/static/css/app.css" />
-</head>
-<body class="login-body">
-  <div class="login-shell">
-    <div class="login-hero">
-      <div class="login-badge">Finance AI</div>
-      <h1>Seu banco de decisões financeiras.</h1>
-      <p>
-        Controle lançamentos, projeções, score, investimentos, orçamentos e
-        inteligência financeira em um único lugar.
-      </p>
+// ------------------------------------
+// Tabs
+// ------------------------------------
 
-      <div class="login-feature-list">
-        <div class="login-feature-item">📊 Dashboard com visão do mês</div>
-        <div class="login-feature-item">🧠 Assistente financeiro inteligente</div>
-        <div class="login-feature-item">💎 Investimentos e patrimônio</div>
-        <div class="login-feature-item">🎯 Metas e orçamentos por categoria</div>
-      </div>
-    </div>
+document.querySelectorAll("[data-auth-tab]").forEach(tab=>{
+  tab.addEventListener("click",()=>{
 
-    <div class="login-card">
-      <div class="login-card-top">
-        <div class="login-logo">₣</div>
-        <div>
-          <div class="login-title">Acessar conta</div>
-          <div class="login-subtitle">Entre ou crie sua conta no Finance AI</div>
-        </div>
-      </div>
+    document.querySelectorAll("[data-auth-tab]").forEach(t=>t.classList.remove("active"))
+    tab.classList.add("active")
 
-      <div class="segTabs login-seg-tabs">
-        <div class="seg active" data-auth-tab="entrar">Entrar</div>
-        <div class="seg" data-auth-tab="criar">Criar conta</div>
-        <div class="seg" data-auth-tab="reset">Resetar senha</div>
-      </div>
+    const name = tab.dataset.authTab
 
-      <div id="login-tab-entrar" class="login-tab-panel">
-        <div class="field">
-          <label>E-mail</label>
-          <input id="loginEmailPage" type="email" placeholder="seuemail@dominio.com" />
-        </div>
+    document.querySelectorAll(".login-tab-panel").forEach(p=>p.classList.add("hidden"))
 
-        <div class="field">
-          <label>Senha</label>
-          <input id="loginSenhaPage" type="password" placeholder="Sua senha" />
-        </div>
+    document.getElementById("login-tab-"+name).classList.remove("hidden")
+  })
+})
 
-        <button id="btnEntrarPage" class="btn primary login-main-btn">Entrar</button>
-        <div id="toastLoginPage" class="toast"></div>
-      </div>
 
-      <div id="login-tab-criar" class="login-tab-panel hidden">
-        <div class="split">
-          <div class="field">
-            <label>Nome / Apelido</label>
-            <input id="regApelidoPage" placeholder="Ex: David" />
-          </div>
+// ------------------------------------
+// LOGIN
+// ------------------------------------
 
-          <div class="field">
-            <label>Telefone</label>
-            <input id="regTelefonePage" inputmode="tel" placeholder="(37) 99999-9999" />
-          </div>
-        </div>
+const btnLogin = document.getElementById("btnEntrarPage")
 
-        <div class="field">
-          <label>Nome completo</label>
-          <input id="regNomeCompletoPage" placeholder="Seu nome completo" />
-        </div>
+if(btnLogin){
 
-        <div class="field">
-          <label>E-mail</label>
-          <input id="regEmailPage" type="email" placeholder="seuemail@dominio.com" />
-        </div>
+btnLogin.onclick = async ()=>{
 
-        <div class="split">
-          <div class="field">
-            <label>Senha</label>
-            <input id="regSenhaPage" type="password" placeholder="Mínimo 6 caracteres" />
-          </div>
+  const email = document.getElementById("loginEmailPage").value.trim()
+  const senha = document.getElementById("loginSenhaPage").value.trim()
 
-          <div class="field">
-            <label>Confirmar senha</label>
-            <input id="regConfPage" type="password" placeholder="Repita a senha" />
-          </div>
-        </div>
+  const toast = document.getElementById("toastLoginPage")
 
-        <button id="btnCriarContaPage" class="btn primary login-main-btn">Criar conta</button>
-        <div id="toastRegisterPage" class="toast"></div>
-      </div>
+  if(!email || !senha){
+    showToast(toast,"Preencha email e senha",false)
+    return
+  }
 
-      <div id="login-tab-reset" class="login-tab-panel hidden">
-        <div class="field">
-          <label>E-mail</label>
-          <input id="rstEmailPage" type="email" placeholder="seuemail@dominio.com" />
-        </div>
+  try{
 
-        <div class="split">
-          <div class="field">
-            <label>Nova senha</label>
-            <input id="rstSenhaPage" type="password" placeholder="Mínimo 6 caracteres" />
-          </div>
+    const r = await fetch("/api/login",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        email:email,
+        senha:senha
+      })
+    })
 
-          <div class="field">
-            <label>Confirmar senha</label>
-            <input id="rstConfPage" type="password" placeholder="Repita a senha" />
-          </div>
-        </div>
+    const j = await r.json()
 
-        <button id="btnResetarPage" class="btn primary login-main-btn">Resetar senha</button>
-        <div id="toastResetPage" class="toast"></div>
-      </div>
+    if(!r.ok){
+      showToast(toast,j.error || "Erro ao entrar",false)
+      return
+    }
 
-      <div class="login-footer-note">
-        Ao entrar, você acessa seu painel financeiro com segurança.
-      </div>
-    </div>
-  </div>
+    showToast(toast,"Login realizado com sucesso")
 
-  <script src="/static/js/app.js"></script>
-</body>
-</html>
+    setTimeout(()=>{
+      window.location="/"
+    },800)
+
+  }catch(e){
+    showToast(toast,"Erro de conexão",false)
+  }
+
+}
+}
+
+
+// ------------------------------------
+// REGISTER
+// ------------------------------------
+
+const btnRegister = document.getElementById("btnCriarContaPage")
+
+if(btnRegister){
+
+btnRegister.onclick = async ()=>{
+
+  const nomeCompleto = document.getElementById("regNomeCompletoPage").value.trim()
+  const apelido = document.getElementById("regApelidoPage").value.trim()
+
+  const email = document.getElementById("regEmailPage").value.trim()
+
+  const senha = document.getElementById("regSenhaPage").value.trim()
+  const confirmar = document.getElementById("regConfPage").value.trim()
+
+  const toast = document.getElementById("toastRegisterPage")
+
+  if(!email || !senha){
+    showToast(toast,"Preencha email e senha",false)
+    return
+  }
+
+  try{
+
+    const r = await fetch("/api/register",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        nome_completo: nomeCompleto,
+        nome: apelido,
+        email: email,
+        senha: senha,
+        confirmar_senha: confirmar
+      })
+    })
+
+    const j = await r.json()
+
+    if(!r.ok){
+      showToast(toast,j.error || "Erro ao criar conta",false)
+      return
+    }
+
+    showToast(toast,"Conta criada com sucesso")
+
+    setTimeout(()=>{
+      window.location="/"
+    },800)
+
+  }catch(e){
+    showToast(toast,"Erro de conexão",false)
+  }
+
+}
+}
+
+
+// ------------------------------------
+// RESET PASSWORD
+// ------------------------------------
+
+const btnReset = document.getElementById("btnResetarPage")
+
+if(btnReset){
+
+btnReset.onclick = async ()=>{
+
+  const email = document.getElementById("rstEmailPage").value.trim()
+
+  const senha = document.getElementById("rstSenhaPage").value.trim()
+  const confirmar = document.getElementById("rstConfPage").value.trim()
+
+  const toast = document.getElementById("toastResetPage")
+
+  if(!email || !senha){
+    showToast(toast,"Preencha os campos",false)
+    return
+  }
+
+  try{
+
+    const r = await fetch("/api/reset_password",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        email: email,
+        nova_senha: senha,
+        confirmar: confirmar
+      })
+    })
+
+    const j = await r.json()
+
+    if(!r.ok){
+      showToast(toast,j.error || "Erro ao resetar senha",false)
+      return
+    }
+
+    showToast(toast,"Senha alterada com sucesso")
+
+  }catch(e){
+    showToast(toast,"Erro de conexão",false)
+  }
+
+}
+}
