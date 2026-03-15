@@ -1,501 +1,495 @@
 <!doctype html>
 <html lang="pt-BR">
-
 <head>
-
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<title>Finance AI</title>
-
-<link rel="manifest" href="/static/manifest.json">
-
-<meta name="theme-color" content="#0b1020">
-
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-
-<meta name="apple-mobile-web-app-title" content="Finance AI">
-
-<link rel="icon" href="/static/icons/icon-192.png">
-<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-
-<link rel="stylesheet" href="/static/css/app.css">
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Finance AI</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Finance AI">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
-
-
 <body>
-
-<div class="wrap">
-
-<!-- HEADER -->
-
-<div class="topbar">
-
-<div class="brand">
-
-<h1>Finance AI</h1>
-<p>Seu assistente financeiro inteligente</p>
-
-</div>
-
-
-<div class="accountMenuWrap">
-
-<button id="btnAccount" class="iconBtn">☰</button>
-
-<div id="accountDropdown" class="accountDropdown">
-
-<div id="accountName">Conta</div>
-<div id="accountEmail">Não conectado</div>
-
-<div class="row">
-
-<a id="btnLogin" class="btn primary" href="/login">Entrar</a>
-
-<button id="btnEditConta" class="btn hidden">Conta</button>
-
-<button id="btnLogout" class="btn danger hidden">Sair</button>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-
-<!-- HERO -->
-
-<section class="hero">
-
-<h2 id="helloTitle">Olá 👋</h2>
-
-<p id="helloSub">
-Resumo financeiro indisponível.
-</p>
-
-</section>
-
-
-<!-- TABS -->
-
-<div class="tabs">
-
-<div class="tab active" data-tab="dashboard">Dashboard</div>
-
-<div class="tab" data-tab="lancar">Lançar</div>
-
-<div class="tab" data-tab="ultimos">Últimos</div>
-
-<div class="tab" data-tab="investimentos">Investimentos</div>
-
-<div class="tab" data-tab="orcamentos">Orçamentos</div>
-
-<div class="tab" data-tab="assistente">Assistente</div>
-
-</div>
-
-
-<!-- DASHBOARD -->
-
-<section id="tab-dashboard">
-
-<div class="card">
-
-<h2>Painel financeiro</h2>
-
-<div class="split">
-
-<div class="field">
-<label>Mês</label>
-<select id="dashMes"></select>
-</div>
-
-<div class="field">
-<label>Ano</label>
-<input id="dashAno">
-</div>
-
-</div>
-
-
-<div class="divider"></div>
-
-
-<div class="miniCard">
-
-<div class="row">
-
-<div>Receitas</div>
-
-<div id="valReceitas">R$0</div>
-
-</div>
-
-</div>
-
-
-<div class="miniCard">
-
-<div class="row">
-
-<div>Gastos</div>
-
-<div id="valGastos">R$0</div>
-
-</div>
-
-</div>
-
-
-<div class="miniCard">
-
-<div class="row">
-
-<div>Saldo</div>
-
-<div id="valSaldo">R$0</div>
-
-</div>
-
-</div>
-
-
-<button id="btnAtualizarDash" class="btn primary">
-
-Atualizar painel
-
-</button>
-
-<div id="toastDash" class="toast"></div>
-
-</div>
-
-
-<!-- GRAFICOS -->
-
-<div class="card">
-
-<h2>Visualização</h2>
-
-<canvas id="chartRG"></canvas>
-
-<canvas id="chartSaldo"></canvas>
-
-<canvas id="chartDaily"></canvas>
-
-</div>
-
-
-<div class="card">
-
-<h2>Patrimônio</h2>
-
-<canvas id="chartPatrimonio"></canvas>
-
-</div>
-
-
-<div class="card">
-
-<h2>Gastos por categoria</h2>
-
-<canvas id="chartCategorias"></canvas>
-
-</div>
-
-</section>
-
-
-
-<!-- LANÇAR -->
-
-<section id="tab-lancar" class="hidden">
-
-<div class="card">
-
-<h2>Novo lançamento</h2>
-
-<div class="field">
-<label>Tipo</label>
-<select id="lanTipo">
-<option value="RECEITA">Receita</option>
-<option value="GASTO">Gasto</option>
-</select>
-</div>
-
-<div class="field">
-<label>Data</label>
-<input id="lanData">
-</div>
-
-<div class="field">
-<label>Categoria</label>
-<input id="lanCategoria">
-</div>
-
-<div class="field">
-<label>Valor</label>
-<input id="lanValor">
-</div>
-
-<div class="field">
-<label>Descrição</label>
-<textarea id="lanDescricao"></textarea>
-</div>
-
-<button id="btnSalvarLanc" class="btn primary">
-
-Salvar lançamento
-
-</button>
-
-<button id="btnLimparLanc" class="btn">
-
-Limpar
-
-</button>
-
-<div id="toastLanc" class="toast"></div>
-
-</div>
-
-</section>
-
-
-
-<!-- ULTIMOS -->
-
-<section id="tab-ultimos" class="hidden">
-
-<div class="card">
-
-<h2>Últimos lançamentos</h2>
-
-<button id="btnRecarregarUltimos" class="btn primary">
-
-Atualizar
-
-</button>
-
-<div id="listaUltimos"></div>
-
-<div id="toastUltimos" class="toast"></div>
-
-</div>
-
-</section>
-
-
-
-<!-- INVESTIMENTOS -->
-
-<section id="tab-investimentos" class="hidden">
-
-<div class="card">
-
-<h2>Novo investimento</h2>
-
-<div class="split">
-<div class="field">
-<label>Data</label>
-<input id="invData" type="date">
-</div>
-<div class="field">
-<label>Tipo</label>
-<select id="invTipo">
-<option value="APORTE">Aporte</option>
-<option value="RESGATE">Resgate</option>
-</select>
-</div>
-</div>
-
-<div class="field">
-<label>Ativo</label>
-<input id="invAtivo" placeholder="Ex.: Tesouro Selic, PETR4, BTC">
-</div>
-
-<div class="field">
-<label>Valor</label>
-<input id="invValor">
-</div>
-
-<div class="field">
-<label>Descrição</label>
-<textarea id="invDescricao"></textarea>
-</div>
-
-<div class="row">
-<button id="btnSalvarInv" class="btn primary">Salvar investimento</button>
-<button id="btnRecarregarInv" class="btn">Atualizar lista</button>
-</div>
-
-<div id="toastInv" class="toast"></div>
-
-</div>
-
-<div class="card">
-
-<h2>Lista de investimentos</h2>
-
-<div id="listaInv"></div>
-
-</div>
-
-</section>
-
-
-
-<!-- ORÇAMENTOS -->
-
-<section id="tab-orcamentos" class="hidden">
-
-<div class="card">
-
-<h2>Novo orçamento</h2>
-
-<div class="split">
-<div class="field">
-<label>Mês</label>
-<select id="newOrcMes">
-<option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
-</select>
-</div>
-<div class="field">
-<label>Ano</label>
-<input id="newOrcAno" type="number">
-</div>
-</div>
-
-<div class="field">
-<label>Categoria</label>
-<input id="newOrcCategoria" placeholder="Ex.: Alimentação">
-</div>
-
-<div class="field">
-<label>Valor da meta</label>
-<input id="newOrcValor">
-</div>
-
-<div class="row">
-<button id="btnSalvarOrc" class="btn primary">Salvar orçamento</button>
-</div>
-
-<div id="toastOrc" class="toast"></div>
-
-</div>
-
-<div class="card">
-
-<h2>Orçamentos cadastrados</h2>
-
-<div class="split">
-<div class="field">
-<label>Mês</label>
-<select id="orcMes">
-<option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
-</select>
-</div>
-<div class="field">
-<label>Ano</label>
-<input id="orcAno" type="number">
-</div>
-</div>
-
-<button id="btnRecarregarOrc" class="btn primary">Atualizar orçamentos</button>
-
-<div id="listaOrcamentos"></div>
-
-</div>
-
-</section>
-
-
-
-<!-- ASSISTENTE -->
-
-<section id="tab-assistente" class="hidden">
-
-<div class="card">
-
-<h2>Assistente Financeiro</h2>
-
-<textarea id="assistantQuestion" placeholder="Ex.: Como posso reduzir meus gastos este mês sem prejudicar meus investimentos?"></textarea>
-
-<button id="btnPerguntarAssistente" class="btn primary">
-
-Perguntar
-
-</button>
-
-<div id="assistantAnswer"></div>
-
-<div id="toastAssistente" class="toast"></div>
-
-</div>
-
-</section>
-
-
-
-</div>
-
-
-<!-- MODAL -->
-
-<div id="overlay" class="overlay">
-
-<div class="modal">
-
-<h3 id="modalTitle">Editar</h3>
-
-<input id="edtData">
-<input id="edtCategoria">
-<input id="edtValor">
-
-<textarea id="edtDescricao"></textarea>
-
-<button id="btnSalvarEdicao" class="btn primary">Salvar</button>
-
-<button id="btnCancelarEdicao" class="btn">Cancelar</button>
-
-<div id="toastEdit" class="toast"></div>
-
-</div>
-
-</div>
-
-
-
-<!-- FAB MENU -->
-
-<div id="fabWrap" class="fab-wrap">
-
-<div class="fab-actions">
-
-<a id="fabNovo" href="#">➕</a>
-
-<a id="fabWhats" target="_blank">💬</a>
-
-<a id="fabDash" href="#">📊</a>
-
-</div>
-
-<div id="fabMain" class="fab-btn">☰</div>
-
-</div>
-
-
-<div id="fabBackdrop" class="fab-backdrop"></div>
-
-
-<script src="/static/js/app.js"></script>
-
+  <div class="app-shell">
+    <aside class="sidebar glass-panel">
+      <div>
+        <div class="sidebar-brand">
+          <div class="brand-mark">₣</div>
+          <div>
+            <h1>Finance AI</h1>
+            <p>Seu assistente financeiro inteligente</p>
+          </div>
+        </div>
+
+        <div class="sidebar-block">
+          <div class="sidebar-label">Navegação</div>
+          <div class="tabs tabs-vertical">
+            <div class="tab active" data-tab="dashboard">Dashboard</div>
+            <div class="tab" data-tab="lancar">Lançamentos</div>
+            <div class="tab" data-tab="ultimos">Últimos registros</div>
+            <div class="tab" data-tab="investimentos">Investimentos</div>
+            <div class="tab" data-tab="orcamentos">Orçamentos</div>
+            <div class="tab" data-tab="assistente">Assistente</div>
+          </div>
+        </div>
+
+        <div class="sidebar-block sidebar-card glass-soft">
+          <div class="sidebar-label">Atalhos</div>
+          <div class="shortcut-list">
+            <a href="#" class="shortcut-item" id="sidebarNovoLanc">➕ Novo lançamento</a>
+            <a href="#" class="shortcut-item" id="sidebarVerPainel">📊 Ver painel</a>
+            <a href="https://wa.me/5537998675231?text=Ol%C3%A1!%20Quero%20conectar%20meu%20e-mail%20no%20Finance%20AI." target="_blank" class="shortcut-item">💬 WhatsApp</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="accountMenuWrap sidebar-account">
+        <button id="btnAccount" class="profile-card" type="button">
+          <div class="profile-avatar">☰</div>
+          <div>
+            <div id="accountName" class="accountName">Conta</div>
+            <div id="accountEmail" class="accountEmail">Não conectado</div>
+          </div>
+        </button>
+
+        <div id="accountDropdown" class="accountDropdown">
+          <div class="accountName" id="accountNameDropdown">Conta</div>
+          <div class="accountEmail" id="accountEmailDropdown">Não conectado</div>
+          <div class="row wrap-row">
+            <a id="btnLogin" class="btn primary" href="/login">Entrar</a>
+            <button id="btnEditConta" class="btn hidden" type="button">Conta</button>
+            <button id="btnLogout" class="btn danger hidden" type="button">Sair</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <div class="mobile-topbar glass-panel">
+        <div>
+          <div class="sidebar-label">Finance AI</div>
+          <div class="mobile-title">Painel financeiro</div>
+        </div>
+        <button id="btnAccountMobile" class="iconBtn" type="button">☰</button>
+      </div>
+
+      <section class="hero glass-panel">
+        <div>
+          <span class="hero-chip">Planejamento • Controle • Inteligência</span>
+          <h2 id="helloTitle">Olá 👋</h2>
+          <p id="helloSub">Resumo financeiro indisponível.</p>
+        </div>
+        <div class="hero-side">
+          <div class="hero-metric">
+            <span>Receitas</span>
+            <strong id="valReceitas">R$0</strong>
+          </div>
+          <div class="hero-metric">
+            <span>Gastos</span>
+            <strong id="valGastos">R$0</strong>
+          </div>
+          <div class="hero-metric highlight">
+            <span>Saldo</span>
+            <strong id="valSaldo">R$0</strong>
+          </div>
+        </div>
+      </section>
+
+      <div class="tabs tabs-mobile">
+        <div class="tab active" data-tab="dashboard">Dashboard</div>
+        <div class="tab" data-tab="lancar">Lançamentos</div>
+        <div class="tab" data-tab="ultimos">Últimos</div>
+        <div class="tab" data-tab="investimentos">Investimentos</div>
+        <div class="tab" data-tab="orcamentos">Orçamentos</div>
+        <div class="tab" data-tab="assistente">Assistente</div>
+      </div>
+
+      <section id="tab-dashboard" class="section-stack">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Visão geral</div>
+            <h2>Painel financeiro</h2>
+            <p>Resumo do mês, projeções, patrimônio e distribuição por categoria.</p>
+          </div>
+          <div class="split compact-filter">
+            <div class="field slim-field">
+              <label>Mês</label>
+              <select id="dashMes"></select>
+            </div>
+            <div class="field slim-field">
+              <label>Ano</label>
+              <input id="dashAno">
+            </div>
+            <button id="btnAtualizarDash" class="btn primary section-action" type="button">Atualizar painel</button>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card stat-card">
+            <span class="card-label">Receitas do período</span>
+            <strong id="statReceitasMirror">Use o topo para acompanhar</strong>
+            <p>Entradas registradas no mês selecionado.</p>
+          </div>
+          <div class="card stat-card">
+            <span class="card-label">Gastos do período</span>
+            <strong id="statGastosMirror">Use o topo para acompanhar</strong>
+            <p>Saídas e despesas computadas no período.</p>
+          </div>
+          <div class="card stat-card emphasis">
+            <span class="card-label">Saldo do período</span>
+            <strong id="statSaldoMirror">Use o topo para acompanhar</strong>
+            <p>Resultado líquido com base nos seus lançamentos.</p>
+          </div>
+        </div>
+
+        <div id="toastDash" class="toast"></div>
+
+        <div class="dashboard-grid charts-grid">
+          <div class="card chart-card">
+            <div class="card-head">
+              <div>
+                <h3>Receitas x gastos</h3>
+                <p>Comparativo principal do mês.</p>
+              </div>
+            </div>
+            <canvas id="chartRG"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <div class="card-head">
+              <div>
+                <h3>Saldo disponível</h3>
+                <p>Composição entre saldo e despesas.</p>
+              </div>
+            </div>
+            <canvas id="chartSaldo"></canvas>
+          </div>
+
+          <div class="card chart-card wide-card">
+            <div class="card-head">
+              <div>
+                <h3>Projeção diária</h3>
+                <p>Estimativa para o restante do mês.</p>
+              </div>
+            </div>
+            <canvas id="chartDaily"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <div class="card-head">
+              <div>
+                <h3>Patrimônio</h3>
+                <p>Evolução acumulada recente.</p>
+              </div>
+            </div>
+            <canvas id="chartPatrimonio"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <div class="card-head">
+              <div>
+                <h3>Gastos por categoria</h3>
+                <p>Participação de cada categoria.</p>
+              </div>
+            </div>
+            <canvas id="chartCategorias"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-lancar" class="section-stack hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Registrar movimentação</div>
+            <h2>Novo lançamento</h2>
+            <p>Cadastre receitas e gastos com rapidez.</p>
+          </div>
+        </div>
+
+        <div class="content-grid two-columns">
+          <div class="card form-card">
+            <div class="split">
+              <div class="field">
+                <label>Tipo</label>
+                <select id="lanTipo">
+                  <option value="RECEITA">Receita</option>
+                  <option value="GASTO">Gasto</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Data</label>
+                <input id="lanData">
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Categoria</label>
+              <input id="lanCategoria" placeholder="Ex.: Alimentação, Transporte, Freelance">
+            </div>
+
+            <div class="field">
+              <label>Valor</label>
+              <input id="lanValor" placeholder="0,00">
+            </div>
+
+            <div class="field">
+              <label>Descrição</label>
+              <textarea id="lanDescricao" placeholder="Detalhes do lançamento"></textarea>
+            </div>
+
+            <div class="row wrap-row">
+              <button id="btnSalvarLanc" class="btn primary" type="button">Salvar lançamento</button>
+              <button id="btnLimparLanc" class="btn" type="button">Limpar</button>
+            </div>
+
+            <div id="toastLanc" class="toast"></div>
+          </div>
+
+          <div class="card tip-card">
+            <div class="eyebrow">Dica</div>
+            <h3>Registre tudo no mesmo dia</h3>
+            <p>Quanto mais atualizados estiverem os lançamentos, melhores serão seus indicadores, projeções e alertas do assistente.</p>
+            <ul class="clean-list">
+              <li>Use categorias curtas e consistentes.</li>
+              <li>Descreva a movimentação para facilitar buscas futuras.</li>
+              <li>Atualize o dashboard após novas entradas.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-ultimos" class="section-stack hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Histórico recente</div>
+            <h2>Últimos lançamentos</h2>
+            <p>Edite e exclua registros já salvos.</p>
+          </div>
+          <button id="btnRecarregarUltimos" class="btn primary section-action" type="button">Atualizar</button>
+        </div>
+
+        <div class="card list-card">
+          <div id="listaUltimos"></div>
+          <div id="toastUltimos" class="toast"></div>
+        </div>
+      </section>
+
+      <section id="tab-investimentos" class="section-stack hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Carteira</div>
+            <h2>Investimentos</h2>
+            <p>Registre aportes, resgates e acompanhe a lista da carteira.</p>
+          </div>
+        </div>
+
+        <div class="content-grid two-columns">
+          <div class="card form-card">
+            <div class="split">
+              <div class="field">
+                <label>Data</label>
+                <input id="invData" type="date">
+              </div>
+              <div class="field">
+                <label>Tipo</label>
+                <select id="invTipo">
+                  <option value="APORTE">Aporte</option>
+                  <option value="RESGATE">Resgate</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Ativo</label>
+              <input id="invAtivo" placeholder="Ex.: Tesouro Selic, PETR4, BTC">
+            </div>
+
+            <div class="field">
+              <label>Valor</label>
+              <input id="invValor" placeholder="0,00">
+            </div>
+
+            <div class="field">
+              <label>Descrição</label>
+              <textarea id="invDescricao" placeholder="Observações sobre o investimento"></textarea>
+            </div>
+
+            <div class="row wrap-row">
+              <button id="btnSalvarInv" class="btn primary" type="button">Salvar investimento</button>
+              <button id="btnRecarregarInv" class="btn" type="button">Atualizar lista</button>
+            </div>
+
+            <div id="toastInv" class="toast"></div>
+          </div>
+
+          <div class="card list-card">
+            <div class="card-head">
+              <div>
+                <h3>Lista de investimentos</h3>
+                <p>Seus registros mais recentes.</p>
+              </div>
+            </div>
+            <div id="listaInv"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-orcamentos" class="section-stack hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Planejamento mensal</div>
+            <h2>Orçamentos</h2>
+            <p>Defina metas por categoria e acompanhe o consumo.</p>
+          </div>
+        </div>
+
+        <div class="content-grid two-columns">
+          <div class="card form-card">
+            <h3>Novo orçamento</h3>
+            <div class="split">
+              <div class="field">
+                <label>Mês</label>
+                <select id="newOrcMes">
+                  <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Ano</label>
+                <input id="newOrcAno" type="number">
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Categoria</label>
+              <input id="newOrcCategoria" placeholder="Ex.: Alimentação">
+            </div>
+
+            <div class="field">
+              <label>Valor da meta</label>
+              <input id="newOrcValor" placeholder="0,00">
+            </div>
+
+            <div class="row wrap-row">
+              <button id="btnSalvarOrc" class="btn primary" type="button">Salvar orçamento</button>
+            </div>
+
+            <div id="toastOrc" class="toast"></div>
+          </div>
+
+          <div class="card list-card">
+            <div class="card-head stack-mobile">
+              <div>
+                <h3>Orçamentos cadastrados</h3>
+                <p>Filtre pelo mês e ano desejados.</p>
+              </div>
+              <div class="split compact-filter">
+                <div class="field slim-field">
+                  <label>Mês</label>
+                  <select id="orcMes">
+                    <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+                  </select>
+                </div>
+                <div class="field slim-field">
+                  <label>Ano</label>
+                  <input id="orcAno" type="number">
+                </div>
+              </div>
+            </div>
+
+            <button id="btnRecarregarOrc" class="btn primary section-action" type="button">Atualizar orçamentos</button>
+            <div id="listaOrcamentos"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-assistente" class="section-stack hidden">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">IA aplicada às finanças</div>
+            <h2>Assistente Financeiro</h2>
+            <p>Pergunte sobre gastos, metas, organização e decisões financeiras.</p>
+          </div>
+        </div>
+
+        <div class="content-grid assistant-grid">
+          <div class="card form-card">
+            <div class="field">
+              <label>Sua pergunta</label>
+              <textarea id="assistantQuestion" placeholder="Ex.: Como posso reduzir meus gastos este mês sem prejudicar meus investimentos?"></textarea>
+            </div>
+            <button id="btnPerguntarAssistente" class="btn primary" type="button">Perguntar</button>
+            <div id="toastAssistente" class="toast"></div>
+          </div>
+
+          <div class="card list-card">
+            <div class="card-head">
+              <div>
+                <h3>Resposta do assistente</h3>
+                <p>As respostas aparecem aqui.</p>
+              </div>
+            </div>
+            <div id="assistantAnswer" class="assistant-answer emptyState">Faça uma pergunta para receber uma análise.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="overlay" class="overlay">
+    <div class="modal glass-panel">
+      <div class="modalHead">
+        <div>
+          <div class="eyebrow">Edição</div>
+          <h3 id="modalTitle">Editar</h3>
+        </div>
+        <button class="x" id="btnCancelarEdicaoTop" type="button">✕</button>
+      </div>
+      <div class="split">
+        <div class="field">
+          <label>Data</label>
+          <input id="edtData">
+        </div>
+        <div class="field">
+          <label>Categoria</label>
+          <input id="edtCategoria">
+        </div>
+      </div>
+      <div class="field">
+        <label>Valor</label>
+        <input id="edtValor">
+      </div>
+      <div class="field">
+        <label>Descrição</label>
+        <textarea id="edtDescricao"></textarea>
+      </div>
+      <div class="row wrap-row">
+        <button id="btnSalvarEdicao" class="btn primary" type="button">Salvar</button>
+        <button id="btnCancelarEdicao" class="btn" type="button">Cancelar</button>
+      </div>
+      <div id="toastEdit" class="toast"></div>
+    </div>
+  </div>
+
+  <div id="fabWrap" class="fab-wrap">
+    <div class="fab-actions">
+      <a id="fabNovo" class="fab-action" href="#"><span class="fab-label">Novo lançamento</span><span class="fab-btn small"><span class="fab-plus">＋</span></span></a>
+      <a id="fabWhats" class="fab-action" target="_blank"><span class="fab-label">WhatsApp</span><span class="fab-btn small wa"><span class="fab-ico">💬</span></span></a>
+      <a id="fabDash" class="fab-action" href="#"><span class="fab-label">Dashboard</span><span class="fab-btn small"><span class="fab-ico">📊</span></span></a>
+    </div>
+    <div id="fabMain" class="fab-btn"><span class="fab-ico">☰</span></div>
+  </div>
+  <div id="fabBackdrop" class="fab-backdrop"></div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    document.getElementById('sidebarNovoLanc')?.addEventListener('click', function(e){ e.preventDefault(); document.querySelector('[data-tab="lancar"]')?.click(); });
+    document.getElementById('sidebarVerPainel')?.addEventListener('click', function(e){ e.preventDefault(); document.querySelector('[data-tab="dashboard"]')?.click(); });
+    document.getElementById('btnAccountMobile')?.addEventListener('click', function(){ document.getElementById('btnAccount')?.click(); });
+  </script>
 </body>
-
 </html>
