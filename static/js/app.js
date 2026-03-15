@@ -166,8 +166,14 @@ function toggleFab(force) {
 
 function updateAccountUI(me) {
   const logged = Boolean(me && me.user_id);
-  $('accountName').textContent = me?.name || 'Sua conta';
-  $('accountEmail').textContent = me?.email || 'Não conectado';
+  const name = me?.name || 'Sua conta';
+  const email = me?.email || 'Não conectado';
+
+  $('accountName').textContent = name;
+  $('accountEmail').textContent = email;
+  if ($('accountNameDropdown')) $('accountNameDropdown').textContent = name;
+  if ($('accountEmailDropdown')) $('accountEmailDropdown').textContent = email;
+
   $('btnLogin')?.classList.toggle('hidden', logged);
   $('btnEditConta')?.classList.toggle('hidden', !logged);
   $('btnLogout')?.classList.toggle('hidden', !logged);
@@ -234,9 +240,16 @@ async function loadDashboard() {
       api('/api/patrimonio?months=6'),
     ]);
 
-    $('valReceitas').textContent = fmtBRL(dash.receitas);
-    $('valGastos').textContent = fmtBRL(dash.gastos);
-    $('valSaldo').textContent = fmtBRL(dash.saldo);
+    const receitasFmt = fmtBRL(dash.receitas);
+    const gastosFmt = fmtBRL(dash.gastos);
+    const saldoFmt = fmtBRL(dash.saldo);
+
+    $('valReceitas').textContent = receitasFmt;
+    $('valGastos').textContent = gastosFmt;
+    $('valSaldo').textContent = saldoFmt;
+    if ($('statReceitasMirror')) $('statReceitasMirror').textContent = receitasFmt;
+    if ($('statGastosMirror')) $('statGastosMirror').textContent = gastosFmt;
+    if ($('statSaldoMirror')) $('statSaldoMirror').textContent = saldoFmt;
 
     const insightText = insights?.insight || 'Seu resumo financeiro está disponível.';
     const projected = proj?.saldo_previsto != null ? ` Saldo previsto do mês: ${fmtBRL(proj.saldo_previsto)}.` : '';
@@ -652,6 +665,7 @@ function bindStaticEvents() {
 
   $('btnSalvarEdicao')?.addEventListener('click', saveEditLancamento);
   $('btnCancelarEdicao')?.addEventListener('click', closeEditModal);
+  $('btnCancelarEdicaoTop')?.addEventListener('click', closeEditModal);
   $('overlay')?.addEventListener('click', (e) => {
     if (e.target.id === 'overlay') closeEditModal();
   });
