@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Entrar • Finance AI</title>
-
   <link rel="manifest" href="/static/manifest.json" />
   <meta name="theme-color" content="#0b1020" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -12,33 +11,33 @@
   <meta name="apple-mobile-web-app-title" content="Finance AI" />
   <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
-
   <link rel="stylesheet" href="/static/css/app.css" />
 </head>
 <body class="login-body">
   <div class="login-shell">
-    <div class="login-hero">
-      <div class="login-badge">Finance AI</div>
-      <h1>Seu banco de decisões financeiras.</h1>
+    <div class="login-hero glass-panel">
+      <div class="hero-chip">Finance AI • Plataforma financeira</div>
+      <h1>Recupere o visual sem perder o que já voltou a funcionar.</h1>
       <p>
-        Controle lançamentos, projeções, score, investimentos, orçamentos e
-        inteligência financeira em um único lugar.
+        Controle lançamentos, investimentos, orçamentos, projeções e consultas inteligentes
+        em um painel único, limpo e moderno.
       </p>
 
       <div class="login-feature-list">
         <div class="login-feature-item">📊 Dashboard com visão do mês</div>
-        <div class="login-feature-item">🧠 Assistente financeiro inteligente</div>
+        <div class="login-feature-item">🧾 Lançamentos com edição e exclusão</div>
         <div class="login-feature-item">💎 Investimentos e patrimônio</div>
         <div class="login-feature-item">🎯 Metas e orçamentos por categoria</div>
+        <div class="login-feature-item">🧠 Assistente financeiro integrado</div>
       </div>
     </div>
 
-    <div class="login-card">
+    <div class="login-card glass-panel">
       <div class="login-card-top">
         <div class="login-logo">₣</div>
         <div>
           <div class="login-title">Acessar conta</div>
-          <div class="login-subtitle">Entre ou crie sua conta no Finance AI</div>
+          <div class="login-subtitle">Entre, crie sua conta ou redefina sua senha</div>
         </div>
       </div>
 
@@ -53,13 +52,11 @@
           <label>E-mail</label>
           <input id="loginEmailPage" type="email" placeholder="seuemail@dominio.com" />
         </div>
-
         <div class="field">
           <label>Senha</label>
           <input id="loginSenhaPage" type="password" placeholder="Sua senha" />
         </div>
-
-        <button id="btnEntrarPage" class="btn primary login-main-btn">Entrar</button>
+        <button id="btnEntrarPage" class="btn primary login-main-btn" type="button">Entrar</button>
         <div id="toastLoginPage" class="toast"></div>
       </div>
 
@@ -69,7 +66,6 @@
             <label>Nome / Apelido</label>
             <input id="regApelidoPage" placeholder="Ex: David" />
           </div>
-
           <div class="field">
             <label>Telefone</label>
             <input id="regTelefonePage" inputmode="tel" placeholder="(37) 99999-9999" />
@@ -91,14 +87,13 @@
             <label>Senha</label>
             <input id="regSenhaPage" type="password" placeholder="Mínimo 6 caracteres" />
           </div>
-
           <div class="field">
             <label>Confirmar senha</label>
             <input id="regConfPage" type="password" placeholder="Repita a senha" />
           </div>
         </div>
 
-        <button id="btnCriarContaPage" class="btn primary login-main-btn">Criar conta</button>
+        <button id="btnCriarContaPage" class="btn primary login-main-btn" type="button">Criar conta</button>
         <div id="toastRegisterPage" class="toast"></div>
       </div>
 
@@ -113,20 +108,17 @@
             <label>Nova senha</label>
             <input id="rstSenhaPage" type="password" placeholder="Mínimo 6 caracteres" />
           </div>
-
           <div class="field">
             <label>Confirmar senha</label>
             <input id="rstConfPage" type="password" placeholder="Repita a senha" />
           </div>
         </div>
 
-        <button id="btnResetarPage" class="btn primary login-main-btn">Resetar senha</button>
+        <button id="btnResetarPage" class="btn primary login-main-btn" type="button">Resetar senha</button>
         <div id="toastResetPage" class="toast"></div>
       </div>
 
-      <div class="login-footer-note">
-        Ao entrar, você acessa seu painel financeiro com segurança.
-      </div>
+      <div class="login-footer-note">Ao entrar, você acessa seu painel financeiro com segurança.</div>
     </div>
   </div>
 
