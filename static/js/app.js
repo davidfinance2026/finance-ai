@@ -1,640 +1,537 @@
-const $ = (id) => document.getElementById(id);
+import React, { useEffect, useMemo, useState, createContext, useContext } from 'react'; import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, } from 'react-router-dom';
 
-const moneyBR = (n) => { const v = Number(n || 0); return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); };
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5000';
 
-async function api(path, method = "GET", body = null) { const opt = { method, headers: { "Content-Type": "application/json" }, credentials: "include" };
+const AuthContext = createContext(null);
 
-if (body) opt.body = JSON.stringify(body);
+function useAuth() { const context = useContext(AuthContext); if (!context) { throw new Error('useAuth must be used within AuthProvider'); } return context; }
 
-const res = await fetch(path, opt); let data = null; try { data = await res.json(); } catch (e) {}
+async function apiRequest(path, options = {}) { const token = localStorage.getItem('finance_ai_token');
 
-if (!res.ok) { const msg = (data && (data.error || data.message)) ? (data.error || data.message) : Erro ${res.status}; throw new Error(msg); }
+const headers = { 'Content-Type': 'application/json', ...(options.headers || {}), };
+
+if (token) { headers.Authorization = Bearer ${token}; }
+
+const response = await fetch(${API_BASE_URL}${path}, { ...options, headers, });
+
+const contentType = response.headers.get('content-type') || ''; const isJson = contentType.includes('application/json'); const data = isJson ? await response.json() : await response.text();
+
+if (!response.ok) { const message = (isJson && (data.message || data.error)) || 'Erro ao comunicar com o servidor.'; throw new Error(message); }
 
 return data; }
 
-function showToast(el, type, title, desc = "") { if (!el) return; el.className = "toast show " + (type === "ok" ? "ok" : type === "warn" ? "warn" : "err"); el.innerHTML = <div class="t">${title}</div> + (desc ? <div class="d">${desc}</div> : ""); }
-
-function hideToast(el) { if (!el) return; el.className = "toast"; el.innerHTML = ""; }
-
-function isoToBR(iso) { if (!iso) return ""; const s = String(iso).slice(0, 10); const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return s; return ${m[3]}-${m[2]}-${m[1]}; }
-
-function brToISO(br) { if (!br) return ""; const s = String(br).trim(); const m = s.match(/^(\d{2})/-/-$/); if (!m) return s; const dd = m[1], mm = m[2], yyyy = m[3]; return ${yyyy}-${mm}-${dd}; }
-
-function firstNameFromEmail(email = "") { const raw = String(email || "").trim(); if (!raw) return "você"; const base = raw.split("@")[0] || ""; const clean = base.split(/[._-0-9]+/)[0] || base; if (!clean) return "você"; return clean.charAt(0).toUpperCase() + clean.slice(1); }
-
-function greetingByHour() { const h = new Date().getHours(); if (h < 12) return "Bom dia"; if (h < 18) return "Boa tarde"; return "Boa noite"; }
-
-function refreshGreeting(nameOrEmail = "") { const title = $("helloTitle"); if (!title) return;
-
-const raw = String(nameOrEmail || "").trim(); const name = raw.includes("@") ? firstNameFromEmail(raw) : (raw || "você"); title.textContent = ${greetingByHour()}, ${name} 👋; }
-
-function escapeHtml(v) { return String(v ?? "") .replace(/&/g, "&") .replace(/</g, "<") .replace(/>/g, ">") .replace(/"/g, """) .replace(/'/g, "'"); }
-
-function nl2brSafe(text) { return escapeHtml(text).replace(/\n/g, "<br>"); }
-
-const WA_NUMBER_FALLBACK = "5537998675231";
-
-function buildWaLinkFallback(email) { const base = https://wa.me/${WA_NUMBER_FALLBACK}; const e = String(email || "").trim(); if (!e) return base; return ${base}?text=${encodeURIComponent("conectar " + e)}; }
-
-let currentUserEmail = ""; let currentUserName = ""; let currentUserId = null; let editingRow = null;
-
-async function refreshWaLink() { const a = $("fabWhats"); const label = $("fabWaLabel"); if (!a || !label) return;
-
-if (!currentUserEmail) { a.href = buildWaLinkFallback(""); label.textContent = "WhatsApp"; return; }
-
-try { const res = await api("/api/wa_link", "GET"); const href = (res && (res.url || res.href || res.link)) ? (res.url || res.href || res.link) : ""; a.href = href || buildWaLinkFallback(currentUserEmail); } catch (e) { a.href = buildWaLinkFallback(currentUserEmail); }
-
-label.textContent = "WhatsApp (conectar)"; }
-
-function setLoggedUI(isLogged, email = "", name = "") { $("btnLogin")?.classList.toggle("hidden", isLogged); $("btnLogout")?.classList.toggle("hidden", !isLogged); $("btnEditConta")?.classList.toggle("hidden", !isLogged);
-
-if ($("accountEmail")) $("accountEmail").textContent = isLogged ? email : "Não conectado"; if ($("accountName")) $("accountName").textContent = isLogged ? (name || firstNameFromEmail(email)) : "Conta";
-
-refreshWaLink(); }
-
-async function syncSession() { try { const me = await api("/api/me", "GET"); currentUserEmail = (me && me.email) ? String(me.email) : ""; currentUserName = (me && me.name) ? String(me.name) : ""; currentUserId = (me && me.user_id) ? me.user_id : null;
-
-setLoggedUI(!!currentUserEmail, currentUserEmail, currentUserName);
-refreshGreeting(currentUserName || currentUserEmail || "");
-
-} catch (e) { currentUserEmail = ""; currentUserName = ""; currentUserId = null; setLoggedUI(false); refreshGreeting(""); } }
-
-async function refreshHeroSummary() { const helloSub = $("helloSub"); if (!helloSub) return;
-
-if (!currentUserEmail) { helloSub.textContent = "Faça login para visualizar seu resumo financeiro."; return; }
-
-const mes = Number($("dashMes")?.value || 0); const ano = Number($("dashAno")?.value || 0);
-
-try { const dash = await api(/api/dashboard?mes=${mes}&ano=${ano}, "GET"); const score = await api("/api/score_financeiro", "GET");
-
-const saldo = Number(dash.saldo || 0);
-const receitas = moneyBR(dash.receitas || 0);
-const gastos = moneyBR(dash.gastos || 0);
-const saldoFmt = moneyBR(saldo);
-const scoreFmt = `${score.score || 0}/100`;
-
-const fraseSaldo = saldo >= 0
-  ? `Você está fechando o período com saldo positivo de ${saldoFmt}.`
-  : `Você está fechando o período com saldo negativo de ${saldoFmt}.`;
-
-helloSub.textContent = `${fraseSaldo} Receitas em ${receitas}, gastos em ${gastos} e score atual de ${scoreFmt}.`;
-
-} catch (e) { helloSub.textContent = "Não foi possível carregar seu resumo financeiro agora."; } }
-
-const tabEls = Array.from(document.querySelectorAll(".tab"));
-
-function _setTabBase(name) { tabEls.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
-
-["dashboard", "lancar", "ultimos", "investimentos", "orcamentos", "assistente"].forEach((n) => { $(tab-${n})?.classList.toggle("hidden", n !== name); });
-
-if (name === "dashboard") { refreshDashboard().catch(() => {}); refreshIA().catch(() => {}); refreshInsightsDashboard().catch(() => {}); atualizarScoreFinanceiro().catch(() => {}); refreshHeroSummary().catch(() => {}); }
-
-if (name === "ultimos") carregarUltimos().catch(() => {}); if (name === "investimentos") carregarInvestimentos().catch(() => {}); if (name === "orcamentos") carregarOrcamentos().catch(() => {}); if (name === "assistente") initAssistenteTab(); }
-
-let setTab = _setTabBase; tabEls.forEach(t => t.addEventListener("click", () => setTab(t.dataset.tab)));
-
-$("goLancar")?.addEventListener("click", () => setTab("lancar")); $("goUltimos")?.addEventListener("click", () => setTab("ultimos"));
-
-const overlay = $("overlay");
-
-function openModal() { if (!overlay) return; overlay.classList.add("show"); overlay.setAttribute("aria-hidden", "false"); }
-
-function closeModal() { if (!overlay) return; overlay.classList.remove("show"); overlay.setAttribute("aria-hidden", "true"); hideToast($("toastEdit")); }
-
-$("closeModal")?.addEventListener("click", closeModal); $("btnCancelarEdicao")?.addEventListener("click", () => { editingRow = null; closeModal(); });
-
-overlay?.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
-
-const btnAccount = $("btnAccount"); const accountDropdown = $("accountDropdown");
-
-function toggleAccountMenu(force = null) { if (!accountDropdown) return; const open = force === null ? !accountDropdown.classList.contains("show") : !!force; accountDropdown.classList.toggle("show", open); }
-
-btnAccount?.addEventListener("click", (e) => { e.stopPropagation(); toggleAccountMenu(); });
-
-$("btnEditConta")?.addEventListener("click", () => { toggleAccountMenu(false); window.location.href = "/login"; });
-
-document.addEventListener("click", (e) => { if (accountDropdown && btnAccount && !accountDropdown.contains(e.target) && e.target !== btnAccount) { toggleAccountMenu(false); } });
-
-$("btnLogout")?.addEventListener("click", async () => { try { await api("/api/logout", "POST"); } catch (e) {}
-
-currentUserEmail = ""; currentUserName = ""; currentUserId = null;
-
-setLoggedUI(false); refreshGreeting(""); if ($("helloSub")) $("helloSub").textContent = "Faça login para visualizar seu resumo financeiro."; window.location.href = "/login"; });
-
-let chartRG = null; let chartSaldo = null; let chartDaily = null; let chartPatrimonio = null; let chartCategorias = null;
-
-function ensureCharts() { if (!window.Chart) return;
-
-if ($("chartRG") && !chartRG) { chartRG = new Chart($("chartRG"), { type: "doughnut", data: { labels: ["Receitas", "Gastos"], datasets: [{ data: [0, 0], backgroundColor: ["rgba(46,229,157,.85)", "rgba(255,75,110,.85)"], borderColor: ["rgba(46,229,157,.20)", "rgba(255,75,110,.20)"], borderWidth: 1, hoverOffset: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "rgba(234,240,255,.85)" } }, tooltip: { callbacks: { label: (ctx) => ${ctx.label}: ${moneyBR(ctx.raw || 0)} } } }, cutout: "65%" } }); }
-
-if ($("chartSaldo") && !chartSaldo) { chartSaldo = new Chart($("chartSaldo"), { type: "bar", data: { labels: ["Saldo"], datasets: [{ label: "Saldo do período", data: [0], backgroundColor: ["rgba(75,140,255,.75)"], borderColor: ["rgba(75,140,255,.25)"], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => moneyBR(ctx.raw || 0) } } }, scales: { x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }, y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } } } } }); }
-
-if ($("chartDaily") && !chartDaily) { chartDaily = new Chart($("chartDaily"), { type: "line", data: { labels: [], datasets: [ { label: "Receitas (dia)", data: [], borderColor: "rgba(46,229,157,.9)", backgroundColor: "rgba(46,229,157,.12)", tension: 0.25, fill: true, pointRadius: 2 }, { label: "Gastos (dia)", data: [], borderColor: "rgba(255,75,110,.9)", backgroundColor: "rgba(255,75,110,.10)", tension: 0.25, fill: true, pointRadius: 2 }, { label: "Saldo acumulado", data: [], borderColor: "rgba(75,140,255,.95)", backgroundColor: "rgba(75,140,255,.12)", tension: 0.25, fill: false, pointRadius: 1 } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "rgba(234,240,255,.85)" } }, tooltip: { callbacks: { label: (ctx) => ${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)} } } }, scales: { x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }, y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } } } } }); }
-
-if ($("chartPatrimonio") && !chartPatrimonio) { chartPatrimonio = new Chart($("chartPatrimonio"), { type: "line", data: { labels: [], datasets: [{ label: "Patrimônio", data: [], borderColor: "rgba(255,184,77,.95)", backgroundColor: "rgba(255,184,77,.12)", tension: 0.25, fill: true, pointRadius: 3 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "rgba(234,240,255,.85)" } }, tooltip: { callbacks: { label: (ctx) => ${ctx.dataset.label}: ${moneyBR(ctx.raw || 0)} } } }, scales: { x: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } }, y: { ticks: { color: "rgba(234,240,255,.75)" }, grid: { color: "rgba(255,255,255,.06)" } } } } }); }
-
-if ($("chartCategorias") && !chartCategorias) { chartCategorias = new Chart($("chartCategorias"), { type: "doughnut", data: { labels: [], datasets: [{ data: [], backgroundColor: [ "rgba(75,140,255,.85)", "rgba(46,229,157,.85)", "rgba(255,184,77,.85)", "rgba(255,75,110,.85)", "rgba(140,120,255,.85)", "rgba(120,220,255,.85)" ], borderColor: "rgba(255,255,255,.08)", borderWidth: 1, hoverOffset: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: "rgba(234,240,255,.85)" } }, tooltip: { callbacks: { label: (ctx) => ${ctx.label}: ${moneyBR(ctx.raw || 0)} } } }, cutout: "60%" } }); } }
-
-function updateChartsTotals(receitas, gastos, saldo) { ensureCharts();
-
-if (chartRG) { chartRG.data.datasets[0].data = [Number(receitas || 0), Number(gastos || 0)]; chartRG.update(); }
-
-if (chartSaldo) { const s = Number(saldo || 0); chartSaldo.data.datasets[0].data = [s]; chartSaldo.data.datasets[0].backgroundColor = [s >= 0 ? "rgba(46,229,157,.75)" : "rgba(255,75,110,.75)"]; chartSaldo.data.datasets[0].borderColor = [s >= 0 ? "rgba(46,229,157,.25)" : "rgba(255,75,110,.25)"]; chartSaldo.update(); } }
-
-function daysInMonth(year, month1to12) { return new Date(year, month1to12, 0).getDate(); }
-
-function parseISODate(s) { const parts = String(s || "").split("-"); if (parts.length !== 3) return null; const y = Number(parts[0]); const m = Number(parts[1]); const d = Number(parts[2]); if (!y || !m || !d) return null; return { y, m, d }; }
-
-async function updateDailyChart(mes, ano) { ensureCharts(); if (!chartDaily) return;
-
-const dim = daysInMonth(ano, mes); const labels = Array.from({ length: dim }, (_, i) => String(i + 1)); const receitasDia = Array.from({ length: dim }, () => 0); const gastosDia = Array.from({ length: dim }, () => 0);
-
-try { const res = await api("/api/lancamentos?limit=200", "GET"); const items = res.items || [];
-
-for (const it of items) {
-  const dt = parseISODate(it.data);
-  if (!dt) continue;
-  if (dt.y !== ano || dt.m !== mes) continue;
-  const idx = dt.d - 1;
-  if (idx < 0 || idx >= dim) continue;
-
-  const tipo = String(it.tipo || "").toUpperCase();
-  const val = Number(it.valor || 0);
-
-  if (tipo === "RECEITA") receitasDia[idx] += val;
-  if (tipo === "GASTO") gastosDia[idx] += val;
+function AuthProvider({ children }) { const [token, setToken] = useState( localStorage.getItem('finance_ai_token') || '' ); const [user, setUser] = useState(() => { const stored = localStorage.getItem('finance_ai_user'); return stored ? JSON.parse(stored) : null; }); const [loading, setLoading] = useState(Boolean(token));
+
+const login = async (email, password) => { const data = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }), headers: { Authorization: '' }, });
+
+localStorage.setItem('finance_ai_token', data.access_token);
+localStorage.setItem('finance_ai_user', JSON.stringify(data.user));
+setToken(data.access_token);
+setUser(data.user);
+return data;
+
+};
+
+const logout = () => { localStorage.removeItem('finance_ai_token'); localStorage.removeItem('finance_ai_user'); setToken(''); setUser(null); };
+
+const loadProfile = async () => { if (!localStorage.getItem('finance_ai_token')) { setLoading(false); return; }
+
+try {
+  const data = await apiRequest('/auth/me');
+  setUser(data.user || data);
+  localStorage.setItem(
+    'finance_ai_user',
+    JSON.stringify(data.user || data)
+  );
+} catch (error) {
+  logout();
+} finally {
+  setLoading(false);
 }
 
-} catch (e) {}
+};
 
-const saldoAcum = []; let acc = 0; for (let i = 0; i < dim; i++) { acc += (receitasDia[i] - gastosDia[i]); saldoAcum.push(acc); }
+useEffect(() => { loadProfile(); }, []);
 
-chartDaily.data.labels = labels; chartDaily.data.datasets[0].data = receitasDia; chartDaily.data.datasets[1].data = gastosDia; chartDaily.data.datasets[2].data = saldoAcum; chartDaily.update(); }
+const value = useMemo( () => ({ token, user, loading, authenticated: Boolean(token && user), login, logout, reloadProfile: loadProfile, }), [token, user, loading] );
 
-async function updatePatrimonioChart() { ensureCharts(); if (!chartPatrimonio) return;
+return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>; }
 
-try { const res = await api("/api/patrimonio?months=6", "GET"); chartPatrimonio.data.labels = res.labels || []; chartPatrimonio.data.datasets[0].data = res.values || []; chartPatrimonio.update(); } catch (e) { chartPatrimonio.data.labels = []; chartPatrimonio.data.datasets[0].data = []; chartPatrimonio.update(); } }
+function ProtectedRoute() { const { authenticated, loading } = useAuth(); const location = useLocation();
 
-async function refreshDashboard() { const toast = $("toastDash"); hideToast(toast);
+if (loading) { return <FullPageMessage text="Carregando sessão..." />; }
 
-const mes = Number($("dashMes")?.value || 0); const ano = Number($("dashAno")?.value || 0);
+if (!authenticated) { return <Navigate to="/login" replace state={{ from: location }} />; }
 
-try { const res = await api(/api/dashboard?mes=${mes}&ano=${ano}, "GET");
+return <Outlet />; }
 
-if ($("valReceitas")) $("valReceitas").textContent = moneyBR(res.receitas);
-if ($("valGastos")) $("valGastos").textContent = moneyBR(res.gastos);
-if ($("valSaldo")) $("valSaldo").textContent = moneyBR(res.saldo);
+function PublicOnlyRoute() { const { authenticated, loading } = useAuth();
 
-const saldoEl = $("valSaldo");
-if (saldoEl) {
-  saldoEl.classList.remove("positive", "negative");
-  saldoEl.classList.add(Number(res.saldo) >= 0 ? "positive" : "negative");
-}
+if (loading) { return <FullPageMessage text="Carregando..." />; }
 
-updateChartsTotals(res.receitas, res.gastos, res.saldo);
-await updateDailyChart(mes, ano);
+if (authenticated) { return <Navigate to="/dashboard" replace />; }
 
-} catch (e) { if ($("valReceitas")) $("valReceitas").textContent = "R$ 0,00"; if ($("valGastos")) $("valGastos").textContent = "R$ 0,00"; if ($("valSaldo")) $("valSaldo").textContent = "R$ 0,00"; updateChartsTotals(0, 0, 0); await updateDailyChart(mes, ano); showToast(toast, "err", "Faça login para ver o painel", e.message); } }
+return <Outlet />; }
 
-async function refreshIA() { const toast = $("toastIA"); hideToast(toast);
+function Layout() { const { user, logout } = useAuth(); const location = useLocation();
 
-try { const proj = await api("/api/projecao", "GET");
+const menu = [ { to: '/dashboard', label: 'Dashboard' }, { to: '/lancamentos', label: 'Lançamentos' }, { to: '/investimentos', label: 'Investimentos' }, { to: '/orcamentos', label: 'Orçamentos' }, { to: '/assistente-financeiro', label: 'Assistente Financeiro' }, ];
 
-if ($("valSaldoPrevisto")) $("valSaldoPrevisto").textContent = moneyBR(proj.saldo_previsto);
-if ($("valGastoMedioDia")) $("valGastoMedioDia").textContent = moneyBR(proj.gasto_medio_diario);
-if ($("valEstimativaRestante")) $("valEstimativaRestante").textContent = moneyBR(proj.estimativa_gastos_restantes);
+return ( <div style={styles.appShell}> <aside style={styles.sidebar}> <div> <h2 style={styles.brand}>Finance AI</h2> <p style={styles.sidebarSubtitle}>Gestão financeira inteligente</p> </div>
 
-const saldoPrev = $("valSaldoPrevisto");
-if (saldoPrev) {
-  saldoPrev.classList.remove("positive", "negative", "warn");
-  if (Number(proj.saldo_previsto) < 0) saldoPrev.classList.add("negative");
-  else saldoPrev.classList.add("positive");
-}
+<nav style={styles.nav}>
+      {menu.map((item) => {
+        const active = location.pathname === item.to;
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            style={{
+              ...styles.navLink,
+              ...(active ? styles.navLinkActive : {}),
+            }}
+          >
+            {item.label}
+          </NavLink>
+        );
+      })}
+    </nav>
 
-if ($("txtProjecaoResumo")) {
-  $("txtProjecaoResumo").textContent = proj.alerta_negativo
-    ? `Atenção: projeção negativa em ${proj.dias_restantes} dia(s).`
-    : `Projeção saudável para os próximos ${proj.dias_restantes} dia(s).`;
-}
-
-const alerts = await api("/api/alertas", "GET");
-renderAlertas(alerts.items || []);
-await updatePatrimonioChart();
-
-} catch (e) { if ($("valSaldoPrevisto")) $("valSaldoPrevisto").textContent = "R$ 0,00"; if ($("valGastoMedioDia")) $("valGastoMedioDia").textContent = "R$ 0,00"; if ($("valEstimativaRestante")) $("valEstimativaRestante").textContent = "R$ 0,00"; if ($("txtProjecaoResumo")) $("txtProjecaoResumo").textContent = "Faça login para usar a projeção."; renderAlertas([]); await updatePatrimonioChart(); showToast(toast, "err", "IA indisponível", e.message); } }
-
-function renderAlertas(items) { const box = $("listaAlertas"); if (!box) return;
-
-if (!items || !items.length) { box.innerHTML = <div class="muted">Nenhum alerta importante no momento.</div>; return; }
-
-box.innerHTML = items.map(a => <div class="alert-item ${String(a.nivel || "").toLowerCase()}"> <div class="alert-title">${escapeHtml(a.titulo || "Alerta")}</div> <div class="alert-msg">${escapeHtml(a.mensagem || "")}</div> </div>).join(""); }
-
-function renderOrcamentoAlertas(items) { const box = $("orcAlertas"); if (!box) return;
-
-if (!items || !items.length) { box.innerHTML = <div class="muted">Nenhum alerta de orçamento por enquanto.</div>; return; }
-
-box.innerHTML = items.map(a => <div class="alert-item ${String(a.status || "").toLowerCase() === "excedido" ? "high" : "medium"}"> <div class="alert-title">${escapeHtml(a.categoria || "Categoria")}</div> <div class="alert-msg"> Meta: ${moneyBR(a.meta)} • Gasto: ${moneyBR(a.gasto)} • Restante: ${moneyBR(a.restante)}<br> Uso: ${Number(a.percentual || 0).toFixed(0)}% ${a.mensagem ?<br>${escapeHtml(a.mensagem)}: ""} </div> </div>).join(""); }
-
-function updateOrcResumo(items) { let meta = 0; let gasto = 0;
-
-for (const item of items || []) { if (String(item.categoria || "").toUpperCase() === "TOTAL") { meta = Number(item.meta || 0); gasto = Number(item.gasto || 0); break; } }
-
-if (!meta && items && items.length) { meta = items.reduce((acc, i) => acc + Number(i.meta || 0), 0); gasto = items.reduce((acc, i) => acc + (String(i.categoria || "").toUpperCase() === "TOTAL" ? 0 : Number(i.gasto || 0)), 0); }
-
-if ($("orcResumoMeta")) $("orcResumoMeta").textContent = moneyBR(meta); if ($("orcResumoGasto")) $("orcResumoGasto").textContent = moneyBR(gasto); if ($("orcResumoRestante")) $("orcResumoRestante").textContent = moneyBR(meta - gasto);
-
-const restante = $("orcResumoRestante"); if (restante) { restante.classList.remove("positive", "negative"); restante.classList.add((meta - gasto) >= 0 ? "positive" : "negative"); } }
-
-async function carregarOrcamentos() { const toast = $("toastOrc"); const list = $("listaOrcamentos"); if (!list) return;
-
-hideToast(toast); list.innerHTML = "";
-
-if (!currentUserEmail) { list.innerHTML = <div class="muted">Faça login para gerenciar seus orçamentos.</div>; if ($("orcAlertas")) $("orcAlertas").innerHTML = <div class="muted">Nenhum alerta de orçamento por enquanto.</div>; updateOrcResumo([]); return; }
-
-try { const mes = Number($("orcMes")?.value || 0); const ano = Number($("orcAno")?.value || 0); const res = await api(/api/orcamentos?mes=${mes}&ano=${ano}, "GET"); const items = res.items || [];
-
-if (items.length === 0) {
-  list.innerHTML = `<div class="muted">Nenhum orçamento cadastrado para este período.</div>`;
-  if ($("orcAlertas")) $("orcAlertas").innerHTML = `<div class="muted">Nenhum alerta de orçamento por enquanto.</div>`;
-  updateOrcResumo([]);
-  return;
-}
-
-updateOrcResumo(items);
-renderOrcamentoAlertas(items.filter(i => i.status === "atencao" || i.status === "excedido" || i.estoura_meta));
-
-list.innerHTML = items.map(it => {
-  const percent = Number(it.percentual || 0);
-  const barColor = it.status === "excedido"
-    ? "linear-gradient(90deg, rgba(255,75,110,.95), rgba(255,110,140,.95))"
-    : it.status === "atencao"
-      ? "linear-gradient(90deg, rgba(255,184,77,.95), rgba(255,210,120,.95))"
-      : "linear-gradient(90deg, rgba(46,229,157,.95), rgba(108,241,195,.95))";
-
-  return `
-    <div class="miniCard">
-      <div class="row" style="align-items:flex-start;gap:12px">
-        <div style="flex:1">
-          <div style="font-weight:900">${escapeHtml(it.categoria || "TOTAL")}</div>
-          <div class="muted" style="margin-top:4px;font-size:13px">
-            Meta: ${moneyBR(it.meta)} • Gasto: ${moneyBR(it.gasto)} • Restante: ${moneyBR(it.restante)}
-          </div>
-          <div class="orc-progress">
-            <div style="width:${Math.min(percent, 100)}%;background:${barColor}"></div>
-          </div>
-          <div class="hint" style="margin-top:6px">
-            Uso: ${percent.toFixed(0)}% •
-            <span class="${
-              it.status === "excedido" ? "orc-status-excedido" :
-              it.status === "atencao" ? "orc-status-atencao" :
-              "orc-status-ok"
-            }">${escapeHtml(it.status)}</span>
-          </div>
-          ${it.projecao_final !== undefined ? `<div class="hint" style="margin-top:6px">Projeção do mês: ${moneyBR(it.projecao_final)}</div>` : ""}
-          ${it.mensagem ? `<div class="hint" style="margin-top:6px">${escapeHtml(it.mensagem)}</div>` : ""}
-        </div>
-        <div>
-          <button class="btn danger small" onclick="apagarOrcamento(${it.id})">Apagar</button>
-        </div>
+    <div style={styles.userBox}>
+      <div>
+        <div style={styles.userName}>{user?.name || 'Usuário'}</div>
+        <div style={styles.userEmail}>{user?.email || ''}</div>
       </div>
+      <button onClick={logout} style={styles.secondaryButton}>
+        Sair
+      </button>
     </div>
-  `;
-}).join("");
+  </aside>
 
-} catch (e) { showToast(toast, "err", "Erro ao carregar orçamentos", e.message); list.innerHTML = <div class="muted">Não foi possível carregar os orçamentos.</div>; } }
+  <main style={styles.mainContent}>
+    <Outlet />
+  </main>
+</div>
 
-window.apagarOrcamento = async (id) => { const toast = $("toastOrc"); hideToast(toast);
+); }
 
-if (!confirm("Quer mesmo apagar este orçamento?")) return;
+function LoginPage() { const navigate = useNavigate(); const location = useLocation(); const { login } = useAuth(); const [form, setForm] = useState({ email: '', password: '' }); const [submitting, setSubmitting] = useState(false); const [error, setError] = useState('');
 
-try { await api(/api/orcamentos/${id}, "DELETE"); showToast(toast, "ok", "Apagado!", "Orçamento removido."); await carregarOrcamentos(); } catch (e) { showToast(toast, "err", "Não foi possível apagar", e.message); } };
+const from = location.state?.from?.pathname || '/dashboard';
 
-$("btnSalvarOrc")?.addEventListener("click", async () => { const toast = $("toastOrc"); hideToast(toast);
+const handleSubmit = async (event) => { event.preventDefault(); setSubmitting(true); setError('');
 
-try { const payload = { mes: Number($("orcMes")?.value || 0), ano: Number($("orcAno")?.value || 0), categoria: $("orcCategoria")?.value.trim() || "TOTAL", valor_meta: $("orcValorMeta")?.value.trim() || "" };
-
-await api("/api/orcamentos", "POST", payload);
-showToast(toast, "ok", "Salvo!", "Orçamento registrado com sucesso.");
-if ($("orcCategoria")) $("orcCategoria").value = "";
-if ($("orcValorMeta")) $("orcValorMeta").value = "";
-await carregarOrcamentos();
-
-} catch (e) { showToast(toast, "err", "Erro ao salvar orçamento", e.message); } });
-
-$("btnLimparOrc")?.addEventListener("click", () => { if ($("orcCategoria")) $("orcCategoria").value = ""; if ($("orcValorMeta")) $("orcValorMeta").value = ""; hideToast($("toastOrc")); });
-
-$("btnRecarregarOrc")?.addEventListener("click", () => carregarOrcamentos()); $("orcMes")?.addEventListener("change", () => carregarOrcamentos().catch(() => {})); $("orcAno")?.addEventListener("change", () => carregarOrcamentos().catch(() => {}));
-
-async function refreshInsightsDashboard() { const mes = Number($("dashMes")?.value || 0); const ano = Number($("dashAno")?.value || 0);
-
-try { const res = await api(/api/insights_dashboard?mes=${mes}&ano=${ano}, "GET");
-
-if ($("valScore")) $("valScore").textContent = `${res.score || 0}/100`;
-if ($("txtInsightAuto")) $("txtInsightAuto").textContent = res.insight || "Sem insight disponível.";
-
-const scoreEl = $("valScore");
-if (scoreEl) {
-  scoreEl.classList.remove("positive", "negative", "warn");
-  const scoreNum = Number(res.score || 0);
-  if (scoreNum >= 80) scoreEl.classList.add("positive");
-  else if (scoreNum >= 60) scoreEl.classList.add("warn");
-  else scoreEl.classList.add("negative");
+try {
+  await login(form.email, form.password);
+  navigate(from, { replace: true });
+} catch (err) {
+  setError(err.message);
+} finally {
+  setSubmitting(false);
 }
 
-if ($("txtScoreHint")) {
-  if (res.status === "saudavel") $("txtScoreHint").textContent = "Saúde financeira boa.";
-  else if (res.status === "atencao") $("txtScoreHint").textContent = "Atenção moderada no período.";
-  else if (res.status === "critico") $("txtScoreHint").textContent = "Seu período exige mais atenção.";
-  else $("txtScoreHint").textContent = "Análise concluída.";
-}
+};
 
-ensureCharts();
-if (chartCategorias) {
-  chartCategorias.data.labels = res.categorias || [];
-  chartCategorias.data.datasets[0].data = res.valores || [];
-  chartCategorias.update();
-}
+return ( <div style={styles.loginWrapper}> <div style={styles.loginCard}> <h1 style={styles.pageTitle}>Finance AI</h1> <p style={styles.pageSubtitle}>Entre para acessar sua central financeira</p>
 
-} catch (e) { if ($("valScore")) $("valScore").textContent = "0/100"; if ($("txtScoreHint")) $("txtScoreHint").textContent = "Faça login para visualizar."; if ($("txtInsightAuto")) $("txtInsightAuto").textContent = "Sem dados para análise.";
+<form onSubmit={handleSubmit} style={styles.form}>
+      <input
+        type="email"
+        placeholder="Seu e-mail"
+        value={form.email}
+        onChange={(e) => setForm({ ...form, email: e.target.value })}
+        style={styles.input}
+        required
+      />
+      <input
+        type="password"
+        placeholder="Sua senha"
+        value={form.password}
+        onChange={(e) => setForm({ ...form, password: e.target.value })}
+        style={styles.input}
+        required
+      />
 
-if (chartCategorias) {
-  chartCategorias.data.labels = [];
-  chartCategorias.data.datasets[0].data = [];
-  chartCategorias.update();
-}
+      {error ? <div style={styles.errorBox}>{error}</div> : null}
 
-} }
+      <button type="submit" disabled={submitting} style={styles.primaryButton}>
+        {submitting ? 'Entrando...' : 'Entrar'}
+      </button>
+    </form>
+  </div>
+</div>
 
-async function atualizarScoreFinanceiro() { try { const data = await api("/api/score_financeiro", "GET");
+); }
 
-if ($("valScore")) $("valScore").textContent = `${data.score || 0}/100`;
+function DashboardPage() { const [summary, setSummary] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
 
-const scoreEl = $("valScore");
-if (scoreEl) {
-  scoreEl.classList.remove("positive", "negative", "warn");
-  const scoreNum = Number(data.score || 0);
-  if (scoreNum >= 80) scoreEl.classList.add("positive");
-  else if (scoreNum >= 60) scoreEl.classList.add("warn");
-  else scoreEl.classList.add("negative");
-}
+useEffect(() => { const loadData = async () => { try { const data = await apiRequest('/dashboard/summary'); setSummary(data); } catch (err) { setError(err.message); } finally { setLoading(false); } };
 
-if ($("txtScoreHint")) {
-  if (data.status === "saudavel") {
-    $("txtScoreHint").textContent = "🟢 Situação financeira saudável";
-  } else if (data.status === "atencao") {
-    $("txtScoreHint").textContent = "🟡 Atenção com os gastos";
-  } else if (data.status === "critico") {
-    $("txtScoreHint").textContent = "🔴 Situação financeira crítica";
-  } else {
-    $("txtScoreHint").textContent = "Score atualizado.";
-  }
-}
+loadData();
 
-} catch (e) { if ($("valScore")) $("valScore").textContent = "0/100"; if ($("txtScoreHint")) $("txtScoreHint").textContent = "Faça login para visualizar."; } }
+}, []);
 
-$("btnAtualizarDash")?.addEventListener("click", async () => { await refreshDashboard(); await refreshInsightsDashboard(); await atualizarScoreFinanceiro(); await refreshHeroSummary(); });
+if (loading) return <SectionLoading title="Dashboard" />; if (error) return <SectionError title="Dashboard" error={error} />;
 
-$("btnAtualizarIA")?.addEventListener("click", async () => { await refreshIA(); await refreshInsightsDashboard(); await atualizarScoreFinanceiro(); await refreshHeroSummary(); });
+const cards = [ { label: 'Saldo Atual', value: currency(summary?.saldo_atual) }, { label: 'Receitas do Mês', value: currency(summary?.receitas_mes) }, { label: 'Despesas do Mês', value: currency(summary?.despesas_mes) }, { label: 'Patrimônio Investido', value: currency(summary?.patrimonio_investido) }, ];
 
-$("btnVerAlertas")?.addEventListener("click", async () => { await refreshIA(); await refreshInsightsDashboard(); await atualizarScoreFinanceiro(); await refreshHeroSummary(); });
+return ( <section> <PageHeader
+title="Dashboard"
+subtitle="Visão geral da sua vida financeira"
+/>
 
-$("dashMes")?.addEventListener("change", () => { refreshDashboard().catch(() => {}); refreshInsightsDashboard().catch(() => {}); atualizarScoreFinanceiro().catch(() => {}); refreshHeroSummary().catch(() => {}); });
-
-$("dashAno")?.addEventListener("change", () => { refreshDashboard().catch(() => {}); refreshInsightsDashboard().catch(() => {}); atualizarScoreFinanceiro().catch(() => {}); refreshHeroSummary().catch(() => {}); });
-
-$("btnSalvarLanc")?.addEventListener("click", async () => { const toast = $("toastLanc"); hideToast(toast);
-
-try { const payload = { tipo: $("lanTipo")?.value || "GASTO", data: brToISO($("lanData")?.value || ""), categoria: $("lanCategoria")?.value.trim() || "", descricao: $("lanDescricao")?.value.trim() || "", valor: $("lanValor")?.value.trim() || "", };
-
-await api("/api/lancamentos", "POST", payload);
-showToast(toast, "ok", "Salvo!", "Lançamento registrado com sucesso.");
-
-if ($("lanCategoria")) $("lanCategoria").value = "";
-if ($("lanDescricao")) $("lanDescricao").value = "";
-if ($("lanValor")) $("lanValor").value = "";
-
-refreshDashboard().catch(() => {});
-refreshIA().catch(() => {});
-refreshInsightsDashboard().catch(() => {});
-atualizarScoreFinanceiro().catch(() => {});
-carregarUltimos().catch(() => {});
-carregarOrcamentos().catch(() => {});
-refreshHeroSummary().catch(() => {});
-
-} catch (e) { showToast(toast, "err", "Erro ao salvar", e.message); } });
-
-$("btnLimparLanc")?.addEventListener("click", () => { if ($("lanCategoria")) $("lanCategoria").value = ""; if ($("lanDescricao")) $("lanDescricao").value = ""; if ($("lanValor")) $("lanValor").value = ""; hideToast($("toastLanc")); });
-
-$("btnRecarregarUltimos")?.addEventListener("click", () => carregarUltimos());
-
-function normalizeValorToMoneyBR(raw) { const n = Number(String(raw ?? "").trim().replace(/\s/g, "").replace(",", ".")); if (!isNaN(n)) { return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } return String(raw ?? ""); }
-
-async function carregarUltimos() { const toast = $("toastUltimos"); const list = $("listaUltimos"); if (!list) return;
-
-hideToast(toast); list.innerHTML = "";
-
-try { const res = await api("/api/lancamentos?limit=30", "GET"); const items = res.items || [];
-
-if (items.length === 0) {
-  list.innerHTML = `<div class="muted">Nenhum lançamento ainda.</div>`;
-  return;
-}
-
-list.innerHTML = items.map(it => {
-  const v = moneyBR(Number(it.valor || 0));
-  const desc = escapeHtml(it.descricao || "");
-  const cat = escapeHtml(it.categoria || "Sem categoria");
-
-  return `
-    <div class="miniCard">
-      <div class="row" style="gap:12px;align-items:flex-start">
-        <div style="min-width:92px" class="muted"><b>${isoToBR(it.data)}</b></div>
-        <div style="flex:1">
-          <div style="font-weight:900">${escapeHtml(it.tipo)} • ${cat}</div>
-          <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
-        </div>
-        <div style="text-align:right;min-width:130px">
-          <div style="font-weight:900">${v}</div>
-          <div class="row" style="justify-content:flex-end;margin-top:8px">
-            <button class="btn small" onclick='abrirEdicao(${JSON.stringify(it).replace(/'/g, "&#39;")})'>Editar</button>
-            <button class="btn danger small" onclick="apagarLancamento(${it.row})">Apagar</button>
-          </div>
-        </div>
+<div style={styles.grid4}>
+    {cards.map((card) => (
+      <div key={card.label} style={styles.card}>
+        <div style={styles.cardLabel}>{card.label}</div>
+        <div style={styles.cardValue}>{card.value}</div>
       </div>
-    </div>
-  `;
-}).join("");
+    ))}
+  </div>
 
-} catch (e) { showToast(toast, "err", "Erro ao carregar", e.message); } }
+  <div style={styles.card}>
+    <h3>Resumo</h3>
+    <p>
+      {summary?.mensagem_geral ||
+        'Seu backend pode retornar aqui um resumo financeiro consolidado.'}
+    </p>
+  </div>
+</section>
 
-async function apagarLancamento(row) { const toast = $("toastUltimos"); hideToast(toast);
+); }
 
-if (!confirm("Quer mesmo apagar este lançamento?")) return;
+function LancamentosPage() { const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [form, setForm] = useState({ descricao: '', valor: '', tipo: 'despesa', categoria: '', data: new Date().toISOString().slice(0, 10), }); const [saving, setSaving] = useState(false);
 
-try { await api(/api/lancamentos/${row}, "DELETE"); showToast(toast, "ok", "Apagado!", "Lançamento removido.");
+const loadItems = async () => { try { setLoading(true); const data = await apiRequest('/lancamentos'); setItems(Array.isArray(data) ? data : data.items || []); setError(''); } catch (err) { setError(err.message); } finally { setLoading(false); } };
 
-await carregarUltimos();
-await refreshWaLink();
-await refreshDashboard();
-await refreshIA();
-await refreshInsightsDashboard();
-await atualizarScoreFinanceiro();
-await carregarOrcamentos();
-await refreshHeroSummary();
+useEffect(() => { loadItems(); }, []);
 
-} catch (e) { showToast(toast, "err", "Não foi possível apagar", e.message); } }
+const handleSubmit = async (event) => { event.preventDefault(); setSaving(true);
 
-function openEditModal() { if ($("modalIcon")) $("modalIcon").textContent = "✏️"; if ($("modalTitle")) $("modalTitle").textContent = "Editar lançamento"; if ($("modalSub")) $("modalSub").textContent = "Edite e salve."; openModal(); }
+try {
+  await apiRequest('/lancamentos', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...form,
+      valor: Number(form.valor),
+    }),
+  });
 
-window.abrirEdicao = (it) => { if (!currentUserEmail) { window.location.href = "/login"; return; }
-
-editingRow = it.row; if ($("edtTipo")) $("edtTipo").value = (it.tipo || "GASTO").toUpperCase(); if ($("edtData")) $("edtData").value = isoToBR(it.data) || isoToBR(new Date().toISOString().slice(0, 10)); if ($("edtCategoria")) $("edtCategoria").value = it.categoria || ""; if ($("edtDescricao")) $("edtDescricao").value = it.descricao || ""; if ($("edtValor")) $("edtValor").value = normalizeValorToMoneyBR(it.valor);
-
-hideToast($("toastEdit")); openEditModal(); };
-
-window.apagarLancamento = apagarLancamento;
-
-$("btnSalvarEdicao")?.addEventListener("click", async () => { const toast = $("toastEdit"); hideToast(toast);
-
-if (!editingRow) { showToast(toast, "err", "Nada para editar", "Selecione um lançamento para editar."); return; }
-
-try { const payload = { tipo: $("edtTipo")?.value || "GASTO", data: brToISO($("edtData")?.value || ""), categoria: $("edtCategoria")?.value.trim() || "", descricao: $("edtDescricao")?.value.trim() || "", valor: $("edtValor")?.value.trim() || "", };
-
-await api(`/api/lancamentos/${editingRow}`, "PUT", payload);
-showToast(toast, "ok", "Atualizado!", "Lançamento editado com sucesso.");
-
-await carregarUltimos();
-await refreshWaLink();
-await refreshDashboard();
-await refreshIA();
-await refreshInsightsDashboard();
-await atualizarScoreFinanceiro();
-await carregarOrcamentos();
-await refreshHeroSummary();
-
-setTimeout(() => { closeModal(); }, 450);
-
-} catch (e) { showToast(toast, "err", "Erro ao editar", e.message); } });
-
-$("btnRecarregarInv")?.addEventListener("click", () => carregarInvestimentos());
-
-async function carregarInvestimentos() { const toast = $("toastInv"); const list = $("listaInv"); if (!list) return;
-
-hideToast(toast); list.innerHTML = "";
-
-if (!currentUserEmail) { showToast(toast, "err", "Faça login", "Entre para ver e registrar investimentos."); return; }
-
-try { const res = await api("/api/investimentos?limit=50", "GET"); const items = res.items || [];
-
-if (items.length === 0) {
-  list.innerHTML = `<div class="muted">Nenhum investimento ainda.</div>`;
-  return;
+  setForm({
+    descricao: '',
+    valor: '',
+    tipo: 'despesa',
+    categoria: '',
+    data: new Date().toISOString().slice(0, 10),
+  });
+  await loadItems();
+} catch (err) {
+  setError(err.message);
+} finally {
+  setSaving(false);
 }
 
-list.innerHTML = items.map(it => {
-  const v = moneyBR(Number(String(it.valor).replace(",", ".")));
-  const desc = escapeHtml(it.descricao || "");
-  const ativo = escapeHtml(it.ativo || "");
-  const tipo = escapeHtml((it.tipo || "APORTE").toUpperCase());
+};
 
-  return `
-    <div class="miniCard">
-      <div class="row" style="gap:12px;align-items:flex-start">
-        <div style="min-width:92px" class="muted"><b>${isoToBR(it.data)}</b></div>
-        <div style="flex:1">
-          <div style="font-weight:900">${tipo} • ${ativo}</div>
-          <div class="muted" style="margin-top:4px;font-size:13px">${desc}</div>
-        </div>
-        <div style="text-align:right;min-width:130px">
-          <div style="font-weight:900">${v}</div>
-          <div class="row" style="justify-content:flex-end;margin-top:8px">
-            <button class="btn danger small" onclick="apagarInvestimento(${it.id})">Apagar</button>
-          </div>
-        </div>
-      </div>
+return ( <section> <PageHeader
+title="Lançamentos"
+subtitle="Cadastre receitas e despesas do dia a dia"
+/>
+
+<div style={styles.twoColumn}>
+    <div style={styles.card}>
+      <h3>Novo lançamento</h3>
+      <form onSubmit={handleSubmit} style={styles.form}>
+        <input
+          style={styles.input}
+          placeholder="Descrição"
+          value={form.descricao}
+          onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          required
+        />
+        <input
+          style={styles.input}
+          placeholder="Valor"
+          type="number"
+          step="0.01"
+          value={form.valor}
+          onChange={(e) => setForm({ ...form, valor: e.target.value })}
+          required
+        />
+        <select
+          style={styles.input}
+          value={form.tipo}
+          onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+        >
+          <option value="despesa">Despesa</option>
+          <option value="receita">Receita</option>
+        </select>
+        <input
+          style={styles.input}
+          placeholder="Categoria"
+          value={form.categoria}
+          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+        />
+        <input
+          style={styles.input}
+          type="date"
+          value={form.data}
+          onChange={(e) => setForm({ ...form, data: e.target.value })}
+        />
+        <button disabled={saving} style={styles.primaryButton}>
+          {saving ? 'Salvando...' : 'Salvar lançamento'}
+        </button>
+      </form>
     </div>
-  `;
-}).join("");
 
-} catch (e) { showToast(toast, "err", "Erro ao carregar investimentos", e.message); } }
+    <div style={styles.card}>
+      <h3>Histórico</h3>
+      {loading ? (
+        <p>Carregando lançamentos...</p>
+      ) : error ? (
+        <div style={styles.errorBox}>{error}</div>
+      ) : items.length === 0 ? (
+        <p>Nenhum lançamento cadastrado.</p>
+      ) : (
+        <div style={styles.list}>
+          {items.map((item) => (
+            <div key={item.id} style={styles.listItem}>
+              <div>
+                <strong>{item.descricao}</strong>
+                <div style={styles.mutedText}>
+                  {item.categoria || 'Sem categoria'} • {item.data}
+                </div>
+              </div>
+              <div
+                style={{
+                  ...styles.valuePill,
+                  color: item.tipo === 'receita' ? '#0f9d58' : '#c62828',
+                }}
+              >
+                {item.tipo === 'receita' ? '+' : '-'} {currency(item.valor)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+</section>
 
-window.apagarInvestimento = async (id) => { const toast = $("toastInv"); hideToast(toast);
+); }
 
-if (!confirm("Quer mesmo apagar este investimento?")) return;
+function InvestimentosPage() { const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
 
-try { await api(/api/investimentos/${id}, "DELETE"); showToast(toast, "ok", "Apagado!", "Investimento removido.");
+useEffect(() => { const loadData = async () => { try { const data = await apiRequest('/investimentos'); setItems(Array.isArray(data) ? data : data.items || []); } catch (err) { setError(err.message); } finally { setLoading(false); } };
 
-await carregarInvestimentos();
-await refreshIA();
-await refreshInsightsDashboard();
-await atualizarScoreFinanceiro();
-await refreshHeroSummary();
+loadData();
 
-} catch (e) { showToast(toast, "err", "Não foi possível apagar", e.message); } };
+}, []);
 
-$("btnSalvarInv")?.addEventListener("click", async () => { const toast = $("toastInv"); hideToast(toast);
+return ( <section> <PageHeader
+title="Investimentos"
+subtitle="Acompanhe carteira, rentabilidade e alocação"
+/>
 
-try { const payload = { data: brToISO($("invData")?.value || ""), tipo: $("invTipo")?.value || "APORTE", ativo: $("invAtivo")?.value.trim() || "", valor: $("invValor")?.value.trim() || "", descricao: $("invDescricao")?.value.trim() || "", };
+<div style={styles.card}>
+    {loading ? (
+      <p>Carregando investimentos...</p>
+    ) : error ? (
+      <div style={styles.errorBox}>{error}</div>
+    ) : items.length === 0 ? (
+      <p>Nenhum investimento encontrado.</p>
+    ) : (
+      <div style={styles.list}>
+        {items.map((item) => (
+          <div key={item.id} style={styles.listItem}>
+            <div>
+              <strong>{item.nome}</strong>
+              <div style={styles.mutedText}>
+                {item.tipo || 'Ativo'} • {item.corretora || 'Sem instituição'}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={styles.cardValueSmall}>{currency(item.valor_atual)}</div>
+              <div style={styles.mutedText}>
+                Rentab.: {item.rentabilidade ?? 0}%
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</section>
 
-await api("/api/investimentos", "POST", payload);
-showToast(toast, "ok", "Salvo!", "Investimento registrado.");
+); }
 
-if ($("invAtivo")) $("invAtivo").value = "";
-if ($("invValor")) $("invValor").value = "";
-if ($("invDescricao")) $("invDescricao").value = "";
+function OrcamentosPage() { const [items, setItems] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
 
-await carregarInvestimentos();
-await refreshIA();
-await refreshInsightsDashboard();
-await atualizarScoreFinanceiro();
-await refreshHeroSummary();
+useEffect(() => { const loadData = async () => { try { const data = await apiRequest('/orcamentos'); setItems(Array.isArray(data) ? data : data.items || []); } catch (err) { setError(err.message); } finally { setLoading(false); } };
 
-} catch (e) { showToast(toast, "err", "Erro ao salvar", e.message); } });
+loadData();
 
-$("btnLimparInv")?.addEventListener("click", () => { if ($("invAtivo")) $("invAtivo").value = ""; if ($("invValor")) $("invValor").value = ""; if ($("invDescricao")) $("invDescricao").value = ""; hideToast($("toastInv")); });
+}, []);
 
-function initAssistenteTab() { const answer = $("assistantAnswer"); const question = $("assistantQuestion"); if (!answer || !question) return;
+return ( <section> <PageHeader
+title="Orçamentos"
+subtitle="Controle metas por categoria e acompanhe limites"
+/>
 
-if (!currentUserEmail) { answer.innerHTML = "Faça login e envie uma pergunta para começar."; } else if (!answer.dataset.started) { answer.innerHTML = "Pergunte algo como: <br>• Quanto posso gastar este mês?<br>• Qual categoria estou gastando mais?<br>• Como melhorar meu score financeiro?"; } }
+<div style={styles.grid2}>
+    {loading ? (
+      <div style={styles.card}>Carregando orçamentos...</div>
+    ) : error ? (
+      <div style={styles.card}>
+        <div style={styles.errorBox}>{error}</div>
+      </div>
+    ) : items.length === 0 ? (
+      <div style={styles.card}>Nenhum orçamento cadastrado.</div>
+    ) : (
+      items.map((item) => {
+        const percentual = Math.min(
+          100,
+          Math.round(((item.gasto_atual || 0) / (item.limite || 1)) * 100)
+        );
 
-async function perguntarAssistente(pergunta) { const toast = $("toastAssistente"); const answer = $("assistantAnswer"); hideToast(toast);
+        return (
+          <div key={item.id} style={styles.card}>
+            <div style={styles.listItem}>
+              <strong>{item.categoria}</strong>
+              <span>{percentual}%</span>
+            </div>
+            <div style={styles.progressTrack}>
+              <div
+                style={{ ...styles.progressFill, width: `${percentual}%` }}
+              />
+            </div>
+            <div style={styles.mutedText}>
+              Gasto: {currency(item.gasto_atual)} de {currency(item.limite)}
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+</section>
 
-const q = String(pergunta || $("assistantQuestion")?.value || "").trim();
+); }
 
-if (!q) { showToast(toast, "err", "Pergunta vazia", "Digite uma pergunta para o assistente."); return; }
+function AssistenteFinanceiroPage() { const [question, setQuestion] = useState(''); const [answer, setAnswer] = useState(''); const [history, setHistory] = useState([]); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
 
-if (!currentUserEmail) { showToast(toast, "err", "Faça login", "Entre para usar o assistente financeiro."); return; }
+const handleAsk = async (event) => { event.preventDefault(); if (!question.trim()) return;
 
-if (answer) { answer.dataset.started = "1"; answer.innerHTML = "Pensando na sua resposta..."; }
+const currentQuestion = question.trim();
+setLoading(true);
+setError('');
 
-try { const res = await api("/api/assistant_finance", "POST", { pergunta: q }); const resposta = (res && (res.resposta || res.answer || res.message)) ? (res.resposta || res.answer || res.message) : "Não consegui responder agora.";
+try {
+  const data = await apiRequest('/assistente-financeiro', {
+    method: 'POST',
+    body: JSON.stringify({ pergunta: currentQuestion }),
+  });
 
-if (answer) answer.innerHTML = nl2brSafe(resposta);
+  const responseText =
+    data.resposta || data.answer || 'Resposta recebida com sucesso.';
 
-} catch (e) { if (answer) answer.innerHTML = "Não consegui responder agora."; showToast(toast, "err", "Erro no assistente", e.message); } }
+  setAnswer(responseText);
+  setHistory((prev) => [
+    { pergunta: currentQuestion, resposta: responseText, id: Date.now() },
+    ...prev,
+  ]);
+  setQuestion('');
+} catch (err) {
+  setError(err.message);
+} finally {
+  setLoading(false);
+}
 
-$("btnPerguntarAssistente")?.addEventListener("click", async () => { await perguntarAssistente(); });
+};
 
-$("assistantQuestion")?.addEventListener("keydown", async (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); await perguntarAssistente(); } });
+return ( <section> <PageHeader
+title="Assistente Financeiro"
+subtitle="Faça perguntas sobre gastos, metas e decisões financeiras"
+/>
 
-$("btnLimparAssistente")?.addEventListener("click", () => { if ($("assistantQuestion")) $("assistantQuestion").value = ""; if ($("assistantAnswer")) { $("assistantAnswer").dataset.started = ""; $("assistantAnswer").innerHTML = currentUserEmail ? "Pergunte algo como: <br>• Quanto posso gastar este mês?<br>• Qual categoria estou gastando mais?<br>• Como melhorar meu score financeiro?" : "Faça login e envie uma pergunta para começar."; } hideToast($("toastAssistente")); });
+<div style={styles.twoColumn}>
+    <div style={styles.card}>
+      <form onSubmit={handleAsk} style={styles.form}>
+        <textarea
+          style={styles.textarea}
+          rows={6}
+          placeholder="Ex.: Como posso reduzir meus gastos fixos em 10% este mês?"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+        />
+        {error ? <div style={styles.errorBox}>{error}</div> : null}
+        <button style={styles.primaryButton} disabled={loading}>
+          {loading ? 'Consultando...' : 'Perguntar ao assistente'}
+        </button>
+      </form>
 
-document.querySelectorAll(".ask-chip").forEach(btn => { btn.addEventListener("click", async () => { const q = btn.dataset.question || ""; if ($("assistantQuestion")) $("assistantQuestion").value = q; await perguntarAssistente(q); }); });
+      {answer ? (
+        <div style={{ ...styles.card, marginTop: 16 }}>
+          <h3>Resposta</h3>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{answer}</p>
+        </div>
+      ) : null}
+    </div>
 
-const fabWrap = $("fabWrap"); const fabMain = $("fabMain"); const fabBackdrop = $("fabBackdrop"); const fabNovo = $("fabNovo"); const fabDash = $("fabDash");
+    <div style={styles.card}>
+      <h3>Histórico recente</h3>
+      {history.length === 0 ? (
+        <p>Nenhuma pergunta enviada ainda.</p>
+      ) : (
+        <div style={styles.list}>
+          {history.map((item) => (
+            <div key={item.id} style={styles.listItemColumn}>
+              <strong>Pergunta:</strong>
+              <span>{item.pergunta}</span>
+              <strong style={{ marginTop: 8 }}>Resposta:</strong>
+              <span>{item.resposta}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+</section>
 
-function fabClose() { if (!fabWrap || !fabMain) return; fabWrap.classList.remove("open"); fabMain.setAttribute("aria-expanded", "false"); fabWrap.querySelector(".fab-actions")?.setAttribute("aria-hidden", "true"); if ($("fabMainIco")) $("fabMainIco").textContent = "☰"; }
+); }
 
-function fabToggle() { if (!fabWrap || !fabMain) return; const open = !fabWrap.classList.contains("open"); fabWrap.classList.toggle("open", open); fabMain.setAttribute("aria-expanded", open ? "true" : "false"); fabWrap.querySelector(".fab-actions")?.setAttribute("aria-hidden", open ? "false" : "true"); if ($("fabMainIco")) $("fabMainIco").textContent = open ? "✕" : "☰"; }
+function NotFoundPage() { return ( <FullPageMessage text="Página não encontrada. Redirecione para uma rota válida." /> ); }
 
-fabMain?.addEventListener("click", fabToggle); fabBackdrop?.addEventListener("click", fabClose); fabNovo?.addEventListener("click", (e) => { e.preventDefault(); fabClose(); setTab("lancar"); }); fabDash?.addEventListener("click", (e) => { e.preventDefault(); fabClose(); setTab("dashboard"); }); tabEls.forEach(t => t.addEventListener("click", fabClose));
+function PageHeader({ title, subtitle }) { return ( <div style={styles.pageHeader}> <h1 style={styles.pageTitle}>{title}</h1> <p style={styles.pageSubtitle}>{subtitle}</p> </div> ); }
 
-function fillMonthSelect(selectId) { const sel = $(selectId); if (!sel) return; const now = new Date(); const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]; sel.innerHTML = meses.map((m, i) => <option value="${i + 1}">${m}</option>).join(""); sel.value = String(now.getMonth() + 1); }
+function SectionLoading({ title }) { return ( <section> <PageHeader title={title} subtitle="Carregando informações..." /> <div style={styles.card}>Aguarde um instante.</div> </section> ); }
 
-function initMesAno() { const now = new Date(); fillMonthSelect("dashMes"); fillMonthSelect("orcMes"); if ($("dashAno")) $("dashAno").value = String(now.getFullYear()); if ($("orcAno")) $("orcAno").value = String(now.getFullYear()); if ($("lanData")) $("lanData").value = isoToBR(now.toISOString().slice(0, 10)); if ($("invData")) $("invData").value = isoToBR(now.toISOString().slice(0, 10)); }
+function SectionError({ title, error }) { return ( <section> <PageHeader title={title} subtitle="Ocorreu um problema ao carregar os dados" /> <div style={styles.errorBox}>{error}</div> </section> ); }
 
-initMesAno(); ensureCharts();
+function FullPageMessage({ text }) { return ( <div style={styles.fullPageCenter}> <div style={styles.card}>{text}</div> </div> ); }
 
-syncSession().finally(async () => { refreshWaLink(); await refreshDashboard().catch(() => {}); await refreshIA().catch(() => {}); await refreshInsightsDashboard().catch(() => {}); await atualizarScoreFinanceiro().catch(() => {}); await carregarOrcamentos().catch(() => {}); await refreshHeroSummary().catch(() => {}); initAssistenteTab(); });
+function currency(value) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', }).format(Number(value || 0)); }
 
-if ("serviceWorker" in navigator) { window.addEventListener("load", async () => { try { const reg = await navigator.serviceWorker.register("/static/sw.js"); console.log("Service Worker registrado:", reg.scope); } catch (err) { console.error("Erro ao registrar Service Worker:", err); } }); }
+export default function App() { return ( <AuthProvider> <BrowserRouter> <Routes> <Route element={<PublicOnlyRoute />}> <Route path="/login" element={<LoginPage />} /> </Route>
+
+<Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/lancamentos" element={<LancamentosPage />} />
+          <Route path="/investimentos" element={<InvestimentosPage />} />
+          <Route path="/orcamentos" element={<OrcamentosPage />} />
+          <Route
+            path="/assistente-financeiro"
+            element={<AssistenteFinanceiroPage />}
+          />
+        </Route>
+      </Route>
+
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  </BrowserRouter>
+</AuthProvider>
+
+); }
+
+const styles = { appShell: { display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: '100vh', background: '#f6f8fb', color: '#1f2937', }, sidebar: { background: '#111827', color: '#ffffff', padding: '24px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 24, }, brand: { margin: 0, fontSize: 24, }, sidebarSubtitle: { marginTop: 8, color: '#9ca3af', fontSize: 14, }, nav: { display: 'flex', flexDirection: 'column', gap: 10, }, navLink: { color: '#d1d5db', textDecoration: 'none', padding: '12px 14px', borderRadius: 10, fontWeight: 500, }, navLinkActive: { background: '#2563eb', color: '#fff', }, userBox: { borderTop: '1px solid #374151', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12, }, userName: { fontWeight: 700, }, userEmail: { color: '#9ca3af', fontSize: 14, }, mainContent: { padding: 24, }, loginWrapper: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #eff6ff, #f8fafc)', padding: 16, }, loginCard: { width: '100%', maxWidth: 420, background: '#fff', borderRadius: 16, padding: 28, boxShadow: '0 14px 40px rgba(15, 23, 42, 0.08)', }, form: { display: 'flex', flexDirection: 'column', gap: 12, }, input: { padding: '12px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', }, textarea: { padding: '12px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', fontFamily: 'inherit', }, primaryButton: { background: '#2563eb', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer', }, secondaryButton: { background: '#1f2937', color: '#fff', border: '1px solid #4b5563', borderRadius: 10, padding: '10px 14px', fontSize: 14, cursor: 'pointer', }, pageHeader: { marginBottom: 20, }, pageTitle: { margin: 0, fontSize: 28, fontWeight: 800, }, pageSubtitle: { color: '#6b7280', marginTop: 6, }, card: { background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)', marginBottom: 16, }, cardLabel: { color: '#6b7280', fontSize: 14, marginBottom: 8, }, cardValue: { fontSize: 28, fontWeight: 800, }, cardValueSmall: { fontSize: 18, fontWeight: 800, }, grid4: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16, }, grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, }, twoColumn: { display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 16, alignItems: 'start', }, list: { display: 'flex', flexDirection: 'column', gap: 12, }, listItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e5e7eb', }, listItemColumn: { display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 0', borderBottom: '1px solid #e5e7eb', }, mutedText: { color: '#6b7280', fontSize: 14, }, valuePill: { background: '#f9fafb', borderRadius: 999, padding: '8px 12px', fontWeight: 700, whiteSpace: 'nowrap', }, progressTrack: { width: '100%', height: 10, background: '#e5e7eb', borderRadius: 999, overflow: 'hidden', margin: '10px 0', }, progressFill: { height: '100%', background: '#2563eb', borderRadius: 999, }, errorBox: { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', }, fullPageCenter: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#f6f8fb', }, };
