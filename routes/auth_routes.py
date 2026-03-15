@@ -1,91 +1,42 @@
-from flask import request, jsonify, session
+from flask import request, jsonify
 
 
-def register_auth_routes(app, db, User, MIN_PASSWORD_LEN, normalize_email, hash_password, login_user):
-    @app.post("/api/register")
-    def api_register():
+def register_account_routes(app, db, User, get_logged_user_id, get_logged_email, require_login):
+    @app.get("/api/me")
+    def api_me():
+        uid = get_logged_user_id()
+        email = get_logged_email()
+
+        name = None
+        if uid:
+            u = User.query.filter_by(id=uid).first()
+            if u:
+                name = u.name
+
+        return jsonify(email=email, user_id=uid, name=name)
+
+    @app.post("/api/account")
+    def api_account_update():
+        uid = require_login()
+        if not uid:
+            return jsonify(error="Não logado"), 401
+
         data = request.get_json(silent=True) or {}
+        name = str(data.get("name") or data.get("nome") or "").strip()
 
-        nome = str(
-            data.get("nome_completo")
-            or data.get("nome")
-            or data.get("name")
-            or data.get("nome_apelido")
-            or ""
-        ).strip()
+        if len(name) > 120:
+            return jsonify(error="Nome muito longo"), 400
 
-        email = normalize_email(data.get("email"))
-        senha = str(data.get("senha") or data.get("password") or "")
-        confirmar = str(data.get("confirmar_senha") or data.get("confirmar") or data.get("confirm") or "")
-
-        if not email or "@" not in email:
-            return jsonify(error="Email inválido"), 400
-        if len(senha) < MIN_PASSWORD_LEN:
-            return jsonify(error=f"Senha deve ter pelo menos {MIN_PASSWORD_LEN} caracteres"), 400
-        if senha != confirmar:
-            return jsonify(error="Senhas não conferem"), 400
-
-        existing = User.query.filter_by(email=email).first()
-        if existing:
-            if getattr(existing, "password_set", False) is False:
-                existing.password_hash = hash_password(senha)
-                existing.password_set = True
-                if nome and not existing.name:
-                    existing.name = nome
-                db.session.commit()
-                login_user(existing)
-                return jsonify(email=existing.email, name=existing.name, claimed=True)
-            return jsonify(error="Email já cadastrado"), 400
-
-        u = User(
-            email=email,
-            name=nome or None,
-            password_hash=hash_password(senha),
-            password_set=True,
-        )
-        db.session.add(u)
-        db.session.commit()
-
-        login_user(u)
-        return jsonify(email=u.email, name=u.name)
-
-    @app.post("/api/login")
-    def api_login():
-        data = request.get_json(silent=True) or {}
-        email = normalize_email(data.get("email"))
-        senha = str(data.get("senha") or data.get("password") or "")
-
-        u = User.query.filter_by(email=email).first()
-        if not u or u.password_hash != hash_password(senha):
-            return jsonify(error="Email ou senha inválidos"), 401
-
-        login_user(u)
-        return jsonify(email=u.email, name=u.name)
-
-    @app.post("/api/logout")
-    def api_logout():
-        session.clear()
-        return jsonify(ok=True)
-
-    @app.post("/api/reset_password")
-    def api_reset_password():
-        data = request.get_json(silent=True) or {}
-        email = normalize_email(data.get("email"))
-        nova = str(data.get("nova_senha") or data.get("newPassword") or data.get("password") or "")
-        confirmar = str(data.get("confirmar") or data.get("confirm") or "")
-
-        if not email or "@" not in email:
-            return jsonify(error="Email inválido"), 400
-        if len(nova) < MIN_PASSWORD_LEN:
-            return jsonify(error=f"Senha deve ter pelo menos {MIN_PASSWORD_LEN} caracteres"), 400
-        if nova != confirmar:
-            return jsonify(error="Senhas não conferem"), 400
-
-        u = User.query.filter_by(email=email).first()
+        u = User.query.filter_by(id=uid).first()
         if not u:
-            return jsonify(error="Email não encontrado"), 404
+            return jsonify(error="Usuário não encontrado"), 404
 
-        u.password_hash = hash_password(nova)
-        u.password_set = True
+        u.name = name or None
         db.session.commit()
-        return jsonify(ok=True)
+
+        return jsonify(
+            ok=True,
+            email=u.email,
+            name=u.name,
+            user_id=u.id
+        )
