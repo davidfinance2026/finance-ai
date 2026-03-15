@@ -299,17 +299,51 @@ Atualizar
 
 <div class="card">
 
-<h2>Investimentos</h2>
+<h2>Novo investimento</h2>
 
-<button id="btnRecarregarInv" class="btn primary">
+<div class="split">
+<div class="field">
+<label>Data</label>
+<input id="invData" type="date">
+</div>
+<div class="field">
+<label>Tipo</label>
+<select id="invTipo">
+<option value="APORTE">Aporte</option>
+<option value="RESGATE">Resgate</option>
+</select>
+</div>
+</div>
 
-Atualizar
+<div class="field">
+<label>Ativo</label>
+<input id="invAtivo" placeholder="Ex.: Tesouro Selic, PETR4, BTC">
+</div>
 
-</button>
+<div class="field">
+<label>Valor</label>
+<input id="invValor">
+</div>
 
-<div id="listaInv"></div>
+<div class="field">
+<label>Descrição</label>
+<textarea id="invDescricao"></textarea>
+</div>
+
+<div class="row">
+<button id="btnSalvarInv" class="btn primary">Salvar investimento</button>
+<button id="btnRecarregarInv" class="btn">Atualizar lista</button>
+</div>
 
 <div id="toastInv" class="toast"></div>
+
+</div>
+
+<div class="card">
+
+<h2>Lista de investimentos</h2>
+
+<div id="listaInv"></div>
 
 </div>
 
@@ -323,11 +357,59 @@ Atualizar
 
 <div class="card">
 
-<h2>Orçamentos</h2>
+<h2>Novo orçamento</h2>
 
-<div id="listaOrcamentos"></div>
+<div class="split">
+<div class="field">
+<label>Mês</label>
+<select id="newOrcMes">
+<option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+</select>
+</div>
+<div class="field">
+<label>Ano</label>
+<input id="newOrcAno" type="number">
+</div>
+</div>
+
+<div class="field">
+<label>Categoria</label>
+<input id="newOrcCategoria" placeholder="Ex.: Alimentação">
+</div>
+
+<div class="field">
+<label>Valor da meta</label>
+<input id="newOrcValor">
+</div>
+
+<div class="row">
+<button id="btnSalvarOrc" class="btn primary">Salvar orçamento</button>
+</div>
 
 <div id="toastOrc" class="toast"></div>
+
+</div>
+
+<div class="card">
+
+<h2>Orçamentos cadastrados</h2>
+
+<div class="split">
+<div class="field">
+<label>Mês</label>
+<select id="orcMes">
+<option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+</select>
+</div>
+<div class="field">
+<label>Ano</label>
+<input id="orcAno" type="number">
+</div>
+</div>
+
+<button id="btnRecarregarOrc" class="btn primary">Atualizar orçamentos</button>
+
+<div id="listaOrcamentos"></div>
 
 </div>
 
@@ -343,7 +425,7 @@ Atualizar
 
 <h2>Assistente Financeiro</h2>
 
-<textarea id="assistantQuestion"></textarea>
+<textarea id="assistantQuestion" placeholder="Ex.: Como posso reduzir meus gastos este mês sem prejudicar meus investimentos?"></textarea>
 
 <button id="btnPerguntarAssistente" class="btn primary">
 
