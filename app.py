@@ -116,7 +116,11 @@ app.config["JSON_AS_ASCII"] = False
 # Cookies de sessão
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("SESSION_SAMESITE", "Lax")
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_SECURE", "1") == "1"
+_session_secure_env = os.getenv("SESSION_SECURE")
+if _session_secure_env is None:
+    app.config["SESSION_COOKIE_SECURE"] = bool(os.getenv("RAILWAY_ENVIRONMENT"))
+else:
+    app.config["SESSION_COOKIE_SECURE"] = _session_secure_env == "1"
 
 # DB
 _raw_db_url = os.getenv("DATABASE_URL", "").strip()
