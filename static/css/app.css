@@ -788,3 +788,22 @@
     border-radius:24px;
   }
 }
+
+
+.emptyState {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255,255,255,.14);
+  color: rgba(234,240,255,.72);
+  text-align: center;
+  background: rgba(255,255,255,.02);
+}
+
+#listaInv, #listaUltimos {
+  display: grid;
+  gap: 12px;
+}
+
+.orc-progress > div {
+  background: linear-gradient(90deg, #4da3ff, #2ee59d);
+}
